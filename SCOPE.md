@@ -293,11 +293,24 @@ any state → cancelled | failed | expired
 ticketed → change_requested → … | cancelled_refunded
 ```
 
-`expired` is not an edge case. **Duffel offers expire in roughly 5–20 minutes.** If a
+`expired` is not an edge case. **Duffel offers expire in roughly 30 minutes.** If a
 request sits in `pending_approval` overnight, the offer is dead and the agent must
 re-search on approval — the approved *price* may no longer exist. The approval UI must
 show this, and re-search-on-approval must re-run policy against the new fare. This
 single detail is where most booking integrations break.
+
+**Hold orders are the mitigation**, and Duffel names this exact use case. When an offer
+carries `payment_requirements.requires_instant_payment: false`, we can create a `hold`
+order that reserves the space without paying, giving the approver a real deadline
+(`payment_required_by`) instead of a 30-minute fuse. Two caveats that shape the UI:
+
+- **Not every carrier supports it.** Availability is per-offer, so the agent must check
+  rather than assume, and ranking should mildly prefer a holdable offer when a request is
+  likely to need approval.
+- **A hold is not always a price lock.** `price_guarantee_expires_at` can be `null`,
+  meaning the seat is held but the fare may still move. The approval screen must say which
+  of the two it got, because approving a held-but-unguaranteed fare is approving an
+  unknown number.
 
 ### 6c. Safety rails — non-negotiable
 
@@ -507,9 +520,9 @@ invert phases A and C.
 - [x] **1.** PGlite, migrations, `getActor()` seam, cost centers & roles, realistic seed
 - [x] **2.** **Policy engine** — pure functions, versioned rules, resolved most-specific-first,
       structured verdicts, 52 unit tests. No UI, no DB dependency.
-- [ ] **3.** **Duffel adapter against test mode** — see real payloads, then correct the
-      `travel_request` / `offer_snapshot` / `policy_evaluation` schema *before* anything
-      is built on it
+- [x] **3.** **Duffel adapter** written against the published v2 schema; `travel_request` /
+      `offer_snapshot` / `policy_evaluation` / `approval` / `booking` / `agent_run` schema
+      corrected from real payload shapes. Live test-key run still pending.
 - [ ] **4.** Travel request state machine + **dry-run booking end-to-end**, headless and
       script-driven. Idempotency, offer expiry, re-search-on-approval.
 - [ ] **5.** Live purchase behind flag, kill switch, audit trail

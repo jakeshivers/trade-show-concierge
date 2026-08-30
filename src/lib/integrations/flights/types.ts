@@ -1,0 +1,104 @@
+import type { Offer, TravelConstraints, Cabin } from '@/lib/policy/types';
+
+/**
+ * Flight provider interface.
+ *
+ * Every integration has an explicit not-configured state. With no API key the
+ * app still runs; it says "flight booking is not configured" and never invents
+ * a fare. SCOPE.md non-negotiable #2.
+ */
+
+export type SearchRequest = {
+  constraints: TravelConstraints;
+  passengers: { givenName: string; familyName: string; loyaltyAccounts?: { airlineCode: string; accountNumber: string }[] }[];
+  cabinClass?: Cabin;
+  maxConnections?: number;
+  /** Negotiated fare codes to request, when the org has them. */
+  corporateCodes?: string[];
+};
+
+export type SearchResult = {
+  offers: Offer[];
+  searchId: string;
+  searchedAt: Date;
+};
+
+export type HoldRequest = {
+  offerId: string;
+  passengers: { id: string; givenName: string; familyName: string; email: string; phone: string; bornOn: string; gender?: string; title?: string }[];
+  /** One purchase per travel request, ever — retries must not double-book. */
+  idempotencyKey: string;
+};
+
+export type HoldResult = {
+  orderId: string;
+  bookingReference: string;
+  payBy: Date | null;
+  priceGuaranteedUntil: Date | null;
+  totalCents: number;
+  currency: string;
+};
+
+export type PurchaseRequest = {
+  orderId?: string;
+  offerId?: string;
+  passengers?: HoldRequest['passengers'];
+  amountCents: number;
+  currency: string;
+  /** Credits to burn down before charging. SCOPE.md §5b. */
+  creditIds?: string[];
+  idempotencyKey: string;
+};
+
+export type PurchaseResult = {
+  orderId: string;
+  bookingReference: string;
+  ticketNumbers: string[];
+  chargedCents: number;
+  currency: string;
+};
+
+export class ProviderNotConfiguredError extends Error {
+  constructor(readonly provider: string, readonly missingEnv: string[]) {
+    super(
+      `${provider} is not configured. Set ${missingEnv.join(', ')} to enable it. ` +
+        `Until then, flights can be recorded manually but not searched or booked.`,
+    );
+    this.name = 'ProviderNotConfiguredError';
+  }
+}
+
+export class ProviderError extends Error {
+  constructor(
+    message: string,
+    readonly provider: string,
+    readonly status?: number,
+    readonly requestId?: string,
+    readonly code?: string,
+  ) {
+    super(message);
+    this.name = 'ProviderError';
+  }
+}
+
+/**
+ * Purchasing is guarded by a dry-run flag that defaults ON. Production booking
+ * requires an explicit opt-in, so the first bug is never a real ticket.
+ * SCOPE.md §6c.
+ */
+export class DryRunError extends Error {
+  constructor(action: string) {
+    super(`Dry run: ${action} was not executed. Set FLIGHT_BOOKING_LIVE=true to enable real purchases.`);
+    this.name = 'DryRunError';
+  }
+}
+
+export interface FlightProvider {
+  readonly name: string;
+  isConfigured(): boolean;
+  search(request: SearchRequest): Promise<SearchResult>;
+  /** Reserve space without paying, so an approval can outlive offer expiry. */
+  hold(request: HoldRequest): Promise<HoldResult>;
+  purchase(request: PurchaseRequest): Promise<PurchaseResult>;
+  cancel(orderId: string, idempotencyKey: string): Promise<void>;
+}

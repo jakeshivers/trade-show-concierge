@@ -26,7 +26,15 @@ export type TripScope = 'domestic' | 'international';
 /* --------------------------------- offers ---------------------------------- */
 
 export type Segment = {
+  /** Marketing carrier — whose flight number is on the ticket. */
   airlineCode: string;
+  airlineName?: string;
+  /**
+   * Who actually flies it. US regulation requires this be shown prominently,
+   * and it is frequently a different regional carrier.
+   */
+  operatingAirlineCode?: string;
+  operatingAirlineName?: string;
   flightNumber: string;
   originAirport: string;
   originCountry: string;
@@ -48,10 +56,35 @@ export type Offer = {
   totalCents: Money;
   currency: string;
   slices: Slice[];
+
+  /**
+   * Refundability is not a boolean at the source: carriers permit refunds *with
+   * a penalty*. A "refundable" $500 fare carrying a $400 penalty is not
+   * meaningfully refundable, so we keep the penalty and let policy judge.
+   */
   refundable: boolean;
+  refundPenaltyCents: Money | null;
   changeable: boolean;
+  changePenaltyCents: Money | null;
+
   /** Offers expire in minutes; the engine must know when it is looking at a corpse. */
   expiresAt: Date | null;
+
+  /**
+   * When false, the offer can be *held* without payment — space reserved while an
+   * approver decides. This is the mechanism that keeps an approval queue from
+   * being defeated by offer expiry. See SCOPE.md §6b.
+   */
+  requiresInstantPayment: boolean;
+  paymentRequiredBy: Date | null;
+  /** When null, the space is held but the price may still move before payment. */
+  priceGuaranteeExpiresAt: Date | null;
+
+  /** Provider-side credits applicable to this offer. Feeds credit-first, SCOPE.md §5b. */
+  availableCreditIds: string[];
+
+  /** Negotiated corporate fare codes, when the offer came from one. */
+  corporateFareCodes: string[];
 };
 
 /* ------------------------------- constraints -------------------------------- */
@@ -100,6 +133,11 @@ export type TravelPolicy = {
   arrivalBufferHoursBeforeMoveIn: number;
 
   nonRefundableAllowedUnderCents: Money | null;
+  /**
+   * A refund penalty above this makes a nominally refundable fare count as
+   * non-refundable. Null accepts any penalty.
+   */
+  maxAcceptableRefundPenaltyCents: Money | null;
   preferredAirlines: string[];
   blockedAirlines: string[];
 

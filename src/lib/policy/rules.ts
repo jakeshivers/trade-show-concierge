@@ -330,8 +330,29 @@ export const refundability: Rule = {
   id: 'refundability',
   label: 'Refundability',
   evaluate: ({ offer, policy }) => {
-    if (offer.refundable) {
-      return pass('refundability', 'Refundability', 'Fare is refundable.');
+    // A refund permitted only with a punitive penalty is not a refundable fare.
+    const tolerance = policy.maxAcceptableRefundPenaltyCents;
+    const penalty = offer.refundPenaltyCents ?? 0;
+    const effectivelyRefundable =
+      offer.refundable && (tolerance === null || penalty <= tolerance);
+
+    if (effectivelyRefundable) {
+      return pass(
+        'refundability',
+        'Refundability',
+        penalty > 0
+          ? `Refundable with a ${usd(penalty)} penalty.`
+          : 'Fare is fully refundable.',
+      );
+    }
+    if (offer.refundable && !effectivelyRefundable) {
+      return fail(
+        'refundability',
+        'Refundability',
+        'approval',
+        `Nominally refundable, but the ${usd(penalty)} penalty exceeds the ${usd(tolerance!)} tolerance.`,
+        { margin: penalty - tolerance!, marginUnit: 'cents' },
+      );
     }
     const limit = policy.nonRefundableAllowedUnderCents;
     if (limit === null) {

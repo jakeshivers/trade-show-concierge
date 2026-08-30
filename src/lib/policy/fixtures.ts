@@ -32,8 +32,15 @@ export function offer(over: Partial<Offer> = {}): Offer {
     currency: 'USD',
     slices: [{ segments: [segment()] }],
     refundable: false,
+    refundPenaltyCents: null,
     changeable: true,
+    changePenaltyCents: 20_000,
     expiresAt: new Date(NOW.getTime() + h(0.25)),
+    requiresInstantPayment: true,
+    paymentRequiredBy: null,
+    priceGuaranteeExpiresAt: null,
+    availableCreditIds: [],
+    corporateFareCodes: [],
     ...over,
   };
 }
@@ -67,7 +74,9 @@ export function policy(over: Partial<TravelPolicy> = {}): TravelPolicy {
     scope: 'org',
     maxAirfareDomesticCents: 65_000,
     maxAirfareInternationalCents: 180_000,
-    bands: { autoApproveUnderCents: 50_000, denyOverCents: 120_000 },
+    // The deny ceiling must sit above both fare caps or those fares are
+    // unbookable — see validatePolicy().
+    bands: { autoApproveUnderCents: 50_000, denyOverCents: 250_000 },
     maxCabinDomestic: 'economy',
     maxCabinInternational: 'premium_economy',
     premiumCabinAllowedOverHours: 6,
@@ -76,6 +85,7 @@ export function policy(over: Partial<TravelPolicy> = {}): TravelPolicy {
     minConnectionMinutes: 60,
     arrivalBufferHoursBeforeMoveIn: 4,
     nonRefundableAllowedUnderCents: 40_000,
+    maxAcceptableRefundPenaltyCents: null,
     preferredAirlines: [],
     blockedAirlines: [],
     maxHotelNightlyRateCents: 30_000,

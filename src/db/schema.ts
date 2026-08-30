@@ -81,6 +81,36 @@ export const shipmentStatusEnum = pgEnum('shipment_status', [
 
 export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
 
+/** Mirrors the state machine in SCOPE.md §6b. */
+export const travelRequestStatusEnum = pgEnum('travel_request_status', [
+  'draft',
+  'submitted',
+  'searching',
+  'offers_found',
+  'pending_approval',
+  'approved',
+  'rejected',
+  'held',
+  'booking',
+  'ticketed',
+  'no_options',
+  'expired',
+  'failed',
+  'cancelled',
+]);
+
+export const policyDecisionEnum = pgEnum('policy_decision', [
+  'auto_approve',
+  'needs_approval',
+  'deny',
+]);
+
+export const approvalOutcomeEnum = pgEnum('approval_outcome', [
+  'approved',
+  'rejected',
+  'break_glass',
+]);
+
 export const userRoleEnum = pgEnum('user_role', ['member', 'travel_manager', 'admin']);
 
 export const deadlineKindEnum = pgEnum('deadline_kind', [
@@ -468,6 +498,269 @@ export const expenses = pgTable(
   (t) => [index('expenses_show_idx').on(t.showId)],
 );
 
+
+
+/* ------------------------------ travel requests ---------------------------- */
+
+/**
+ * A traveler's constraints — the booking agent's input.
+ *
+ * Written after seeing real Duffel payloads (build step 3), not guessed at.
+ * Constraints are stored structurally rather than as free text: an LLM parses
+ * "I need to be in Vegas by Tuesday noon" into these columns and the user
+ * confirms them, but from here down everything is deterministic. SCOPE.md §6a.
+ */
+export const travelRequests = pgTable(
+  'travel_requests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id').references(() => shows.id, { onDelete: 'set null' }),
+    requesterId: uuid('requester_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    travelerId: uuid('traveler_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+
+    status: travelRequestStatusEnum('status').notNull().default('draft'),
+
+    originAirport: text('origin_airport').notNull(),
+    destinationAirport: text('destination_airport').notNull(),
+    earliestDeparture: timestamp('earliest_departure', { withTimezone: true }).notNull(),
+    latestArrival: timestamp('latest_arrival', { withTimezone: true }).notNull(),
+    returnEarliestDeparture: timestamp('return_earliest_departure', { withTimezone: true }),
+    returnLatestArrival: timestamp('return_latest_arrival', { withTimezone: true }),
+    cabinPreference: text('cabin_preference'),
+
+    /** What the user actually typed, kept beside the parsed result. */
+    rawRequestText: text('raw_request_text'),
+    /** Parsed constraints are not acted on until the human confirms them. */
+    constraintsConfirmedAt: timestamp('constraints_confirmed_at', { withTimezone: true }),
+
+    /**
+     * One ticket per request, ever. Retries, double-clicks, and crashed workers
+     * must not produce two tickets. SCOPE.md §6c.
+     */
+    idempotencyKey: text('idempotency_key').notNull(),
+
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('travel_requests_idempotency_idx').on(t.orgId, t.idempotencyKey),
+    index('travel_requests_status_idx').on(t.orgId, t.status),
+    index('travel_requests_traveler_idx').on(t.travelerId),
+  ],
+);
+
+/**
+ * What the agent saw, recorded immutably.
+ *
+ * Airline offers expire in roughly 30 minutes and then vanish from the provider
+ * entirely. Without this snapshot, "why did it pick the $780 flight?" is
+ * permanently unanswerable — so we store the chosen offer AND the rejected ones.
+ *
+ * `rawPayload` keeps the provider response verbatim: the normalized columns are
+ * our interpretation, and an audit may need to see the source.
+ */
+export const offerSnapshots = pgTable(
+  'offer_snapshots',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    travelRequestId: uuid('travel_request_id')
+      .notNull()
+      .references(() => travelRequests.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    providerOfferId: text('provider_offer_id').notNull(),
+    providerSearchId: text('provider_search_id'),
+
+    totalCents: integer('total_cents').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    /** Duffel sends decimal strings; kept verbatim alongside our parsed cents. */
+    totalAmountRaw: text('total_amount_raw').notNull(),
+
+    ownerAirlineCode: text('owner_airline_code'),
+    outboundDeparture: timestamp('outbound_departure', { withTimezone: true }).notNull(),
+    outboundArrival: timestamp('outbound_arrival', { withTimezone: true }).notNull(),
+    maxStops: integer('max_stops').notNull().default(0),
+    highestCabin: text('highest_cabin').notNull(),
+
+    refundable: boolean('refundable').notNull().default(false),
+    refundPenaltyCents: integer('refund_penalty_cents'),
+    changeable: boolean('changeable').notNull().default(false),
+    changePenaltyCents: integer('change_penalty_cents'),
+
+    /** Drives whether an approval can be backed by a hold. SCOPE.md §6b. */
+    requiresInstantPayment: boolean('requires_instant_payment').notNull().default(true),
+    paymentRequiredBy: timestamp('payment_required_by', { withTimezone: true }),
+    priceGuaranteeExpiresAt: timestamp('price_guarantee_expires_at', { withTimezone: true }),
+    offerExpiresAt: timestamp('offer_expires_at', { withTimezone: true }).notNull(),
+
+    availableCreditIds: jsonb('available_credit_ids').$type<string[]>(),
+    corporateFareCodes: jsonb('corporate_fare_codes').$type<string[]>(),
+
+    /** True for the offer the agent chose; false for the alternatives it saw. */
+    selected: boolean('selected').notNull().default(false),
+    rank: integer('rank'),
+    score: integer('score'),
+
+    rawPayload: jsonb('raw_payload').notNull(),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('offer_snapshots_request_idx').on(t.travelRequestId, t.rank),
+    uniqueIndex('offer_snapshots_provider_offer_idx').on(t.travelRequestId, t.providerOfferId),
+  ],
+);
+
+/**
+ * The policy verdict, stored per evaluated offer.
+ *
+ * `resolvedPolicy` is the merged rule set that actually ran, not a pointer to
+ * today's org defaults — an audit six months later must reconstruct exactly why
+ * a purchase was permitted. `results` holds every rule's structured outcome,
+ * including the ones that passed and the ones that did not apply.
+ */
+export const policyEvaluations = pgTable(
+  'policy_evaluations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    travelRequestId: uuid('travel_request_id')
+      .notNull()
+      .references(() => travelRequests.id, { onDelete: 'cascade' }),
+    offerSnapshotId: uuid('offer_snapshot_id')
+      .notNull()
+      .references(() => offerSnapshots.id, { onDelete: 'cascade' }),
+
+    decision: policyDecisionEnum('decision').notNull(),
+    policyId: text('policy_id').notNull(),
+    policyVersion: integer('policy_version').notNull(),
+    /** The merged, most-specific-first rule set as applied. */
+    resolvedPolicy: jsonb('resolved_policy').notNull(),
+    /** Every rule: pass, fail, or not_applicable, with its margin. */
+    results: jsonb('results').notNull(),
+    blockerRuleIds: jsonb('blocker_rule_ids').$type<string[]>(),
+
+    evaluatedAt: timestamp('evaluated_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    index('policy_evaluations_request_idx').on(t.travelRequestId),
+    uniqueIndex('policy_evaluations_offer_idx').on(t.offerSnapshotId),
+  ],
+);
+
+export const approvals = pgTable(
+  'approvals',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    travelRequestId: uuid('travel_request_id')
+      .notNull()
+      .references(() => travelRequests.id, { onDelete: 'cascade' }),
+    policyEvaluationId: uuid('policy_evaluation_id').references(() => policyEvaluations.id, {
+      onDelete: 'set null',
+    }),
+    approverId: uuid('approver_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'restrict' }),
+    outcome: approvalOutcomeEnum('outcome').notNull(),
+    reason: text('reason'),
+
+    /**
+     * Set when no eligible approver existed and the requester self-approved.
+     * Requires a written justification and is surfaced as an exception rather
+     * than a normal approval. SCOPE.md §3.
+     */
+    breakGlassJustification: text('break_glass_justification'),
+
+    /**
+     * An offer that expired while awaiting approval must be re-searched and
+     * re-evaluated; the approved *price* may no longer exist. SCOPE.md §6b.
+     */
+    reSearchedOnApproval: boolean('re_searched_on_approval').notNull().default(false),
+    priceAtApprovalCents: integer('price_at_approval_cents'),
+
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('approvals_request_idx').on(t.travelRequestId)],
+);
+
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    travelRequestId: uuid('travel_request_id')
+      .notNull()
+      .references(() => travelRequests.id, { onDelete: 'cascade' })
+      // One booking per request, enforced by the database and not just by code.
+      .unique(),
+    offerSnapshotId: uuid('offer_snapshot_id').references(() => offerSnapshots.id, {
+      onDelete: 'set null',
+    }),
+
+    provider: text('provider').notNull(),
+    providerOrderId: text('provider_order_id').notNull(),
+    bookingReference: text('booking_reference'),
+    ticketNumbers: jsonb('ticket_numbers').$type<string[]>(),
+
+    /** A hold reserves space without payment while an approver decides. */
+    isHold: boolean('is_hold').notNull().default(false),
+    payBy: timestamp('pay_by', { withTimezone: true }),
+    priceGuaranteedUntil: timestamp('price_guaranteed_until', { withTimezone: true }),
+
+    chargedCents: integer('charged_cents'),
+    creditAppliedCents: integer('credit_applied_cents'),
+    currency: text('currency').notNull().default('USD'),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+
+    /** False for dry runs, which exercise the whole pipeline without spending. */
+    live: boolean('live').notNull().default(false),
+    idempotencyKey: text('idempotency_key').notNull(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('bookings_provider_order_idx').on(t.provider, t.providerOrderId),
+    index('bookings_request_idx').on(t.travelRequestId),
+  ],
+);
+
+/** Every agent decision, appended and never updated. */
+export const agentRuns = pgTable(
+  'agent_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    travelRequestId: uuid('travel_request_id')
+      .notNull()
+      .references(() => travelRequests.id, { onDelete: 'cascade' }),
+    step: text('step').notNull(),
+    fromStatus: travelRequestStatusEnum('from_status'),
+    toStatus: travelRequestStatusEnum('to_status'),
+    /** Who or what acted: a user id, or 'agent'. */
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    actorKind: text('actor_kind').notNull().default('agent'),
+    /** Both identities when an admin was impersonating. SCOPE.md §3. */
+    impersonatedById: uuid('impersonated_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    summary: text('summary').notNull(),
+    detail: jsonb('detail'),
+    /** Provider request id, for correlating with the vendor's own logs. */
+    providerRequestId: text('provider_request_id'),
+    durationMs: integer('duration_ms'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('agent_runs_request_idx').on(t.travelRequestId, t.occurredAt)],
+);
 
 /* -------------------------- service manual deadlines ----------------------- */
 
@@ -994,4 +1287,77 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
 
 export const showOutcomesRelations = relations(showOutcomes, ({ one }) => ({
   show: one(shows, { fields: [showOutcomes.showId], references: [shows.id] }),
+}));
+
+export const travelRequestsRelations = relations(travelRequests, ({ one, many }) => ({
+  org: one(organizations, {
+    fields: [travelRequests.orgId],
+    references: [organizations.id],
+  }),
+  show: one(shows, { fields: [travelRequests.showId], references: [shows.id] }),
+  requester: one(users, { fields: [travelRequests.requesterId], references: [users.id] }),
+  traveler: one(users, { fields: [travelRequests.travelerId], references: [users.id] }),
+  costCenter: one(costCenters, {
+    fields: [travelRequests.costCenterId],
+    references: [costCenters.id],
+  }),
+  offers: many(offerSnapshots),
+  evaluations: many(policyEvaluations),
+  approvals: many(approvals),
+  booking: one(bookings),
+  runs: many(agentRuns),
+}));
+
+export const offerSnapshotsRelations = relations(offerSnapshots, ({ one }) => ({
+  request: one(travelRequests, {
+    fields: [offerSnapshots.travelRequestId],
+    references: [travelRequests.id],
+  }),
+  evaluation: one(policyEvaluations),
+}));
+
+export const policyEvaluationsRelations = relations(policyEvaluations, ({ one }) => ({
+  request: one(travelRequests, {
+    fields: [policyEvaluations.travelRequestId],
+    references: [travelRequests.id],
+  }),
+  offer: one(offerSnapshots, {
+    fields: [policyEvaluations.offerSnapshotId],
+    references: [offerSnapshots.id],
+  }),
+}));
+
+export const approvalsRelations = relations(approvals, ({ one }) => ({
+  request: one(travelRequests, {
+    fields: [approvals.travelRequestId],
+    references: [travelRequests.id],
+  }),
+  evaluation: one(policyEvaluations, {
+    fields: [approvals.policyEvaluationId],
+    references: [policyEvaluations.id],
+  }),
+  approver: one(users, { fields: [approvals.approverId], references: [users.id] }),
+}));
+
+export const bookingsRelations = relations(bookings, ({ one }) => ({
+  request: one(travelRequests, {
+    fields: [bookings.travelRequestId],
+    references: [travelRequests.id],
+  }),
+  offer: one(offerSnapshots, {
+    fields: [bookings.offerSnapshotId],
+    references: [offerSnapshots.id],
+  }),
+  costCenter: one(costCenters, {
+    fields: [bookings.costCenterId],
+    references: [costCenters.id],
+  }),
+}));
+
+export const agentRunsRelations = relations(agentRuns, ({ one }) => ({
+  request: one(travelRequests, {
+    fields: [agentRuns.travelRequestId],
+    references: [travelRequests.id],
+  }),
+  actor: one(users, { fields: [agentRuns.actorId], references: [users.id] }),
 }));

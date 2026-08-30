@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { evaluate, resolvePolicy, verdictIsStale } from './evaluate';
+import { validatePolicy, isPolicyBookable } from './validate';
 import { rankOffers, selectBest } from './rank';
 import * as R from './rules';
 import type { EvaluationContext, RuleResult } from './types';
@@ -63,7 +64,7 @@ describe('approval bands', () => {
   });
 
   it('denies above the absolute ceiling, and no approver can override', () => {
-    const v = evaluate(ctx({ offer: offer({ totalCents: 130_000 }) }));
+    const v = evaluate(ctx({ offer: offer({ totalCents: 260_000 }) }));
     expect(v.decision).toBe('deny');
     expect(find(v.results, 'approval_band').severity).toBe('deny');
   });
@@ -400,7 +401,7 @@ describe('ranking', () => {
   });
 
   it('returns null rather than selecting a denied offer', () => {
-    const ranked = rankOffers([offer({ totalCents: 500_000 })], {
+    const ranked = rankOffers([offer({ totalCents: 600_000 })], {
       constraints: constraints(),
       policy: policy(),
       now: NOW,
@@ -435,5 +436,42 @@ describe('determinism', () => {
     // `now` is an input. If it were read internally, this would drift.
     const later = evaluate(ctx({ now: NOW }));
     expect(later.evaluatedAt).toEqual(NOW);
+  });
+});
+
+/* ------------------------------ policy validation --------------------------- */
+
+describe('validatePolicy', () => {
+  it('accepts a coherent policy', () => {
+    expect(validatePolicy(policy())).toHaveLength(0);
+    expect(isPolicyBookable(policy())).toBe(true);
+  });
+
+  it('catches a fare cap above the deny ceiling', () => {
+    // The trap: international fares up to $1,800 are "allowed" but everything
+    // over $1,200 is denied, so no international fare is ever bookable. This
+    // presents as "the agent can't find flights", not as a policy error.
+    const broken = policy({ bands: { autoApproveUnderCents: 50_000, denyOverCents: 120_000 } });
+    const issues = validatePolicy(broken);
+    expect(issues.some((i) => i.field === 'maxAirfareInternationalCents' && i.severity === 'error')).toBe(true);
+    expect(isPolicyBookable(broken)).toBe(false);
+  });
+
+  it('catches an auto-approve threshold above the deny ceiling', () => {
+    const broken = policy({ bands: { autoApproveUnderCents: 300_000, denyOverCents: 250_000 } });
+    expect(validatePolicy(broken).some((i) => i.field === 'bands')).toBe(true);
+  });
+
+  it('catches a carrier that is both preferred and blocked', () => {
+    const broken = policy({ preferredAirlines: ['DL', 'UA'], blockedAirlines: ['UA'] });
+    const issue = validatePolicy(broken).find((i) => i.field === 'preferredAirlines');
+    expect(issue?.severity).toBe('error');
+    expect(issue?.message).toContain('UA');
+  });
+
+  it('warns on an unmakeable connection minimum without blocking', () => {
+    const issues = validatePolicy(policy({ minConnectionMinutes: 15 }));
+    expect(issues[0].severity).toBe('warning');
+    expect(isPolicyBookable(policy({ minConnectionMinutes: 15 }))).toBe(true);
   });
 });
