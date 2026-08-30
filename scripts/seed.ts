@@ -104,6 +104,10 @@ async function main() {
         role: 'admin',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        phone: '+14155550101',
+        bornOn: '1981-04-17',
+        gender: 'f',
+        honorific: 'ms',
       },
       {
         orgId: org.id,
@@ -113,6 +117,10 @@ async function main() {
         role: 'travel_manager',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        phone: '+14155550102',
+        bornOn: '1988-11-02',
+        gender: 'm',
+        honorific: 'mr',
       },
       {
         orgId: org.id,
@@ -123,6 +131,10 @@ async function main() {
         costCenterId: se.id,
         knownTravelerNumber: 'KTN9924183',
         seatPreference: 'window',
+        phone: '+14155550103',
+        bornOn: '1990-06-25',
+        gender: 'f',
+        honorific: 'ms',
       },
       {
         orgId: org.id,
@@ -132,6 +144,10 @@ async function main() {
         role: 'member',
         costCenterId: se.id,
         seatPreference: 'aisle',
+        phone: '+14155550104',
+        bornOn: '1986-01-09',
+        gender: 'm',
+        honorific: 'mr',
       },
       {
         orgId: org.id,
@@ -140,6 +156,10 @@ async function main() {
         title: 'Product Marketing Manager',
         role: 'member',
         costCenterId: mkt.id,
+        // Deliberately incomplete: no date of birth, no phone. Half of any real
+        // org's directory looks like this, and a live purchase for Reese must
+        // fail with a message naming the missing fields rather than inventing
+        // them. See `src/lib/travel/passengers.ts`.
       },
       {
         orgId: org.id,
@@ -149,6 +169,10 @@ async function main() {
         role: 'member',
         costCenterId: exec.id,
         seatPreference: 'aisle',
+        phone: '+14155550106',
+        bornOn: '1975-09-30',
+        gender: 'f',
+        honorific: 'ms',
       },
     ])
     .returning();

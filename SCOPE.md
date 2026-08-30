@@ -364,6 +364,42 @@ normalizer. It announces itself as `recorded` in every snapshot and booking row,
 it that can spend money. It is not a fake Duffel; Duffel with no key still refuses to do
 anything at all.
 
+**What step 5 established, building it:**
+
+- **`live` on a booking is the provider's word, not ours.** A Duffel *test* key issues
+  orders that look real in every respect and carry `live_mode: false`. Stamping those
+  as live spend because we asked for a live purchase would quietly inflate every
+  show's true cost — and the true-cost rollup is the thing the whole ROI story rests
+  on. `PurchaseResult.liveMode` comes back from the provider and the booking row is
+  stamped from it.
+- **The hard ceiling has to be independent of the policy engine to be worth
+  anything.** Rail 1 asks for a second, dumber check; a second check that re-reads the
+  same resolved policy the agent read is not one. So there are two: the policy
+  ceiling in the agent, and `FLIGHT_BOOKING_MAX_CENTS` inside the provider, which
+  knows nothing about the request. Live booking without the latter is refused
+  outright.
+- **The kill switch halts dry runs too.** It looked like theatre — a dry run spends
+  nothing — until the alternative was stated plainly: a rail that only changes
+  behaviour when `FLIGHT_BOOKING_LIVE=true` gets its first real exercise during the
+  incident it exists for. It also does not throw work away. A halted request is
+  searched, judged, and queued as `pending_approval`, so resuming leaves a reviewable
+  backlog instead of a hole.
+- **`booking` needed an exit for failure.** Its only successors are `ticketed`,
+  `failed`, and `cancelled`, and until live purchasing existed nothing ever wrote
+  `failed` — a declined card would have left the request wedged. A purchase that
+  throws now lands in `failed` with the idempotency key recorded in the trail, which
+  is what a safe retry needs: reusing it means a lost response cannot become a second
+  charge.
+- **A ticket needs an identity we are not allowed to invent.** Airlines require a date
+  of birth, and a plausible placeholder would be *accepted* and produce a real ticket
+  in a name that does not match the traveler's passport. `passengerForUser` throws
+  naming every missing field. The seed has one traveler with an incomplete profile on
+  purpose, because half of any real directory looks like that.
+- **An offer is a quote, not a price.** Both purchase paths re-read the fare from the
+  provider immediately before paying and refuse if it moved, because the gap between
+  "policy said yes" and "we paid" is exactly where a fare change would otherwise be
+  paid silently.
+
 ### 6d. What buying tickets actually entails
 
 The user has confirmed this is in scope. Setting expectations honestly:
@@ -567,7 +603,14 @@ invert phases A and C.
       a DB-backed layer resolver, and the `recorded` provider that replays captured
       wire payloads through the production normalizer so the spine runs with no keys.
       `pnpm booking:dry-run` walks all four outcomes. 131 tests.
-- [ ] **5.** Live purchase behind flag, kill switch, audit trail
+- [x] **5.** **Live purchase behind the flag**, kill switch, audit trail surfaced.
+      `DuffelProvider.purchase()` implemented for both paths — an instant order, and
+      a payment against an existing hold — each re-reading the price from Duffel
+      immediately beforehand and refusing a fare that moved. Added an env-level hard
+      ceiling the adapter *requires* before it will buy at all, a DB-backed org kill
+      switch (`booking_controls`, append-only), traveler passenger identity that
+      fails loudly rather than defaulting, a `failed` landing place for a purchase
+      that throws, ticketing notifications, and `pnpm booking:audit`. 155 tests.
 - [ ] **6.** **Ticket credit ledger** (§5b) — expiry alerts, auto-applied before new spend
 
 ### Phase B — the planning core, built knowing what the spine needs

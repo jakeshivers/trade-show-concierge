@@ -21,6 +21,9 @@ import * as offerFacts from '@/lib/policy/offer';
 import type { FlightProvider } from '@/lib/integrations/flights/types';
 import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
+import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
+import { passengerForUser, type Passenger } from './passengers';
+import { notifyTicketed } from './notify';
 
 /**
  * The booking agent's spine.
@@ -609,20 +612,42 @@ export async function runAgent(
   const snapshot = snapshots.get(best.offer.id)!;
   const selected = { offer: best.offer, verdict: best.verdict, snapshotId: snapshot.id };
 
-  if (best.verdict.decision === 'auto_approve') {
+  const halt = await purchasingStatus(request.orgId, deps.db);
+
+  if (best.verdict.decision === 'auto_approve' && !halt.halted) {
     const booked = await book(deps, request, best, snapshot, resolution, actor);
     return { request: booked.request, status: booked.request.status as RequestStatus, ranked, selected, policy: resolution, booking: booked.booking };
   }
 
-  // Needs a human. Hold the space first where the carrier allows it, so the
-  // approver gets a real deadline instead of a 30-minute fuse. SCOPE.md §6b.
+  // Needs a human — either because policy says so, or because the kill switch
+  // is pulled. A halt does not throw the work away: the request queues with the
+  // verdict it earned, and resuming leaves a reviewable backlog rather than a
+  // gap in the record. SCOPE.md §6c rail 5.
+  if (halt.halted) {
+    await logRun(deps, {
+      travelRequestId: request.id,
+      step: 'purchasing_halted',
+      actor,
+      summary:
+        `Purchasing is halted org-wide (${halt.reason ?? 'no reason recorded'}) — ` +
+        `${best.verdict.decision === 'auto_approve' ? 'an otherwise auto-approved request' : 'this request'} ` +
+        'is queued instead of booked',
+      detail: { haltedSince: halt.since, reason: halt.reason, verdict: best.verdict.decision },
+    });
+  }
+
+  // Hold the space first where the carrier allows it, so the approver gets a
+  // real deadline instead of a 30-minute fuse. SCOPE.md §6b.
   await tryHold(deps, request, best, snapshot, actor);
 
   request = await transition(deps, request, 'pending_approval', {
     step: 'escalate',
     actor,
-    summary: `Escalated for approval: ${best.verdict.reasons.join('; ') || 'over policy'}`,
-    detail: { blockers: best.verdict.blockers },
+    summary: halt.halted
+      ? `Queued for approval because purchasing is halted, not because of policy — ` +
+        `the verdict was ${best.verdict.decision}`
+      : `Escalated for approval: ${best.verdict.reasons.join('; ') || 'over policy'}`,
+    detail: { blockers: best.verdict.blockers, haltedByKillSwitch: halt.halted },
   });
 
   return { request, status: 'pending_approval', ranked, selected, policy: resolution };
@@ -635,6 +660,21 @@ function uniqueReasons(ranked: RankedOffer[]): string[] {
     for (const blocker of entry.verdict.blockers) seen.add(blocker.message);
   }
   return [...seen];
+}
+
+/**
+ * The travelers on this request, as the airline needs them.
+ *
+ * One passenger for now — group booking is not in Phase A — but the shape is a
+ * list because the day it becomes two, everything downstream should already
+ * handle it.
+ */
+async function passengersFor(deps: AgentDeps, request: TravelRequestRow): Promise<Passenger[]> {
+  const traveler = await deps.db.query.users.findFirst({
+    where: eq(s.users.id, request.travelerId),
+  });
+  if (!traveler) throw new Error(`Traveler ${request.travelerId} not found`);
+  return [passengerForUser(traveler)];
 }
 
 /* ---------------------------------- holds ---------------------------------- */
@@ -665,8 +705,12 @@ async function tryHold(
 
   try {
     const held = await deps.provider.hold({
+      // A real carrier will not reserve a seat for nobody. `passengersFor`
+      // throws rather than invent an identity, and because a hold is
+      // best-effort, an incomplete traveler profile costs the approver the
+      // longer deadline instead of failing the request.
+      passengers: await passengersFor(deps, request),
       offerId: best.offer.id,
-      passengers: [],
       idempotencyKey: `${request.idempotencyKey}:hold`,
     });
 
@@ -717,6 +761,58 @@ async function tryHold(
  * env flag, so the first bug in this pipeline is never a real ticket.
  * SCOPE.md §6c rail 4.
  */
+/**
+ * The purchase call itself, with the one thing a live pipeline needs that a
+ * dry-run one does not: somewhere for a failure to go.
+ *
+ * A request that throws mid-purchase would otherwise sit in `booking` forever —
+ * a status whose only exits are `ticketed`, `failed`, and `cancelled`, none of
+ * which anything would ever write. So a failure is recorded and the request is
+ * moved to `failed`, from which a human can re-search.
+ *
+ * Retrying is safe on purpose: the idempotency key is the travel request's own,
+ * so if the money moved and the response was lost, the provider returns the same
+ * order rather than charging twice. That is why this rethrows instead of
+ * swallowing — the safe thing to do is show the error and let a person retry the
+ * same key.
+ */
+async function purchaseOrFail(
+  deps: AgentDeps,
+  request: TravelRequestRow,
+  best: RankedOffer,
+  existing: typeof s.bookings.$inferSelect | undefined,
+  actor?: Actor,
+) {
+  try {
+    return await deps.provider.purchase({
+      offerId: best.offer.id,
+      // Paying off a hold is a payment against an order that already exists,
+      // not a second order for the same seat.
+      orderId: existing?.isHold ? existing.providerOrderId : undefined,
+      passengers: await passengersFor(deps, request),
+      amountCents: best.offer.totalCents,
+      currency: best.offer.currency,
+      idempotencyKey: request.idempotencyKey,
+    });
+  } catch (err) {
+    const message = (err as Error).message;
+    await transition(deps, request, 'failed', {
+      step: 'purchase_failed',
+      actor,
+      summary: `Purchase of ${best.offer.id} failed: ${message}`,
+      detail: {
+        error: (err as Error).name,
+        message,
+        offerId: best.offer.id,
+        amountCents: best.offer.totalCents,
+        // The key a retry must reuse to avoid a second charge.
+        idempotencyKey: request.idempotencyKey,
+      },
+    });
+    throw err;
+  }
+}
+
 async function book(
   deps: AgentDeps,
   request: TravelRequestRow,
@@ -738,10 +834,16 @@ async function book(
   // Rail 1: the hard ceiling, checked here against the resolved policy rather
   // than trusted from the verdict. Independent of the agent's own reasoning,
   // and above it no approval — break-glass included — can authorize anything.
+  // The provider enforces a second, policy-blind ceiling of its own from the
+  // environment; neither one is allowed to be the only check.
   const ceiling = resolution.policy.bands.denyOverCents;
   if (best.offer.totalCents > ceiling) {
     throw new HardCeilingError(best.offer.totalCents, ceiling);
   }
+
+  // Rail 5, last line: callers check the kill switch before they get this far,
+  // but a rail that only exists on the paths someone remembered is not a rail.
+  await assertPurchasingAllowed(request.orgId, deps.db);
 
   const moving = await transition(deps, request, 'booking', {
     step: 'booking_start',
@@ -759,13 +861,7 @@ async function book(
   let booking: typeof s.bookings.$inferSelect;
 
   if (deps.live) {
-    const purchased = await deps.provider.purchase({
-      offerId: best.offer.id,
-      orderId: existing?.isHold ? existing.providerOrderId : undefined,
-      amountCents: best.offer.totalCents,
-      currency: best.offer.currency,
-      idempotencyKey: request.idempotencyKey,
-    });
+    const purchased = await purchaseOrFail(deps, moving, best, existing, actor);
     booking = existing
       ? (
           await deps.db
@@ -776,7 +872,10 @@ async function book(
               bookingReference: purchased.bookingReference,
               ticketNumbers: purchased.ticketNumbers,
               chargedCents: purchased.chargedCents,
-              live: true,
+              // The provider's word, not ours: a test key issues real-looking
+              // orders that are not spend, and marking those live would poison
+              // the true-cost rollup.
+              live: purchased.liveMode,
             })
             .where(eq(s.bookings.id, existing.id))
             .returning()
@@ -795,7 +894,7 @@ async function book(
               chargedCents: purchased.chargedCents,
               currency: purchased.currency,
               costCenterId: request.costCenterId,
-              live: true,
+              live: purchased.liveMode,
               idempotencyKey: request.idempotencyKey,
               createdAt: deps.now(),
             })
@@ -843,10 +942,29 @@ async function book(
   const ticketed = await transition(deps, moving, 'ticketed', {
     step: 'ticketed',
     actor,
-    summary: deps.live
-      ? `Ticketed ${booking.bookingReference} for ${usd(booking.chargedCents ?? 0)}`
-      : `Dry run complete — would have bought ${best.offer.id} for ${usd(best.offer.totalCents)}. No money moved.`,
+    summary: booking.live
+      ? `Ticketed ${booking.bookingReference} for ${usd(booking.chargedCents ?? 0)}` +
+        (booking.ticketNumbers?.length ? ` (ticket ${booking.ticketNumbers.join(', ')})` : '')
+      : deps.live
+        ? `Ordered ${booking.bookingReference} for ${usd(booking.chargedCents ?? 0)} — the ` +
+          'provider reports this is not a live-mode booking, so it is not recorded as spend.'
+        : `Dry run complete — would have bought ${best.offer.id} for ${usd(best.offer.totalCents)}. No money moved.`,
     detail: { bookingId: booking.id, live: booking.live, evaluationId: evaluation.id },
+  });
+
+  // Rail 6: the traveler and a travel manager hear about it now, not tomorrow.
+  const notified = await notifyTicketed(deps.db, {
+    orgId: request.orgId,
+    showId: request.showId,
+    travelerId: request.travelerId,
+    booking,
+    request: ticketed,
+    now: deps.now(),
+  });
+  await logRun(deps, {
+    travelRequestId: request.id,
+    step: 'notified',
+    summary: `Notified ${notified} recipient(s) of the ticketing`,
   });
 
   return { request: ticketed, booking };
@@ -880,6 +998,11 @@ export async function approveRequest(
   if (request.status !== 'pending_approval') {
     throw new Error(`Travel request ${requestId} is ${request.status}, not awaiting approval`);
   }
+
+  // Checked before the approval row is written, not after: an approval recorded
+  // against a purchase that could not happen is a misleading audit record, and
+  // the request should stay exactly where the approver found it.
+  await assertPurchasingAllowed(request.orgId, deps.db);
 
   const breakGlass = await authorizeApproval(deps, request, approver, input);
 

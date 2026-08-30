@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { normalizeOffer, normalizeOffers, holdCapability, NormalizationError } from './normalize';
 import { DuffelProvider } from './client';
-import { ProviderNotConfiguredError, DryRunError } from '../types';
+import {
+  ProviderNotConfiguredError,
+  DryRunError,
+  PriceMovedError,
+  ProviderCeilingError,
+  ProviderError,
+} from '../types';
 import * as fx from './fixtures';
 import { evaluate } from '@/lib/policy/evaluate';
 import { rankOffers, selectBest } from '@/lib/policy/rank';
@@ -152,7 +158,7 @@ describe('normalized offers flow into the policy engine', () => {
 });
 
 describe('DuffelProvider without a key', () => {
-  const provider = new DuffelProvider({ accessToken: undefined, liveBooking: false });
+  const provider = new DuffelProvider({ accessToken: undefined, liveBooking: false, hardCeilingCents: null });
 
   it('reports itself unconfigured', () => {
     expect(provider.isConfigured()).toBe(false);
@@ -175,16 +181,213 @@ describe('DuffelProvider without a key', () => {
 
 describe('DuffelProvider dry-run guard', () => {
   it('refuses to purchase unless live booking is explicitly enabled', async () => {
-    const provider = new DuffelProvider({ accessToken: 'test_key', liveBooking: false });
+    const provider = new DuffelProvider({ accessToken: 'test_key', liveBooking: false, hardCeilingCents: null });
     await expect(
       provider.purchase({ amountCents: 43_055, currency: 'USD', idempotencyKey: 'req_1' }),
     ).rejects.toThrow(DryRunError);
   });
 
   it('still requires configuration before the dry-run check', async () => {
-    const provider = new DuffelProvider({ accessToken: undefined, liveBooking: true });
+    const provider = new DuffelProvider({ accessToken: undefined, liveBooking: true, hardCeilingCents: null });
     await expect(
       provider.purchase({ amountCents: 1, currency: 'USD', idempotencyKey: 'req_2' }),
     ).rejects.toThrow(ProviderNotConfiguredError);
+  });
+});
+
+/* --------------------------- live purchase, on the wire -------------------- */
+
+/**
+ * Step 5. Duffel is mocked at `fetch`, so these assert the exact shape of what
+ * would go over the wire — the part a live test key would confirm and nothing
+ * else can.
+ */
+describe('DuffelProvider.purchase', () => {
+  const LIVE = { accessToken: 'test_key', liveBooking: true, hardCeilingCents: 200_000 };
+
+  type Call = { url: string; init: RequestInit };
+
+  /** Queue of JSON bodies, returned in order, with every request recorded. */
+  function mockFetch(...bodies: unknown[]): Call[] {
+    const calls: Call[] = [];
+    let i = 0;
+    vi.stubGlobal('fetch', async (url: string, init: RequestInit) => {
+      calls.push({ url, init });
+      const body = bodies[Math.min(i++, bodies.length - 1)];
+      return {
+        ok: true,
+        status: 200,
+        json: async () => body,
+      } as Response;
+    });
+    return calls;
+  }
+
+  const offerBody = (amount = '430.55') => ({
+    data: {
+      ...fx.nonstopOffer,
+      total_amount: amount,
+      total_currency: 'USD',
+      passengers: [{ id: 'pas_duffel_1' }],
+    },
+  });
+
+  const orderBody = (over: Record<string, unknown> = {}) => ({
+    data: {
+      id: 'ord_0001',
+      live_mode: true,
+      booking_reference: 'RJ8KL2',
+      total_amount: '430.55',
+      total_currency: 'USD',
+      created_at: '2026-03-01T10:00:00Z',
+      documents: [{ type: 'electronic_ticket', unique_identifier: '0012345678901' }],
+      ...over,
+    },
+  });
+
+  const passenger = {
+    id: '',
+    givenName: 'Priya',
+    familyName: 'Raghunathan',
+    email: 'priya@northwindrobotics.test',
+    phone: '+14155550103',
+    bornOn: '1990-06-25',
+    title: 'ms',
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('creates an instant order carrying the offer’s own passenger ids', async () => {
+    const calls = mockFetch(offerBody(), orderBody());
+    const provider = new DuffelProvider(LIVE);
+
+    const result = await provider.purchase({
+      offerId: 'off_0000A',
+      passengers: [passenger],
+      amountCents: 43_055,
+      currency: 'USD',
+      idempotencyKey: 'req_live_1',
+    });
+
+    // The offer is re-read first: an offer is a quote, not a price.
+    expect(calls[0].url).toContain('/air/offers/off_0000A');
+
+    const body = JSON.parse(calls[1].init.body as string);
+    expect(calls[1].url).toContain('/air/orders');
+    expect(body.data.type).toBe('instant');
+    expect(body.data.payments).toEqual([
+      { type: 'balance', amount: '430.55', currency: 'USD' },
+    ]);
+    // Duffel mints passenger ids on the offer; an order must echo them back.
+    expect(body.data.passengers[0].id).toBe('pas_duffel_1');
+    expect(body.data.passengers[0].born_on).toBe('1990-06-25');
+    // A retry has to hit Duffel's own dedupe, not just ours.
+    expect((calls[1].init.headers as Record<string, string>)['Idempotency-Key']).toBe('req_live_1');
+
+    expect(result).toMatchObject({
+      orderId: 'ord_0001',
+      bookingReference: 'RJ8KL2',
+      ticketNumbers: ['0012345678901'],
+      chargedCents: 43_055,
+      liveMode: true,
+    });
+  });
+
+  it('pays off a held order rather than ordering the seat twice', async () => {
+    const calls = mockFetch(orderBody(), {}, orderBody());
+    const provider = new DuffelProvider(LIVE);
+
+    await provider.purchase({
+      orderId: 'ord_0001',
+      amountCents: 43_055,
+      currency: 'USD',
+      idempotencyKey: 'req_live_2',
+    });
+
+    expect(calls.map((c) => c.init.method)).toEqual(['GET', 'POST', 'GET']);
+    expect(calls[1].url).toContain('/air/payments');
+    expect(JSON.parse(calls[1].init.body as string).data.order_id).toBe('ord_0001');
+    // Ticket numbers appear on the order, so it is re-read after payment.
+    expect(calls[2].url).toContain('/air/orders/ord_0001');
+  });
+
+  it('refuses when the fare moved between the verdict and the purchase', async () => {
+    mockFetch(offerBody('455.00'));
+    const provider = new DuffelProvider(LIVE);
+
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        idempotencyKey: 'req_live_3',
+      }),
+    ).rejects.toThrow(PriceMovedError);
+  });
+
+  it('reports the provider’s own live_mode, not our intent', async () => {
+    // A test key issues real-looking orders that are not spend.
+    mockFetch(offerBody(), orderBody({ live_mode: false }));
+    const provider = new DuffelProvider(LIVE);
+    const result = await provider.purchase({
+      offerId: 'off_0000A',
+      passengers: [passenger],
+      amountCents: 43_055,
+      currency: 'USD',
+      idempotencyKey: 'req_live_4',
+    });
+    expect(result.liveMode).toBe(false);
+  });
+
+  it('enforces a ceiling the application cannot raise', async () => {
+    mockFetch(offerBody());
+    const provider = new DuffelProvider({ ...LIVE, hardCeilingCents: 40_000 });
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        idempotencyKey: 'req_live_5',
+      }),
+    ).rejects.toThrow(ProviderCeilingError);
+  });
+
+  it('will not purchase live at all without a configured ceiling', async () => {
+    mockFetch(offerBody());
+    const provider = new DuffelProvider({ ...LIVE, hardCeilingCents: null });
+    await expect(
+      provider.purchase({ offerId: 'off_0000A', amountCents: 1, currency: 'USD', idempotencyKey: 'req_live_6' }),
+    ).rejects.toThrow(/FLIGHT_BOOKING_MAX_CENTS/);
+  });
+
+  it('will not pay full fare over an unused airline credit', async () => {
+    mockFetch(offerBody());
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        creditIds: ['cred_1'],
+        idempotencyKey: 'req_live_7',
+      }),
+    ).rejects.toThrow(ProviderError);
+  });
+
+  it('refuses to guess who is flying', async () => {
+    mockFetch(offerBody());
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [],
+        amountCents: 43_055,
+        currency: 'USD',
+        idempotencyKey: 'req_live_8',
+      }),
+    ).rejects.toThrow(/Refusing to guess who is flying/);
   });
 });

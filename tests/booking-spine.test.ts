@@ -227,6 +227,9 @@ describe('within policy: the agent books without asking anyone', () => {
       'offers_found',
       'booking_start',
       'ticketed',
+      // Rail 6: the traveler and a travel manager are told at ticketing, and
+      // the notification is part of the trail rather than a side effect of it.
+      'notified',
     ]);
   });
 });

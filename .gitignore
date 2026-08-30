@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...and we do opt in for the example: it is the only place the optional
+# integration flags are documented, and `.env*` was silently keeping it out of
+# every clone.
+!.env.example
 
 # vercel
 .vercel

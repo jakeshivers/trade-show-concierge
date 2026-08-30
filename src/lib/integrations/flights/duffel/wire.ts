@@ -129,6 +129,34 @@ export type DuffelOfferRequestResponse = {
   };
 };
 
+/** A single offer re-fetched immediately before purchase, to re-check the price. */
+export type DuffelOfferResponse = { data: DuffelOffer };
+
+/**
+ * An order — what an offer becomes once it is bought or held.
+ *
+ * `documents` is where ticket numbers live, and it is populated asynchronously
+ * after payment, so a purchase re-reads the order rather than trusting the
+ * response to the payment call.
+ */
+export type DuffelOrder = {
+  id: string;
+  live_mode: boolean;
+  booking_reference: string;
+  total_amount: string;
+  total_currency: string;
+  created_at: string;
+  documents?: { type: string; unique_identifier: string }[] | null;
+  payment_status?: {
+    awaiting_payment: boolean;
+    payment_required_by: string | null;
+    price_guarantee_expires_at: string | null;
+  };
+  passengers?: { id: string; given_name?: string; family_name?: string }[];
+};
+
+export type DuffelOrderResponse = { data: DuffelOrder };
+
 export type DuffelListResponse<T> = {
   data: T[];
   meta?: { limit: number; before: string | null; after: string | null };

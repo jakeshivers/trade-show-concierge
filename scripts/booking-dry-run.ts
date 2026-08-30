@@ -24,6 +24,8 @@ import {
   expireStaleRequests,
   type AgentDeps,
 } from '../src/lib/travel/agent';
+import { haltPurchasing, resumePurchasing } from '../src/lib/travel/kill-switch';
+import { getAuditTrail, renderAuditTrail } from '../src/lib/travel/audit';
 
 const db = getDb();
 const usd = (c: number | null | undefined) => (c == null ? '—' : `$${(c / 100).toFixed(2)}`);
@@ -255,6 +257,68 @@ async function scenarioExpirySweep() {
   await trace(request.id);
 }
 
+async function scenarioKillSwitch() {
+  console.log('\n━━ 5. Kill switch — an admin halts purchasing, and nothing is bought or lost ━━\n');
+  const clock = new Clock(new Date());
+  const d = deps(clock);
+  const dana = await actorFor('dana@northwindrobotics.test');
+  const priya = await actorFor('priya@northwindrobotics.test');
+  const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
+  if (!show?.moveInAt) throw new Error('Seed is missing Automate 2026 move-in time');
+  const day = 86_400_000;
+
+  await haltPurchasing(dana.orgId, dana, 'Fare feed looked wrong at 09:12', db, clock.now);
+  console.log('    dana@ halted purchasing: "Fare feed looked wrong at 09:12"');
+
+  const request = await submitTravelRequest(
+    {
+      showId: show.id,
+      originAirport: 'SFO',
+      destinationAirport: 'DTW',
+      earliestDeparture: new Date(show.moveInAt.getTime() - day),
+      latestArrival: show.moveInAt,
+      idempotencyKey: 'demo-kill-switch',
+    },
+    priya,
+    d,
+  );
+
+  // The same request that auto-booked in scenario 1.
+  const halted = await runAgent(request.id, d, priya);
+  console.log(
+    `    verdict ${halted.selected?.verdict.decision} but status ${halted.status} — ` +
+      'judged, queued, not bought',
+  );
+  await trace(request.id);
+
+  clock.advanceMinutes(30);
+  await resumePurchasing(dana.orgId, dana, 'Feed verified against the carrier', db, clock.now);
+  console.log('\n    dana@ resumed purchasing; the queued request is approved normally');
+
+  const marcus = await actorFor('marcus@northwindrobotics.test');
+  const booked = await approveRequest(request.id, marcus, deps(clock));
+  console.log(
+    `    result: ${booked.status}  booking ${booked.booking?.providerOrderId ?? '—'} ` +
+      `at ${usd(booked.booking?.chargedCents)} (live=${booked.booking?.live})`,
+  );
+}
+
+async function scenarioAuditTrail() {
+  console.log('\n━━ 6. The audit trail, as a person reads it ━━');
+  const request = await db.query.travelRequests.findFirst({
+    where: eq(s.travelRequests.idempotencyKey, 'demo-approval'),
+  });
+  if (!request) throw new Error('Scenario 2 did not leave a request behind');
+  console.log('');
+  console.log(
+    renderAuditTrail(await getAuditTrail(request.id, db))
+      .split('\n')
+      .map((line) => `    ${line}`)
+      .join('\n'),
+  );
+  console.log('\n    (the same for any request: pnpm booking:audit <id | idempotency-key>)');
+}
+
 async function main() {
   console.log('Trade Show Concierge — booking spine, dry run');
   console.log('provider: recorded (replayed payloads) · live purchasing: OFF');
@@ -262,11 +326,14 @@ async function main() {
   // Start from a clean spine so the run is reproducible; the seeded planning
   // data is left alone.
   await db.delete(s.travelRequests);
+  await db.delete(s.bookingControls);
 
   await scenarioAutoBook();
   await scenarioApprovalAfterExpiry();
   await scenarioNoOptions();
   await scenarioExpirySweep();
+  await scenarioKillSwitch();
+  await scenarioAuditTrail();
 
   const bookings = await db.select().from(s.bookings);
   console.log(

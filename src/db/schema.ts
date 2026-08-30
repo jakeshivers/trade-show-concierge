@@ -6,6 +6,7 @@ import {
   numeric,
   boolean,
   jsonb,
+  date,
   uuid,
   pgEnum,
   index,
@@ -215,6 +216,16 @@ export const users = pgTable(
     // Known traveler / loyalty details reused when booking.
     knownTravelerNumber: text('known_traveler_number'),
     seatPreference: text('seat_preference'),
+    /**
+     * Passenger identity, required by the airline to issue a ticket — not by us.
+     * Nullable because most of the app never needs it, and because a missing
+     * date of birth must fail a live purchase loudly rather than be invented.
+     * See `src/lib/travel/passengers.ts`.
+     */
+    bornOn: date('born_on'),
+    gender: text('gender'),
+    /** Mr / Ms / Mrs / Miss / Dr — the airline's `title`, not the job title above. */
+    honorific: text('honorific'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -468,6 +479,8 @@ export const alerts = pgTable(
       .notNull()
       .references(() => organizations.id, { onDelete: 'cascade' }),
     showId: uuid('show_id').references(() => shows.id, { onDelete: 'cascade' }),
+    /** Whose alert this is. Null means the whole org sees it. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
     severity: text('severity').notNull().default('info'),
     title: text('title').notNull(),
     body: text('body'),
@@ -476,7 +489,10 @@ export const alerts = pgTable(
     acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex('alerts_dedupe_idx').on(t.orgId, t.dedupeKey)],
+  (t) => [
+    uniqueIndex('alerts_dedupe_idx').on(t.orgId, t.dedupeKey),
+    index('alerts_user_idx').on(t.userId, t.acknowledgedAt),
+  ],
 );
 
 /* -------------------------------- expenses --------------------------------- */
@@ -852,6 +868,37 @@ export const agentRuns = pgTable(
     index('agent_runs_request_idx').on(t.travelRequestId, t.sequence),
     uniqueIndex('agent_runs_sequence_idx').on(t.travelRequestId, t.sequence),
   ],
+);
+
+/* ------------------------------- kill switch ------------------------------- */
+
+/**
+ * The kill switch. SCOPE.md §6c rail 5.
+ *
+ * Append-only, and deliberately so: the current state is the newest row, and the
+ * history of who halted purchasing, when, and why is the same table. A mutable
+ * boolean column would answer "is it on" and nothing else, and the question that
+ * actually gets asked after an incident is "who turned it back on."
+ *
+ * An org with no rows is not halted. That means the switch is safe to introduce
+ * to an existing database without a backfill, and a missing row can never read
+ * as "halted" and silently stop an org from travelling.
+ */
+export const bookingControls = pgTable(
+  'booking_controls',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** True from this row onward, until a later row says otherwise. */
+    purchasingHalted: boolean('purchasing_halted').notNull(),
+    /** Required in both directions — halting and resuming are both decisions. */
+    reason: text('reason').notNull(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('booking_controls_org_idx').on(t.orgId, t.createdAt)],
 );
 
 /* -------------------------- service manual deadlines ----------------------- */
@@ -1448,6 +1495,14 @@ export const bookingsRelations = relations(bookings, ({ one }) => ({
     fields: [bookings.costCenterId],
     references: [costCenters.id],
   }),
+}));
+
+export const bookingControlsRelations = relations(bookingControls, ({ one }) => ({
+  org: one(organizations, {
+    fields: [bookingControls.orgId],
+    references: [organizations.id],
+  }),
+  actor: one(users, { fields: [bookingControls.actorId], references: [users.id] }),
 }));
 
 export const agentRunsRelations = relations(agentRuns, ({ one }) => ({

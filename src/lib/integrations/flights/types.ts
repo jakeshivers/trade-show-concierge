@@ -56,6 +56,14 @@ export type PurchaseResult = {
   ticketNumbers: string[];
   chargedCents: number;
   currency: string;
+  /**
+   * Whether the *provider* considers this a real booking — not whether we asked
+   * for one. A Duffel test key produces orders with `live_mode: false`, and
+   * recording those as live spend would quietly corrupt the true-cost rollup
+   * that the whole ROI story rests on. The booking row is stamped from this,
+   * never from our own intent.
+   */
+  liveMode: boolean;
 };
 
 export class ProviderNotConfiguredError extends Error {
@@ -78,6 +86,51 @@ export class ProviderError extends Error {
   ) {
     super(message);
     this.name = 'ProviderError';
+  }
+}
+
+/**
+ * The fare moved between the offer we judged and the moment of purchase.
+ *
+ * Offers are quotes, not prices. Paying the new number because it happened to
+ * come back from the same endpoint would mean buying something no policy verdict
+ * ever covered, so the purchase is refused and the request goes back through
+ * evaluation.
+ */
+export class PriceMovedError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly expectedCents: number,
+    readonly actualCents: number,
+    readonly currency: string,
+  ) {
+    super(
+      `${provider} now quotes ${(actualCents / 100).toFixed(2)} ${currency} for this itinerary, ` +
+        `not the ${(expectedCents / 100).toFixed(2)} ${currency} that was authorized. ` +
+        'Refusing to purchase at a price nothing approved.',
+    );
+    this.name = 'PriceMovedError';
+  }
+}
+
+/**
+ * The provider-level spend ceiling. Deliberately separate from the policy
+ * engine's `denyOverCents`: SCOPE.md §6c rail 1 asks for a second, dumber check
+ * at the moment of purchase that is independent of the agent's own reasoning,
+ * and a ceiling that reads the same policy the agent read is not independent.
+ */
+export class ProviderCeilingError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly amountCents: number,
+    readonly ceilingCents: number,
+  ) {
+    super(
+      `${provider} refused a purchase of ${(amountCents / 100).toFixed(2)}: above the ` +
+        `configured hard ceiling of ${(ceilingCents / 100).toFixed(2)} (FLIGHT_BOOKING_MAX_CENTS). ` +
+        'Nothing in the application can raise this; change the environment.',
+    );
+    this.name = 'ProviderCeilingError';
   }
 }
 
