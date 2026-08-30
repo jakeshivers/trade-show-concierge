@@ -1,0 +1,997 @@
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  numeric,
+  boolean,
+  jsonb,
+  uuid,
+  pgEnum,
+  index,
+  uniqueIndex,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+/* ---------------------------------- enums --------------------------------- */
+
+export const showStatusEnum = pgEnum('show_status', [
+  'prospect',
+  'committed',
+  'planning',
+  'ready',
+  'live',
+  'complete',
+  'cancelled',
+]);
+
+export const taskStatusEnum = pgEnum('task_status', [
+  'not_started',
+  'in_progress',
+  'blocked',
+  'complete',
+  'skipped',
+]);
+
+export const taskCategoryEnum = pgEnum('task_category', [
+  'booth',
+  'collateral',
+  'staffing',
+  'travel',
+  'lodging',
+  'shipping',
+  'marketing',
+  'legal',
+  'budget',
+  'follow_up',
+]);
+
+export const attendeeStatusEnum = pgEnum('attendee_status', [
+  'invited',
+  'confirmed',
+  'declined',
+  'waitlist',
+]);
+
+export const flightStatusEnum = pgEnum('flight_status', [
+  'scheduled',
+  'active',
+  'landed',
+  'delayed',
+  'diverted',
+  'cancelled',
+  'unknown',
+]);
+
+export const shipmentDirectionEnum = pgEnum('shipment_direction', [
+  'outbound', // office -> show
+  'return', // show -> office
+]);
+
+export const shipmentStatusEnum = pgEnum('shipment_status', [
+  'draft',
+  'label_created',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'exception',
+  'returned',
+  'cancelled',
+]);
+
+export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
+
+export const userRoleEnum = pgEnum('user_role', ['member', 'travel_manager', 'admin']);
+
+export const deadlineKindEnum = pgEnum('deadline_kind', [
+  'advance_order',      // the big one: 25-40% surcharge after this date
+  'electrical',
+  'furniture_carpet',
+  'av_rigging',
+  'labor',
+  'warehouse_cutoff',
+  'direct_to_show',
+  'booth_registration',
+  'staff_registration',
+  'room_block',
+  'sponsorship_artwork',
+  'other',
+]);
+
+export const assetKindEnum = pgEnum('asset_kind', [
+  'booth',
+  'display',
+  'furniture',
+  'av_equipment',
+  'crate',
+  'other',
+]);
+
+export const assetConditionEnum = pgEnum('asset_condition', [
+  'good',
+  'damaged',
+  'needs_repair',
+  'retired',
+]);
+
+export const creditStatusEnum = pgEnum('credit_status', [
+  'available',
+  'partially_used',
+  'used',
+  'expired',
+  'refunded',
+]);
+
+export const sideEventKindEnum = pgEnum('side_event_kind', [
+  'dinner',
+  'demo',
+  'seminar',
+  'reception',
+  'meeting',
+  'other',
+]);
+
+export const rsvpStatusEnum = pgEnum('rsvp_status', ['invited', 'accepted', 'declined', 'tentative']);
+
+/* ------------------------------- tenancy/users ----------------------------- */
+
+export const organizations = pgTable('organizations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').unique(),
+  name: text('name').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Finance dimension carried by every row that represents money. Set at creation and
+ * never inferred later — see SCOPE.md non-negotiable #6.
+ */
+export const costCenters = pgTable(
+  'cost_centers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('cost_centers_org_code_idx').on(t.orgId, t.code)],
+);
+
+export const users = pgTable(
+  'users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    clerkUserId: text('clerk_user_id').unique(),
+    email: text('email').notNull(),
+    fullName: text('full_name').notNull(),
+    role: userRoleEnum('role').notNull().default('member'),
+    // Default cost center for this user's travel; overridable per request.
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+    title: text('title'),
+    phone: text('phone'),
+    avatarUrl: text('avatar_url'),
+    // Known traveler / loyalty details reused when booking.
+    knownTravelerNumber: text('known_traveler_number'),
+    seatPreference: text('seat_preference'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('users_org_idx').on(t.orgId),
+    uniqueIndex('users_org_email_idx').on(t.orgId, t.email),
+  ],
+);
+
+/* ---------------------------------- shows ---------------------------------- */
+
+export const shows = pgTable(
+  'shows',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    status: showStatusEnum('status').notNull().default('planning'),
+    website: text('website'),
+
+    venueName: text('venue_name'),
+    venueAddress: text('venue_address'),
+    city: text('city'),
+    region: text('region'),
+    country: text('country'),
+    // Nearest commercial airport — drives flight search defaults.
+    airportCode: text('airport_code'),
+    timezone: text('timezone').notNull().default('UTC'),
+
+    startsOn: timestamp('starts_on', { withTimezone: true }).notNull(),
+    endsOn: timestamp('ends_on', { withTimezone: true }).notNull(),
+    // Move-in / move-out bracket the show and gate shipping deadlines.
+    moveInAt: timestamp('move_in_at', { withTimezone: true }),
+    moveOutAt: timestamp('move_out_at', { withTimezone: true }),
+
+    boothNumber: text('booth_number'),
+    boothSize: text('booth_size'),
+    budgetCents: integer('budget_cents'),
+    goals: text('goals'),
+    notes: text('notes'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('shows_org_starts_idx').on(t.orgId, t.startsOn)],
+);
+
+/* -------------------------------- readiness -------------------------------- */
+
+export const showTasks = pgTable(
+  'show_tasks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    description: text('description'),
+    category: taskCategoryEnum('category').notNull().default('booth'),
+    status: taskStatusEnum('status').notNull().default('not_started'),
+    assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
+    dueOn: timestamp('due_on', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    // Higher weight tasks move the readiness score more.
+    weight: integer('weight').notNull().default(1),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('show_tasks_show_idx').on(t.showId, t.sortOrder)],
+);
+
+/* -------------------------------- attendees -------------------------------- */
+
+export const showAttendees = pgTable(
+  'show_attendees',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    role: text('role').notNull().default('Booth staff'),
+    status: attendeeStatusEnum('status').notNull().default('invited'),
+    arrivesOn: timestamp('arrives_on', { withTimezone: true }),
+    departsOn: timestamp('departs_on', { withTimezone: true }),
+    notes: text('notes'),
+  },
+  (t) => [uniqueIndex('show_attendees_unique').on(t.showId, t.userId)],
+);
+
+/* --------------------------------- lodging --------------------------------- */
+
+export const lodgings = pgTable(
+  'lodgings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    hotelName: text('hotel_name').notNull(),
+    address: text('address'),
+    phone: text('phone'),
+    confirmationCode: text('confirmation_code'),
+    checkIn: timestamp('check_in', { withTimezone: true }),
+    checkOut: timestamp('check_out', { withTimezone: true }),
+    nightlyRateCents: integer('nightly_rate_cents'),
+    // Room block cutoff dates are a classic missed deadline.
+    roomBlockCutoff: timestamp('room_block_cutoff', { withTimezone: true }),
+    notes: text('notes'),
+  },
+  (t) => [index('lodgings_show_idx').on(t.showId)],
+);
+
+export const lodgingGuests = pgTable(
+  'lodging_guests',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    lodgingId: uuid('lodging_id')
+      .notNull()
+      .references(() => lodgings.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [uniqueIndex('lodging_guests_unique').on(t.lodgingId, t.userId)],
+);
+
+/* --------------------------------- flights --------------------------------- */
+
+export const flights = pgTable(
+  'flights',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+
+    // Carrier IATA code + number, e.g. "AA" + "1423".
+    airlineCode: text('airline_code').notNull(),
+    airlineName: text('airline_name'),
+    flightNumber: text('flight_number').notNull(),
+
+    originAirport: text('origin_airport').notNull(),
+    destinationAirport: text('destination_airport').notNull(),
+
+    scheduledDeparture: timestamp('scheduled_departure', { withTimezone: true }).notNull(),
+    scheduledArrival: timestamp('scheduled_arrival', { withTimezone: true }).notNull(),
+    estimatedDeparture: timestamp('estimated_departure', { withTimezone: true }),
+    estimatedArrival: timestamp('estimated_arrival', { withTimezone: true }),
+
+    status: flightStatusEnum('status').notNull().default('scheduled'),
+    delayMinutes: integer('delay_minutes').notNull().default(0),
+    departureTerminal: text('departure_terminal'),
+    departureGate: text('departure_gate'),
+    arrivalTerminal: text('arrival_terminal'),
+    arrivalGate: text('arrival_gate'),
+
+    // Booking linkage — set when purchased through the app.
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+    bookingProvider: text('booking_provider'),
+    bookingReference: text('booking_reference'),
+    ticketNumber: text('ticket_number'),
+    priceCents: integer('price_cents'),
+    currency: text('currency').notNull().default('USD'),
+    seat: text('seat'),
+    cabin: text('cabin'),
+
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('flights_show_idx').on(t.showId),
+    index('flights_user_idx').on(t.userId),
+    index('flights_departure_idx').on(t.scheduledDeparture),
+  ],
+);
+
+/* -------------------------------- shipments -------------------------------- */
+
+export const shipments = pgTable(
+  'shipments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    direction: shipmentDirectionEnum('direction').notNull().default('outbound'),
+    carrier: carrierEnum('carrier').notNull(),
+    trackingNumber: text('tracking_number'),
+    status: shipmentStatusEnum('status').notNull().default('draft'),
+
+    fromAddress: jsonb('from_address').$type<Address>(),
+    toAddress: jsonb('to_address').$type<Address>(),
+
+    // Show floors have hard receiving windows; missing them costs drayage fees.
+    mustArriveBy: timestamp('must_arrive_by', { withTimezone: true }),
+    shippedAt: timestamp('shipped_at', { withTimezone: true }),
+    estimatedDelivery: timestamp('estimated_delivery', { withTimezone: true }),
+    deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+
+    pieces: integer('pieces').notNull().default(1),
+    weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
+    declaredValueCents: integer('declared_value_cents'),
+    costCents: integer('cost_cents'),
+    labelUrl: text('label_url'),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+    notes: text('notes'),
+
+    lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('shipments_show_idx').on(t.showId),
+    index('shipments_tracking_idx').on(t.carrier, t.trackingNumber),
+  ],
+);
+
+export const shipmentEvents = pgTable(
+  'shipment_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    shipmentId: uuid('shipment_id')
+      .notNull()
+      .references(() => shipments.id, { onDelete: 'cascade' }),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    status: text('status').notNull(),
+    message: text('message').notNull(),
+    location: text('location'),
+  },
+  (t) => [index('shipment_events_shipment_idx').on(t.shipmentId, t.occurredAt)],
+);
+
+/* --------------------------------- alerts ---------------------------------- */
+
+export const alerts = pgTable(
+  'alerts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id').references(() => shows.id, { onDelete: 'cascade' }),
+    severity: text('severity').notNull().default('info'),
+    title: text('title').notNull(),
+    body: text('body'),
+    // Stable key so a repeating condition updates one alert instead of piling up.
+    dedupeKey: text('dedupe_key').notNull(),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('alerts_dedupe_idx').on(t.orgId, t.dedupeKey)],
+);
+
+/* -------------------------------- expenses --------------------------------- */
+
+export const expenses = pgTable(
+  'expenses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    category: text('category').notNull(),
+    description: text('description').notNull(),
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    paid: boolean('paid').notNull().default(false),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+    incurredOn: timestamp('incurred_on', { withTimezone: true }),
+  },
+  (t) => [index('expenses_show_idx').on(t.showId)],
+);
+
+
+/* -------------------------- service manual deadlines ----------------------- */
+
+/**
+ * Exhibitor service manual deadlines. The advance order deadline typically lands
+ * 21-30 days before show open; missing it surcharges every service order 25-40%.
+ * `penaltyEstimateCents` is what makes this a decision rather than a nag.
+ * See SCOPE.md §5a.
+ */
+export const showDeadlines = pgTable(
+  'show_deadlines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    kind: deadlineKindEnum('kind').notNull().default('other'),
+    title: text('title').notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
+    penaltyEstimateCents: integer('penalty_estimate_cents'),
+    penaltyNote: text('penalty_note'),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    sourceUrl: text('source_url'),
+    // Set when extracted from a manual PDF; a human must confirm before it alerts.
+    extractedFromDocument: boolean('extracted_from_document').notNull().default(false),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('show_deadlines_show_due_idx').on(t.showId, t.dueAt)],
+);
+
+/* ------------------------------- booth shifts ------------------------------ */
+
+export const boothShifts = pgTable(
+  'booth_shifts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }).notNull(),
+    // Coverage target: how many staff this slot needs.
+    targetStaff: integer('target_staff').notNull().default(2),
+    notes: text('notes'),
+  },
+  (t) => [index('booth_shifts_show_idx').on(t.showId, t.startsAt)],
+);
+
+export const shiftAssignments = pgTable(
+  'shift_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => boothShifts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+  },
+  (t) => [uniqueIndex('shift_assignments_unique').on(t.shiftId, t.userId)],
+);
+
+/**
+ * Who was *actually* at the booth. Deliberately separate from shiftAssignments:
+ * rostered is not present, and the gap between them is the staffing insight.
+ */
+export const shiftPresence = pgTable(
+  'shift_presence',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    shiftId: uuid('shift_id')
+      .notNull()
+      .references(() => boothShifts.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    checkedInAt: timestamp('checked_in_at', { withTimezone: true }).notNull(),
+    checkedOutAt: timestamp('checked_out_at', { withTimezone: true }),
+  },
+  (t) => [index('shift_presence_shift_idx').on(t.shiftId)],
+);
+
+/* -------------------------------- side events ------------------------------ */
+
+export const sideEvents = pgTable(
+  'side_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    kind: sideEventKindEnum('kind').notNull().default('dinner'),
+    name: text('name').notNull(),
+    location: text('location'),
+    startsAt: timestamp('starts_at', { withTimezone: true }).notNull(),
+    endsAt: timestamp('ends_at', { withTimezone: true }),
+    capacity: integer('capacity'),
+    budgetCents: integer('budget_cents'),
+    hostId: uuid('host_id').references(() => users.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+  },
+  (t) => [index('side_events_show_idx').on(t.showId, t.startsAt)],
+);
+
+export const sideEventRsvps = pgTable(
+  'side_event_rsvps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    sideEventId: uuid('side_event_id')
+      .notNull()
+      .references(() => sideEvents.id, { onDelete: 'cascade' }),
+    // Either an internal user or an external guest, not both.
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    guestName: text('guest_name'),
+    guestEmail: text('guest_email'),
+    guestCompany: text('guest_company'),
+    status: rsvpStatusEnum('status').notNull().default('invited'),
+  },
+  (t) => [index('side_event_rsvps_event_idx').on(t.sideEventId)],
+);
+
+/* ---------------------------- assets & collateral -------------------------- */
+
+export const assets = pgTable(
+  'assets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    kind: assetKindEnum('kind').notNull().default('display'),
+    assetTag: text('asset_tag'),
+    condition: assetConditionEnum('condition').notNull().default('good'),
+    storageLocation: text('storage_location'),
+    purchaseValueCents: integer('purchase_value_cents'),
+    weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
+    dimensions: text('dimensions'),
+    notes: text('notes'),
+  },
+  (t) => [index('assets_org_idx').on(t.orgId)],
+);
+
+/**
+ * A log, not a flag. Capital assets get lost between shows; chain of custody is
+ * who took it, when it came back, and in what condition.
+ */
+export const assetReservations = pgTable(
+  'asset_reservations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    reservedFrom: timestamp('reserved_from', { withTimezone: true }).notNull(),
+    reservedTo: timestamp('reserved_to', { withTimezone: true }).notNull(),
+    checkedOutAt: timestamp('checked_out_at', { withTimezone: true }),
+    checkedOutById: uuid('checked_out_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    returnedAt: timestamp('returned_at', { withTimezone: true }),
+    conditionOnReturn: assetConditionEnum('condition_on_return'),
+    notes: text('notes'),
+  },
+  (t) => [
+    index('asset_reservations_asset_idx').on(t.assetId, t.reservedFrom),
+    index('asset_reservations_show_idx').on(t.showId),
+  ],
+);
+
+export const collateralItems = pgTable(
+  'collateral_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    sku: text('sku'),
+    quantityOnHand: integer('quantity_on_hand').notNull().default(0),
+    lowStockThreshold: integer('low_stock_threshold').notNull().default(0),
+    unitCostCents: integer('unit_cost_cents'),
+    storageLocation: text('storage_location'),
+  },
+  (t) => [index('collateral_items_org_idx').on(t.orgId)],
+);
+
+export const collateralAllocations = pgTable(
+  'collateral_allocations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    collateralItemId: uuid('collateral_item_id')
+      .notNull()
+      .references(() => collateralItems.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    quantityAllocated: integer('quantity_allocated').notNull(),
+    quantityReturned: integer('quantity_returned'),
+  },
+  (t) => [index('collateral_allocations_show_idx').on(t.showId)],
+);
+
+/* ----------------------------- ticket credits ------------------------------ */
+
+/**
+ * Unused airline credits. 5-11% of corporate air spend is forfeited to expiry each
+ * year; we hold these only because we booked the ticket. Expiry is per-carrier
+ * (roughly 6-24 months), so it is stored per row rather than computed from a
+ * constant. See SCOPE.md §5b.
+ */
+export const ticketCredits = pgTable(
+  'ticket_credits',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    // Credits are usually locked to the original traveler.
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    originFlightId: uuid('origin_flight_id').references(() => flights.id, {
+      onDelete: 'set null',
+    }),
+    airlineCode: text('airline_code').notNull(),
+    recordLocator: text('record_locator'),
+    ticketNumber: text('ticket_number'),
+    originalValueCents: integer('original_value_cents').notNull(),
+    remainingValueCents: integer('remaining_value_cents').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    issuedOn: timestamp('issued_on', { withTimezone: true }).notNull(),
+    expiresOn: timestamp('expires_on', { withTimezone: true }).notNull(),
+    status: creditStatusEnum('status').notNull().default('available'),
+    transferable: boolean('transferable').notNull().default(false),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+    notes: text('notes'),
+  },
+  (t) => [
+    index('ticket_credits_org_expiry_idx').on(t.orgId, t.expiresOn),
+    index('ticket_credits_user_idx').on(t.userId, t.status),
+  ],
+);
+
+/* ------------------------------ leads & meetings --------------------------- */
+
+export const leads = pgTable(
+  'leads',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    capturedById: uuid('captured_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    fullName: text('full_name').notNull(),
+    email: text('email'),
+    phone: text('phone'),
+    company: text('company'),
+    title: text('title'),
+    interests: jsonb('interests').$type<string[]>(),
+    notes: text('notes'),
+    score: integer('score'),
+    // The CRM owns pipeline truth; we own the attribution link.
+    crmExternalId: text('crm_external_id'),
+    // Lead PII is regulated data: consent is recorded at capture, not assumed.
+    consentCapturedAt: timestamp('consent_captured_at', { withTimezone: true }),
+    consentBasis: text('consent_basis'),
+    deleteAfter: timestamp('delete_after', { withTimezone: true }),
+    capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('leads_show_idx').on(t.showId),
+    index('leads_crm_idx').on(t.crmExternalId),
+  ],
+);
+
+export const meetings = pgTable(
+  'meetings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    subject: text('subject').notNull(),
+    company: text('company'),
+    isExistingCustomer: boolean('is_existing_customer').notNull().default(false),
+    scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+  },
+  (t) => [index('meetings_show_idx').on(t.showId)],
+);
+
+/**
+ * Engagement and pipeline numbers per show. Impressions and forecast revenue sit
+ * alongside actuals; realized revenue lags 6-12 months, so `asOf` is mandatory —
+ * every ROI figure must be able to state the date it was true.
+ */
+export const showOutcomes = pgTable(
+  'show_outcomes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' })
+      .unique(),
+    impressions: integer('impressions'),
+    boothWalkbys: integer('booth_walkbys'),
+    pipelineSourcedCents: integer('pipeline_sourced_cents'),
+    pipelineInfluencedCents: integer('pipeline_influenced_cents'),
+    revenueForecastCents: integer('revenue_forecast_cents'),
+    revenueClosedWonCents: integer('revenue_closed_won_cents'),
+    attributionWindowDays: integer('attribution_window_days').notNull().default(180),
+    asOf: timestamp('as_of', { withTimezone: true }).notNull().defaultNow(),
+  },
+);
+
+/* --------------------------------- shared ---------------------------------- */
+
+export type Address = {
+  name?: string;
+  company?: string;
+  street1: string;
+  street2?: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+  phone?: string;
+};
+
+/* -------------------------------- relations -------------------------------- */
+
+export const organizationsRelations = relations(organizations, ({ many }) => ({
+  users: many(users),
+  shows: many(shows),
+  costCenters: many(costCenters),
+  assets: many(assets),
+  collateralItems: many(collateralItems),
+  ticketCredits: many(ticketCredits),
+}));
+
+export const costCentersRelations = relations(costCenters, ({ one, many }) => ({
+  org: one(organizations, { fields: [costCenters.orgId], references: [organizations.id] }),
+  users: many(users),
+}));
+
+export const usersRelations = relations(users, ({ one, many }) => ({
+  org: one(organizations, { fields: [users.orgId], references: [organizations.id] }),
+  costCenter: one(costCenters, {
+    fields: [users.costCenterId],
+    references: [costCenters.id],
+  }),
+  attendances: many(showAttendees),
+  flights: many(flights),
+  shiftAssignments: many(shiftAssignments),
+  ticketCredits: many(ticketCredits),
+}));
+
+export const showsRelations = relations(shows, ({ one, many }) => ({
+  org: one(organizations, { fields: [shows.orgId], references: [organizations.id] }),
+  tasks: many(showTasks),
+  attendees: many(showAttendees),
+  lodgings: many(lodgings),
+  flights: many(flights),
+  shipments: many(shipments),
+  expenses: many(expenses),
+  deadlines: many(showDeadlines),
+  shifts: many(boothShifts),
+  sideEvents: many(sideEvents),
+  assetReservations: many(assetReservations),
+  collateralAllocations: many(collateralAllocations),
+  leads: many(leads),
+  meetings: many(meetings),
+  outcome: one(showOutcomes),
+}));
+
+export const showTasksRelations = relations(showTasks, ({ one }) => ({
+  show: one(shows, { fields: [showTasks.showId], references: [shows.id] }),
+  assignee: one(users, { fields: [showTasks.assigneeId], references: [users.id] }),
+}));
+
+export const showAttendeesRelations = relations(showAttendees, ({ one }) => ({
+  show: one(shows, { fields: [showAttendees.showId], references: [shows.id] }),
+  user: one(users, { fields: [showAttendees.userId], references: [users.id] }),
+}));
+
+export const lodgingsRelations = relations(lodgings, ({ one, many }) => ({
+  show: one(shows, { fields: [lodgings.showId], references: [shows.id] }),
+  guests: many(lodgingGuests),
+}));
+
+export const lodgingGuestsRelations = relations(lodgingGuests, ({ one }) => ({
+  lodging: one(lodgings, { fields: [lodgingGuests.lodgingId], references: [lodgings.id] }),
+  user: one(users, { fields: [lodgingGuests.userId], references: [users.id] }),
+}));
+
+export const flightsRelations = relations(flights, ({ one }) => ({
+  show: one(shows, { fields: [flights.showId], references: [shows.id] }),
+  user: one(users, { fields: [flights.userId], references: [users.id] }),
+}));
+
+export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
+  show: one(shows, { fields: [shipments.showId], references: [shows.id] }),
+  events: many(shipmentEvents),
+}));
+
+export const shipmentEventsRelations = relations(shipmentEvents, ({ one }) => ({
+  shipment: one(shipments, { fields: [shipmentEvents.shipmentId], references: [shipments.id] }),
+}));
+
+export const expensesRelations = relations(expenses, ({ one }) => ({
+  show: one(shows, { fields: [expenses.showId], references: [shows.id] }),
+}));
+
+export const showDeadlinesRelations = relations(showDeadlines, ({ one }) => ({
+  show: one(shows, { fields: [showDeadlines.showId], references: [shows.id] }),
+  owner: one(users, { fields: [showDeadlines.ownerId], references: [users.id] }),
+}));
+
+export const boothShiftsRelations = relations(boothShifts, ({ one, many }) => ({
+  show: one(shows, { fields: [boothShifts.showId], references: [shows.id] }),
+  assignments: many(shiftAssignments),
+  presence: many(shiftPresence),
+}));
+
+export const shiftAssignmentsRelations = relations(shiftAssignments, ({ one }) => ({
+  shift: one(boothShifts, {
+    fields: [shiftAssignments.shiftId],
+    references: [boothShifts.id],
+  }),
+  user: one(users, { fields: [shiftAssignments.userId], references: [users.id] }),
+}));
+
+export const shiftPresenceRelations = relations(shiftPresence, ({ one }) => ({
+  shift: one(boothShifts, {
+    fields: [shiftPresence.shiftId],
+    references: [boothShifts.id],
+  }),
+  user: one(users, { fields: [shiftPresence.userId], references: [users.id] }),
+}));
+
+export const sideEventsRelations = relations(sideEvents, ({ one, many }) => ({
+  show: one(shows, { fields: [sideEvents.showId], references: [shows.id] }),
+  host: one(users, { fields: [sideEvents.hostId], references: [users.id] }),
+  rsvps: many(sideEventRsvps),
+}));
+
+export const sideEventRsvpsRelations = relations(sideEventRsvps, ({ one }) => ({
+  sideEvent: one(sideEvents, {
+    fields: [sideEventRsvps.sideEventId],
+    references: [sideEvents.id],
+  }),
+  user: one(users, { fields: [sideEventRsvps.userId], references: [users.id] }),
+}));
+
+export const assetsRelations = relations(assets, ({ one, many }) => ({
+  org: one(organizations, { fields: [assets.orgId], references: [organizations.id] }),
+  reservations: many(assetReservations),
+}));
+
+export const assetReservationsRelations = relations(assetReservations, ({ one }) => ({
+  asset: one(assets, { fields: [assetReservations.assetId], references: [assets.id] }),
+  show: one(shows, { fields: [assetReservations.showId], references: [shows.id] }),
+  checkedOutBy: one(users, {
+    fields: [assetReservations.checkedOutById],
+    references: [users.id],
+  }),
+}));
+
+export const collateralItemsRelations = relations(collateralItems, ({ one, many }) => ({
+  org: one(organizations, {
+    fields: [collateralItems.orgId],
+    references: [organizations.id],
+  }),
+  allocations: many(collateralAllocations),
+}));
+
+export const collateralAllocationsRelations = relations(
+  collateralAllocations,
+  ({ one }) => ({
+    item: one(collateralItems, {
+      fields: [collateralAllocations.collateralItemId],
+      references: [collateralItems.id],
+    }),
+    show: one(shows, { fields: [collateralAllocations.showId], references: [shows.id] }),
+  }),
+);
+
+export const ticketCreditsRelations = relations(ticketCredits, ({ one }) => ({
+  org: one(organizations, {
+    fields: [ticketCredits.orgId],
+    references: [organizations.id],
+  }),
+  user: one(users, { fields: [ticketCredits.userId], references: [users.id] }),
+  originFlight: one(flights, {
+    fields: [ticketCredits.originFlightId],
+    references: [flights.id],
+  }),
+}));
+
+export const leadsRelations = relations(leads, ({ one, many }) => ({
+  show: one(shows, { fields: [leads.showId], references: [shows.id] }),
+  capturedBy: one(users, { fields: [leads.capturedById], references: [users.id] }),
+  meetings: many(meetings),
+}));
+
+export const meetingsRelations = relations(meetings, ({ one }) => ({
+  show: one(shows, { fields: [meetings.showId], references: [shows.id] }),
+  owner: one(users, { fields: [meetings.ownerId], references: [users.id] }),
+  lead: one(leads, { fields: [meetings.leadId], references: [leads.id] }),
+}));
+
+export const showOutcomesRelations = relations(showOutcomes, ({ one }) => ({
+  show: one(shows, { fields: [showOutcomes.showId], references: [shows.id] }),
+}));
