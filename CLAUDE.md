@@ -14,15 +14,46 @@ admin-defined spend and schedule constraints.
   engine and ticket-credit recovery are the differentiators.
 - **`git log`** — each step commit documents what was learned building it.
 
+## Working agreement — do this at the end of every step
+
+The context window gets cleared between sessions. Nothing survives except what is on
+disk, so **finishing a step means writing it down, not just making it work.** Before
+saying a step is done, all four:
+
+1. **Commit** the working tree, with a message explaining *what was learned*, not just
+   what changed — corrections to earlier assumptions especially. `git log` is the
+   project's reasoning record.
+2. **Tick the box** in `SCOPE.md` §10 and amend the step text if what shipped differed
+   from what was planned.
+3. **Update "Where we are"** below — the current step, and anything deliberately
+   deferred or left broken.
+4. **Fold new findings into `SCOPE.md`.** If a step disproved an assumption, the
+   assumption gets corrected in the doc, not just in the commit message.
+
+A fresh session reading `CLAUDE.md` + `SCOPE.md` + `git log` should be able to pick up
+the next step with no further explanation. If it couldn't, the step isn't finished.
+
 ## Where we are
 
-Building **Phase A: the vertical slice through the booking spine** (`SCOPE.md` §10).
-Steps 1–3 done: local Postgres + schema + actor seam, the policy engine, and the Duffel
-adapter with the corrected booking schema. **Step 4 is next**: travel request state
-machine + dry-run booking end-to-end, headless.
+<!-- Keep this section current. It is the first thing a cleared session reads. -->
 
-Deliberately not built yet: any product UI. Phase B builds screens *after* the spine
-has shown what they need. A `next dev` today serves the default template.
+Building **Phase A: the vertical slice through the booking spine** (`SCOPE.md` §10).
+
+**Done:** steps 1–3 — local Postgres + schema + `getActor()` seam; the policy engine;
+the Duffel adapter with the booking schema corrected against real payload shapes.
+94 tests, no keys required.
+
+**Next:** step 4 — travel request state machine + dry-run booking end-to-end, headless
+and script-driven. Idempotency, offer expiry, re-search-on-approval.
+
+**Deliberately not built:** any product UI. Phase B builds screens *after* the spine has
+shown what they need, so `next dev` today serves the default template. An off-plan dev
+console was started and abandoned — `next.config.ts` and `lib/readiness.ts` are the
+surviving pieces; the page itself was never built.
+
+**Outstanding:** the Duffel adapter is verified against fixtures written to the published
+v2 schema, not a live response. A free test key from duffel.com would confirm it; the
+normalizer tests should pass unchanged against recorded real responses.
 
 ## Ground rules that are easy to violate
 
