@@ -72,6 +72,7 @@ class SpyProvider implements FlightProvider {
       bookingReference: 'ABC123',
       ticketNumbers: ['0012345678901'],
       chargedCents: request.amountCents,
+      creditAppliedCents: 0,
       currency: request.currency,
       liveMode: true,
       ...this.outcome,

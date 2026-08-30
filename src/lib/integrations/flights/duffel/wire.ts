@@ -116,6 +116,23 @@ export type DuffelOffer = {
 
   /** Airline credits Duffel can apply to this offer. Directly serves SCOPE.md §5b. */
   available_airline_credit_ids?: string[];
+  /**
+   * The same credits with their values attached.
+   *
+   * The ids alone are not enough to buy anything: a purchase has to state the
+   * amount being paid, and that amount is the fare minus the credits — a number
+   * only the provider knows. This is where it comes from, and if a response ever
+   * arrives with the ids but not this, the adapter refuses the purchase rather
+   * than guessing a discount. **Unverified against a live response**, like the
+   * rest of this file; see CLAUDE.md "Outstanding".
+   */
+  available_airline_credits?: {
+    id: string;
+    credit_amount: string;
+    credit_currency: string;
+    credit_name?: string;
+    issued_on?: string;
+  }[];
 
   private_fares?: { type: string; corporate_code?: string | null }[];
 };

@@ -156,6 +156,26 @@ export const creditStatusEnum = pgEnum('credit_status', [
   'refunded',
 ]);
 
+/**
+ * Every way a credit's balance can move. Signed deltas, never a set-to value —
+ * a ledger you can only overwrite cannot answer "why is this $412 and not $600",
+ * and a credit's balance is money. See `src/lib/travel/credits.ts`.
+ */
+export const creditEntryKindEnum = pgEnum('credit_entry_kind', [
+  /** The credit came into existence, usually from a cancelled non-refundable ticket. */
+  'issued',
+  /** Drawn down against a purchase. */
+  'applied',
+  /** An application undone — the booking it paid for was cancelled or never happened. */
+  'released',
+  /** The carrier's clock ran out. The remaining value is gone and we say so. */
+  'expired',
+  /** The carrier gave the money back as money rather than as credit. */
+  'refunded',
+  /** A human correcting the ledger against a carrier statement, with a reason. */
+  'adjusted',
+]);
+
 export const sideEventKindEnum = pgEnum('side_event_kind', [
   'dinner',
   'demo',
@@ -1130,10 +1150,31 @@ export const ticketCredits = pgTable(
     originFlightId: uuid('origin_flight_id').references(() => flights.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The provider's own id for this credit, where it has one.
+     *
+     * Duffel surfaces credits it can apply itself as `available_airline_credit_ids`
+     * on an offer. Those are the *same money* as a row here that we issued from a
+     * cancellation, and counting both would double-spend a credit that only exists
+     * once. This column is the join between the two views of it; a credit we know
+     * about but the provider does not is simply null here, and is reported to a
+     * human rather than applied automatically.
+     */
+    providerCreditId: text('provider_credit_id'),
+    /** The booking whose cancellation produced this credit, when we made it. */
+    originBookingId: uuid('origin_booking_id').references(() => bookings.id, {
+      onDelete: 'set null',
+    }),
+
     airlineCode: text('airline_code').notNull(),
     recordLocator: text('record_locator'),
     ticketNumber: text('ticket_number'),
     originalValueCents: integer('original_value_cents').notNull(),
+    /**
+     * A cached projection of the entries in `ticket_credit_entries`, never the
+     * source of truth. `reconcile()` recomputes it; a disagreement between this
+     * and the entries is a bug worth failing loudly on, not papering over.
+     */
     remainingValueCents: integer('remaining_value_cents').notNull(),
     currency: text('currency').notNull().default('USD'),
     issuedOn: timestamp('issued_on', { withTimezone: true }).notNull(),
@@ -1148,6 +1189,61 @@ export const ticketCredits = pgTable(
   (t) => [
     index('ticket_credits_org_expiry_idx').on(t.orgId, t.expiresOn),
     index('ticket_credits_user_idx').on(t.userId, t.status),
+    // One row per provider-side credit. Ingesting the same airline credit twice
+    // would present the org with money it does not have.
+    uniqueIndex('ticket_credits_provider_idx').on(t.orgId, t.providerCreditId),
+  ],
+);
+
+/**
+ * The credit ledger proper: append-only, signed, and the only thing allowed to
+ * change a credit's balance.
+ *
+ * Every financial row carries a cost center at creation (non-negotiable #7) —
+ * a credit applied to a booking is a real cost-centre-level saving, and if the
+ * centre is not on the row at the moment it is written it never will be.
+ */
+export const ticketCreditEntries = pgTable(
+  'ticket_credit_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    creditId: uuid('credit_id')
+      .notNull()
+      .references(() => ticketCredits.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+
+    kind: creditEntryKindEnum('kind').notNull(),
+    /** Signed, in cents: `issued` is positive, `applied` and `expired` negative. */
+    deltaCents: integer('delta_cents').notNull(),
+    /** The balance this entry produced, so the trail reads without re-summing it. */
+    balanceAfterCents: integer('balance_after_cents').notNull(),
+    currency: text('currency').notNull().default('USD'),
+
+    /** What the movement was for. A booking for `applied`, its origin for `issued`. */
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'set null' }),
+    travelRequestId: uuid('travel_request_id').references(() => travelRequests.id, {
+      onDelete: 'set null',
+    }),
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
+
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    /** 'agent' for the booking agent, 'user' for a person, 'sweep' for the expiry job. */
+    actorKind: text('actor_kind').notNull().default('agent'),
+    /** Always required: a balance that moved without a stated reason is not auditable. */
+    reason: text('reason').notNull(),
+
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('credit_entries_credit_idx').on(t.creditId, t.occurredAt),
+    index('credit_entries_booking_idx').on(t.bookingId),
+    // Rail 2 for credits: one application of one credit to one booking, ever.
+    // A retried purchase must not burn the credit down twice.
+    uniqueIndex('credit_entries_application_idx').on(t.creditId, t.bookingId, t.kind),
   ],
 );
 
@@ -1400,7 +1496,7 @@ export const collateralAllocationsRelations = relations(
   }),
 );
 
-export const ticketCreditsRelations = relations(ticketCredits, ({ one }) => ({
+export const ticketCreditsRelations = relations(ticketCredits, ({ one, many }) => ({
   org: one(organizations, {
     fields: [ticketCredits.orgId],
     references: [organizations.id],
@@ -1410,6 +1506,23 @@ export const ticketCreditsRelations = relations(ticketCredits, ({ one }) => ({
     fields: [ticketCredits.originFlightId],
     references: [flights.id],
   }),
+  entries: many(ticketCreditEntries),
+}));
+
+export const ticketCreditEntriesRelations = relations(ticketCreditEntries, ({ one }) => ({
+  credit: one(ticketCredits, {
+    fields: [ticketCreditEntries.creditId],
+    references: [ticketCredits.id],
+  }),
+  booking: one(bookings, {
+    fields: [ticketCreditEntries.bookingId],
+    references: [bookings.id],
+  }),
+  costCenter: one(costCenters, {
+    fields: [ticketCreditEntries.costCenterId],
+    references: [costCenters.id],
+  }),
+  actor: one(users, { fields: [ticketCreditEntries.actorId], references: [users.id] }),
 }));
 
 export const leadsRelations = relations(leads, ({ one, many }) => ({

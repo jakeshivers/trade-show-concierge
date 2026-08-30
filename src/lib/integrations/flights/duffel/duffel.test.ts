@@ -6,7 +6,6 @@ import {
   DryRunError,
   PriceMovedError,
   ProviderCeilingError,
-  ProviderError,
 } from '../types';
 import * as fx from './fixtures';
 import { evaluate } from '@/lib/policy/evaluate';
@@ -362,8 +361,46 @@ describe('DuffelProvider.purchase', () => {
     ).rejects.toThrow(/FLIGHT_BOOKING_MAX_CENTS/);
   });
 
-  it('will not pay full fare over an unused airline credit', async () => {
-    mockFetch(offerBody());
+  /* ---------------------------- airline credits ---------------------------- */
+
+  const creditedOffer = (over: Record<string, unknown> = {}) => ({
+    data: {
+      ...offerBody().data,
+      available_airline_credit_ids: ['acr_1'],
+      available_airline_credits: [
+        { id: 'acr_1', credit_amount: '184.00', credit_currency: 'USD' },
+      ],
+      ...over,
+    },
+  });
+
+  it('pays the fare minus the credit, and reports what the credit covered', async () => {
+    const calls = mockFetch(creditedOffer(), orderBody());
+    const provider = new DuffelProvider(LIVE);
+
+    const result = await provider.purchase({
+      offerId: 'off_0000A',
+      passengers: [passenger],
+      amountCents: 43_055,
+      currency: 'USD',
+      creditIds: ['acr_1'],
+      idempotencyKey: 'req_credit_1',
+    });
+
+    const body = JSON.parse(calls[1].init.body as string);
+    expect(body.data.airline_credits).toEqual([{ id: 'acr_1' }]);
+    // $430.55 fare less the $184 credit: the payment is what is left.
+    expect(body.data.payments[0].amount).toBe('246.55');
+
+    // The split is reported, not inferred — only the new money is spend.
+    expect(result.creditAppliedCents).toBe(18_400);
+    expect(result.chargedCents).toBe(24_655);
+  });
+
+  it('refuses when the offer names a credit but not its value', async () => {
+    // Without the amount there is no correct payment figure to send, and a
+    // guessed one fails at settlement. Refusing sends it to a human instead.
+    mockFetch(creditedOffer({ available_airline_credits: [] }));
     const provider = new DuffelProvider(LIVE);
     await expect(
       provider.purchase({
@@ -371,10 +408,84 @@ describe('DuffelProvider.purchase', () => {
         passengers: [passenger],
         amountCents: 43_055,
         currency: 'USD',
-        creditIds: ['cred_1'],
-        idempotencyKey: 'req_live_7',
+        creditIds: ['acr_1'],
+        idempotencyKey: 'req_credit_2',
       }),
-    ).rejects.toThrow(ProviderError);
+    ).rejects.toThrow(/carries no credit values/);
+  });
+
+  it('refuses a credit the offer no longer carries', async () => {
+    mockFetch(creditedOffer());
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        creditIds: ['acr_stale'],
+        idempotencyKey: 'req_credit_3',
+      }),
+    ).rejects.toThrow(/not available on offer/);
+  });
+
+  it('refuses a credit held in another currency', async () => {
+    mockFetch(
+      creditedOffer({
+        available_airline_credits: [
+          { id: 'acr_1', credit_amount: '184.00', credit_currency: 'EUR' },
+        ],
+      }),
+    );
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        creditIds: ['acr_1'],
+        idempotencyKey: 'req_credit_4',
+      }),
+    ).rejects.toThrow(/Airlines do not convert credits/);
+  });
+
+  it('will not attach a credit to an order that already exists', async () => {
+    // A credit is applied when an order is created. A held order was created
+    // before anyone approved it, so the credit has nowhere to go — and silently
+    // dropping it is the exact loss the ledger exists to prevent.
+    mockFetch(orderBody());
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        orderId: 'ord_0001',
+        amountCents: 43_055,
+        currency: 'USD',
+        creditIds: ['acr_1'],
+        idempotencyKey: 'req_credit_5',
+      }),
+    ).rejects.toThrow(/applied when the order is created/);
+  });
+
+  it('will not send a negative payment when credits exceed the fare', async () => {
+    mockFetch(
+      creditedOffer({
+        available_airline_credits: [
+          { id: 'acr_1', credit_amount: '900.00', credit_currency: 'USD' },
+        ],
+      }),
+    );
+    const provider = new DuffelProvider(LIVE);
+    await expect(
+      provider.purchase({
+        offerId: 'off_0000A',
+        passengers: [passenger],
+        amountCents: 43_055,
+        currency: 'USD',
+        creditIds: ['acr_1'],
+        idempotencyKey: 'req_credit_6',
+      }),
+    ).rejects.toThrow(/does not give change/);
   });
 
   it('refuses to guess who is flying', async () => {

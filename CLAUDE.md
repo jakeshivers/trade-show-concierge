@@ -37,27 +37,36 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 Building **Phase A: the vertical slice through the booking spine** (`SCOPE.md` §10).
 
-**Done:** steps 1–5 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–6 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
-request state machine with dry-run booking end to end; and live purchasing behind the
-flag with a kill switch and a readable audit trail. 155 tests, no keys required.
+request state machine with dry-run booking end to end; live purchasing behind the flag
+with a kill switch and a readable audit trail; and the ticket credit ledger.
+205 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
-reasons worth relaxing, the expiry sweep, the kill switch, and the audit trail as a
-person reads it. Read that output before reading the code; it is the fastest way to
-understand the spine. `pnpm booking:audit <id | idempotency-key>` prints the same
-trail for any one request.
+reasons worth relaxing, the request expiry sweep, the kill switch, credit-first
+escalation, the credit expiry sweep, and the audit trail as a person reads it. Read
+that output before reading the code; it is the fastest way to understand the spine.
+`pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
+and `pnpm credits` prints the credit ledger.
 
-**What step 5 added, and where:** `DuffelProvider.purchase()` (both paths — an instant
-order, and paying off a hold — each re-reading the fare first and refusing one that
-moved); `src/lib/travel/kill-switch.ts` (org-scoped, append-only, admin-only);
-`src/lib/travel/passengers.ts` (the traveler identity an airline requires, which is
-never defaulted); `src/lib/travel/audit.ts`; `src/lib/travel/notify.ts` (rail 6).
+**What step 6 added, and where:** `src/lib/travel/credits.ts` — the ledger, with its
+decision half pure and testable like the policy engine; `ticket_credit_entries` in the
+schema (append-only, signed), with `ticket_credits.remaining_value_cents` demoted to a
+cached projection of it; credit application in `agent.ts` (`reportCreditPosition`,
+`settleCredits`) and release in `cancelRequest`; `resolveCredits` in the Duffel client,
+which prices credits from the offer and refuses rather than guessing; expiry alerts in
+`notify.ts`; and `pnpm credits`.
 
-**Next:** step 6 — the ticket credit ledger (`SCOPE.md` §5b). The provider refuses to
-purchase while ignoring applicable credits, so that refusal is the marker for where
-step 6 plugs in.
+**The correction step 6 turned up, because it reshaped the feature:** a credit we hold
+is not a credit we can spend. Duffel can only redeem credits it surfaces on an offer;
+a credit that exists only as a row here needs a person on the phone to the airline. So
+the agent *escalates* on unreachable credit and alerts at the moment cash is about to
+move — it never pretends to have applied it. `PROVIDER_VISIBILITY` in `credits.ts` is
+the long version; `SCOPE.md` §5b has the rest.
+
+**Next:** step 7 — Clerk wired to the `getActor()` seam (`SCOPE.md` §10, Phase B).
 
 **Deliberately not built:** any product UI. Phase B builds screens *after* the spine has
 shown what they need, so `next dev` today serves the default template. An off-plan dev
@@ -70,6 +79,13 @@ response. Nothing has ever been bought. A free test key from duffel.com would co
 it end to end; the normalizer and purchase tests should pass unchanged against recorded
 real responses. Purchasing with that key would produce `live_mode: false` orders, which
 the pipeline correctly records as not-spend.
+
+The credit path is the least-verified part of that: `available_airline_credits` (the
+credit *values* on an offer) and `airline_credits` on the order payload are written to
+what the v2 schema implies, and a live response is what would confirm the field names.
+The adapter is built so a wrong guess fails loudly rather than quietly — it refuses to
+purchase when an offer names a credit without its value, so the worst case is an
+escalation to a human, not a fare paid over an unused credit.
 
 ## Ground rules that are easy to violate
 
@@ -94,6 +110,15 @@ the pipeline correctly records as not-spend.
 - **Runs with zero API keys and zero cloud accounts.** `pnpm db:reset && pnpm test`
   must work on a clean clone. Hosting is deferred; do not wire a cloud provider.
 - **Every financial row carries a cost center at creation.** Never backfilled.
+- **A credit's balance is derived, never assigned.** `ticket_credits.remaining_value_cents`
+  is a projection of the append-only entries in `ticket_credit_entries`; only
+  `recordEntry()` moves it, by appending a signed delta. Expiry writes the loss off as
+  an entry, so "what did we forfeit last year" stays answerable.
+- **Credit applied comes from the provider, never from our ledger's intent.**
+  `PurchaseResult.creditAppliedCents` is what the carrier actually took off. A ledger
+  that drifts from the airline's is worth nothing.
+- **A dry run never burns a credit.** The ticket it would have paid for does not exist,
+  and the next real booking would find the money gone.
 - **Scheduled times are immutable.** Live/estimated times go in separate columns.
 - **Money is integer cents.** Providers send decimal strings — parse with
   `src/lib/money/decimal.ts`, never `parseFloat`.
@@ -107,6 +132,9 @@ pnpm db:reset     # rm .pglite, push schema, seed — safe any time
 pnpm db:seed      # reseed only
 pnpm booking:dry-run  # the whole booking loop, headless, no keys, no purchases
 pnpm booking:audit <id | idempotency-key>   # the audit trail for one request
+pnpm credits          # credit exposure and every live credit
+pnpm credits <id>     # one credit's ledger, entry by entry
+pnpm credits --sweep  # write off what expired, warn about what will
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -123,7 +151,8 @@ src/lib/auth/actor.ts         getActor() seam; Clerk swaps in behind it at step 
 src/lib/policy/               the decision layer — pure, deterministic, 47 tests
 src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
 src/lib/travel/               the spine — state machine, policy store, booking agent,
-                              kill switch, passenger identity, audit trail, notifications
+                              kill switch, passenger identity, credit ledger, audit
+                              trail, notifications
 src/lib/money/ src/lib/datetime/  correctness primitives; see ground rules
 scripts/seed.ts               the only place seed data lives
 ```

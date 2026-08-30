@@ -448,6 +448,119 @@ async function main() {
     { showId: medtech.id, category: 'Booth space', description: '10x20 inline, MedTech Summit', amountCents: 2_300_000, paid: true, costCenterId: mkt.id, incurredOn: at(-6) },
   ]);
 
+  console.log('· ticket credits (SCOPE.md §5b)');
+  // All four sit with Tomas, deliberately. One road-warrior engineer holding a
+  // pile of forfeited credits is the §5b story in one person, and it keeps every
+  // other scenario's traveler with an empty pool — credit-first escalates a
+  // request that would otherwise auto-book, so a credit on the demo traveler
+  // would quietly change what the other scenarios are demonstrating.
+  //
+  // Each credit is a different answer to "why was this not spent?", which is the
+  // question §5b exists to answer.
+  const creditRows = await db
+    .insert(s.ticketCredits)
+    .values([
+      {
+        // Redeemable here: the id matches the airline credit on the holdable
+        // fixture offer, so the agent can actually put it against a purchase.
+        orgId: org.id,
+        userId: tomas.id,
+        providerCreditId: 'acr_00009htYpSCXrwaB9DnCr1',
+        airlineCode: 'AA',
+        recordLocator: 'QK7ZP2',
+        ticketNumber: '0012345678901',
+        originalValueCents: 18_400,
+        remainingValueCents: 18_400,
+        currency: 'USD',
+        issuedOn: at(-120),
+        expiresOn: at(240),
+        status: 'available',
+        costCenterId: mkt.id,
+        notes: 'MedTech Summit trip cancelled when the booth slipped a quarter.',
+      },
+      {
+        // Redeemable elsewhere: real money, no provider id. The agent must
+        // surface it and refuse to pretend it applied.
+        orgId: org.id,
+        userId: tomas.id,
+        airlineCode: 'DL',
+        recordLocator: 'HV93QQ',
+        originalValueCents: 61_200,
+        remainingValueCents: 61_200,
+        currency: 'USD',
+        issuedOn: at(-200),
+        expiresOn: at(21),
+        status: 'available',
+        costCenterId: mkt.id,
+        notes: 'Booked directly with Delta before this system existed.',
+      },
+      {
+        // Part-spent, and close enough to expiry to trip an alert bucket. The
+        // old code only looked at `available` and would have missed this one
+        // entirely — a partly-used credit is still money.
+        orgId: org.id,
+        userId: tomas.id,
+        airlineCode: 'UA',
+        recordLocator: 'RR41MB',
+        originalValueCents: 44_000,
+        remainingValueCents: 12_750,
+        currency: 'USD',
+        issuedOn: at(-300),
+        expiresOn: at(11),
+        status: 'partially_used',
+        costCenterId: mkt.id,
+      },
+      {
+        // Already dead. The sweep writes it off so the forfeited total — the
+        // number that justifies this whole feature — has something real in it.
+        orgId: org.id,
+        userId: tomas.id,
+        airlineCode: 'AS',
+        originalValueCents: 27_300,
+        remainingValueCents: 27_300,
+        currency: 'USD',
+        issuedOn: at(-420),
+        expiresOn: at(-3),
+        status: 'available',
+        transferable: true,
+        costCenterId: se.id,
+        notes: 'Nobody was watching the clock. Exactly the loss §5b is about.',
+      },
+    ])
+    .returning();
+
+  // The balance is a projection of the ledger, so every seeded credit needs the
+  // entries that produced it. Seeding a balance with no entries would leave the
+  // reconciler right to call the whole pool corrupt.
+  await db.insert(s.ticketCreditEntries).values(
+    creditRows.flatMap((c) => {
+      const issued = {
+        creditId: c.id,
+        orgId: org.id,
+        kind: 'issued' as const,
+        deltaCents: c.originalValueCents,
+        balanceAfterCents: c.originalValueCents,
+        currency: c.currency,
+        costCenterId: c.costCenterId,
+        actorKind: 'agent',
+        reason: `Issued by ${c.airlineCode} for a cancelled non-refundable ticket`,
+        occurredAt: c.issuedOn,
+      };
+      if (c.remainingValueCents === c.originalValueCents) return [issued];
+      return [
+        issued,
+        {
+          ...issued,
+          kind: 'applied' as const,
+          deltaCents: c.remainingValueCents - c.originalValueCents,
+          balanceAfterCents: c.remainingValueCents,
+          reason: 'Applied to an earlier trip booked outside this system',
+          occurredAt: at(-60),
+        },
+      ];
+    }),
+  );
+
   console.log('· show outcomes (prior-year comparison basis)');
   await db.insert(s.showOutcomes).values({
     showId: medtech.id,
@@ -466,6 +579,7 @@ async function main() {
     policyLayers: 3,
     assets: assetRows.length,
     shifts: shifts.length,
+    ticketCredits: creditRows.length,
   };
   console.log('\n✓ seed complete', counts);
 }

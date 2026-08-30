@@ -46,6 +46,8 @@ export type AuditTrail = {
   searches: { searchId: string | null; capturedAt: Date; offers: AuditOffer[] }[];
   approvals: (typeof s.approvals.$inferSelect)[];
   booking: typeof s.bookings.$inferSelect | null;
+  /** Credit movements this booking caused. Empty on a dry run, which burns none. */
+  creditEntries: (typeof s.ticketCreditEntries.$inferSelect)[];
   timeline: (typeof s.agentRuns.$inferSelect)[];
   notifications: (typeof s.alerts.$inferSelect)[];
   /** The layered rule set the last verdict was made against. */
@@ -119,6 +121,16 @@ export async function getAuditTrail(requestId: string, db: Db): Promise<AuditTra
       .where(eq(s.approvals.travelRequestId, requestId))
       .orderBy(asc(s.approvals.decidedAt)),
     booking: booking ?? null,
+    // What the booking did to the credit ledger. A purchase that quietly spent
+    // $184 of credit is a fact about this request, and the audit is the place a
+    // person goes to find it.
+    creditEntries: booking
+      ? await db
+          .select()
+          .from(s.ticketCreditEntries)
+          .where(eq(s.ticketCreditEntries.bookingId, booking.id))
+          .orderBy(asc(s.ticketCreditEntries.occurredAt))
+      : [],
     timeline: await db
       .select()
       .from(s.agentRuns)
@@ -200,6 +212,15 @@ export function renderAuditTrail(trail: AuditTrail): string {
         (booking.isHold ? '  (HELD, not paid)' : ''),
     );
     out.push(`  cost center ${booking.costCenterId ?? '— none recorded —'}`);
+    if (booking.creditAppliedCents) {
+      out.push(`  credit    ${usd(booking.creditAppliedCents)} applied against the fare`);
+    }
+    for (const e of trail.creditEntries) {
+      out.push(
+        `    ${e.kind.padEnd(9)} ${(e.deltaCents >= 0 ? '+' : '−') + usd(Math.abs(e.deltaCents))}` +
+          `  → ${usd(e.balanceAfterCents)}  ${e.reason}`,
+      );
+    }
   } else {
     out.push('Booking     none');
   }

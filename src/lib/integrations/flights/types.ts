@@ -54,7 +54,17 @@ export type PurchaseResult = {
   orderId: string;
   bookingReference: string;
   ticketNumbers: string[];
+  /** New money that moved. Excludes anything paid with a credit. */
   chargedCents: number;
+  /**
+   * How much of the fare a credit covered, as the *provider* priced it.
+   *
+   * Reported rather than inferred from the order total, because what an order's
+   * total means once a credit is attached is a provider-specific question, and
+   * the ledger is only worth keeping while its numbers match the airline's.
+   * SCOPE.md §5b.
+   */
+  creditAppliedCents: number;
   currency: string;
   /**
    * Whether the *provider* considers this a real booking — not whether we asked

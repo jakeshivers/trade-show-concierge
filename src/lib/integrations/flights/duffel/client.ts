@@ -15,6 +15,7 @@ import {
   ProviderCeilingError,
 } from '../types';
 import type {
+  DuffelOffer,
   DuffelOfferRequestResponse,
   DuffelOfferResponse,
   DuffelOrder,
@@ -23,6 +24,60 @@ import type {
 } from './wire';
 import { normalizeOffers } from './normalize';
 import { centsToDecimalString, decimalStringToCents } from '@/lib/money/decimal';
+
+/**
+ * Price the requested credits from the offer the provider just handed back.
+ *
+ * Three refusals live here, and each one is a purchase that would otherwise go
+ * wrong quietly:
+ *
+ * - a credit id the offer does not carry — it has been spent, expired, or belongs
+ *   to another traveler, and sending it would either fail or apply someone else's
+ *   money;
+ * - an offer that lists credit ids without their values — the payment amount is
+ *   the fare *minus* the credits, so without the values there is no correct
+ *   number to send, and a guessed one is a settlement failure;
+ * - a credit priced in another currency, which no airline converts.
+ *
+ * Refusing is the right outcome for all three: the request escalates and a human
+ * redeems the credit, rather than the org paying full fare and finding out at
+ * the end of the quarter.
+ */
+function resolveCredits(
+  offer: DuffelOffer,
+  creditIds: string[],
+): { id: string; amountCents: number }[] {
+  if (creditIds.length === 0) return [];
+
+  const priced = offer.available_airline_credits ?? [];
+  if (priced.length === 0) {
+    throw new ProviderError(
+      `Offer ${offer.id} was asked to redeem ${creditIds.length} airline credit(s) but carries no ` +
+        'credit values. The payment amount cannot be computed without them, and it will not be ' +
+        'guessed. Redeem the credit with the airline instead.',
+      'duffel',
+    );
+  }
+
+  return creditIds.map((id) => {
+    const match = priced.find((c) => c.id === id);
+    if (!match) {
+      throw new ProviderError(
+        `Credit ${id} is not available on offer ${offer.id}. It may have been spent or expired ` +
+          'since the search; refusing to purchase on a stale credit.',
+        'duffel',
+      );
+    }
+    if (match.credit_currency !== offer.total_currency) {
+      throw new ProviderError(
+        `Credit ${id} is held in ${match.credit_currency} but offer ${offer.id} is priced in ` +
+          `${offer.total_currency}. Airlines do not convert credits.`,
+        'duffel',
+      );
+    }
+    return { id, amountCents: decimalStringToCents(match.credit_amount) };
+  });
+}
 
 /**
  * Duffel adapter.
@@ -255,17 +310,22 @@ export class DuffelProvider implements FlightProvider {
       throw new ProviderCeilingError('duffel', request.amountCents, ceiling);
     }
 
-    if (request.creditIds?.length) {
+    // A credit can only be attached when the order is created. Paying off a hold
+    // is a payment against an order that already exists at a fixed total, so a
+    // credit arriving at that point has nowhere to go — and quietly dropping it
+    // would be the exact loss §5b exists to stop.
+    if (request.creditIds?.length && request.orderId) {
       throw new ProviderError(
-        `Refusing to purchase while ignoring ${request.creditIds.length} applicable airline ` +
-          'credit(s): paying full fare over an unused credit is a real loss. The credit ' +
-          'ledger is step 6.',
+        `Refusing to pay for held order ${request.orderId} while ignoring ` +
+          `${request.creditIds.length} airline credit(s). A credit is applied when the order is ` +
+          'created, not when it is paid for; hold this itinerary without a hold, or redeem the ' +
+          'credit with the airline directly.',
         'duffel',
       );
     }
 
-    const order = request.orderId
-      ? await this.payForHeldOrder(request, request.orderId)
+    const { order, creditAppliedCents } = request.orderId
+      ? { order: await this.payForHeldOrder(request, request.orderId), creditAppliedCents: 0 }
       : await this.createInstantOrder(request);
 
     return {
@@ -274,7 +334,16 @@ export class DuffelProvider implements FlightProvider {
       ticketNumbers: (order.documents ?? [])
         .filter((d) => d.type === 'electronic_ticket')
         .map((d) => d.unique_identifier),
-      chargedCents: decimalStringToCents(order.total_amount),
+      // With no credit, the order's own total is the truth. With one, it is the
+      // fare we verified a moment earlier minus what the provider priced the
+      // credit at — the two numbers this adapter actually controls. Reading a
+      // credit-bearing order's `total_amount` and calling it spend would be
+      // trusting a field whose meaning we have not confirmed.
+      chargedCents:
+        creditAppliedCents > 0
+          ? request.amountCents - creditAppliedCents
+          : decimalStringToCents(order.total_amount),
+      creditAppliedCents,
       currency: order.total_currency,
       // Duffel's own word for it. A test key books real-looking orders with
       // `live_mode: false`, and those are not spend.
@@ -315,7 +384,9 @@ export class DuffelProvider implements FlightProvider {
   }
 
   /** No hold: create the order and pay for it in one call. */
-  private async createInstantOrder(request: PurchaseRequest): Promise<DuffelOrder> {
+  private async createInstantOrder(
+    request: PurchaseRequest,
+  ): Promise<{ order: DuffelOrder; creditAppliedCents: number }> {
     if (!request.offerId) {
       throw new ProviderError('purchase needs either an offerId or a held orderId', 'duffel');
     }
@@ -327,6 +398,21 @@ export class DuffelProvider implements FlightProvider {
       method: 'GET',
     });
     this.assertPriceUnchanged(request, offer.data.total_amount, offer.data.total_currency);
+
+    // The credits, priced by the provider. Never by us: our ledger's idea of a
+    // credit's value is a cached number, and paying the airline based on it is
+    // how a purchase gets rejected at settlement.
+    const credits = resolveCredits(offer.data, request.creditIds ?? []);
+    const creditCents = credits.reduce((sum, c) => sum + c.amountCents, 0);
+    const payableCents = request.amountCents - creditCents;
+    if (payableCents < 0) {
+      throw new ProviderError(
+        `Credits total ${creditCents} cents against a ${request.amountCents} cent fare on offer ` +
+          `${request.offerId}. An airline does not give change; refusing rather than sending a ` +
+          'negative payment.',
+        'duffel',
+      );
+    }
 
     const supplied = request.passengers ?? [];
     const expected = offer.data.passengers ?? [];
@@ -345,10 +431,12 @@ export class DuffelProvider implements FlightProvider {
         data: {
           type: 'instant',
           selected_offers: [request.offerId],
+          // The credits ride on the order; the payment covers only the rest.
+          ...(credits.length ? { airline_credits: credits.map((c) => ({ id: c.id })) } : {}),
           payments: [
             {
               type: 'balance',
-              amount: centsToDecimalString(request.amountCents),
+              amount: centsToDecimalString(payableCents),
               currency: request.currency,
             },
           ],
@@ -366,7 +454,7 @@ export class DuffelProvider implements FlightProvider {
       },
     });
 
-    return created.data;
+    return { order: created.data, creditAppliedCents: creditCents };
   }
 
   private assertPriceUnchanged(

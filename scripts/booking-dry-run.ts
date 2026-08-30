@@ -25,6 +25,11 @@ import {
   type AgentDeps,
 } from '../src/lib/travel/agent';
 import { haltPurchasing, resumePurchasing } from '../src/lib/travel/kill-switch';
+import {
+  creditExposure,
+  creditPool,
+  runCreditMaintenance,
+} from '../src/lib/travel/credits';
 import { getAuditTrail, renderAuditTrail } from '../src/lib/travel/audit';
 
 const db = getDb();
@@ -303,8 +308,101 @@ async function scenarioKillSwitch() {
   );
 }
 
+/**
+ * §5b, the part that makes the ledger worth building: the agent looks at the
+ * credit pool before it spends, and refuses to pay cash over money we already
+ * hold. Tomás is the one carrying credits in the seed.
+ */
+async function scenarioCreditFirst() {
+  console.log('\n━━ 6. Unused credit in the pool → the agent will not pay cash over it ━━\n');
+  const clock = new Clock(new Date());
+  const d = deps(clock);
+  const marcus = await actorFor('marcus@northwindrobotics.test');
+  const dana = await actorFor('dana@northwindrobotics.test');
+  const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
+  const tomas = await db.query.users.findFirst({
+    where: eq(s.users.email, 'tomas@northwindrobotics.test'),
+  });
+  if (!show?.moveInAt || !tomas) throw new Error('Seed is missing Automate 2026 or Tomás');
+
+  const day = 86_400_000;
+  const request = await submitTravelRequest(
+    {
+      showId: show.id,
+      travelerId: tomas.id,
+      originAirport: 'SFO',
+      destinationAirport: 'DTW',
+      earliestDeparture: new Date(show.moveInAt.getTime() - day),
+      latestArrival: show.moveInAt,
+      idempotencyKey: 'demo-credit',
+    },
+    marcus,
+    d,
+  );
+
+  const pool = await creditPool(db, { orgId: tomas.orgId, travelerId: tomas.id, now: clock.now() });
+  console.log(`    ${tomas.fullName} holds:`);
+  for (const c of pool) {
+    console.log(
+      `      ${usd(c.remainingValueCents).padStart(9)}  ${c.airlineCode}  expires ${c.expiresOn.toISOString().slice(0, 10)}  ` +
+        `${c.providerCreditId ? 'the agent can redeem this' : 'only the airline can redeem this'}`,
+    );
+  }
+  console.log();
+
+  await runAgent(request.id, d, marcus);
+  // The same request the auto-book scenario waved through, escalated purely
+  // because the traveler is holding money the org would otherwise re-spend.
+  const approved = await approveRequest(request.id, dana, d);
+  await trace(request.id);
+
+  const alerts = await db
+    .select()
+    .from(s.alerts)
+    .where(eq(s.alerts.userId, tomas.id));
+  const unreachable = alerts.filter((a) => a.dedupeKey.includes(':unreachable:'));
+  console.log(
+    `\n    result: ${approved.status}  credit applied ${usd(approved.booking?.creditAppliedCents ?? 0)} — ` +
+      'the American credit does not match a Delta itinerary, and the Delta credit\n' +
+      '            is ours but not the provider\'s to spend.',
+  );
+  for (const a of unreachable) console.log(`    alert:  ${a.title}`);
+  console.log(
+    '\n    Nothing was drawn down: a dry run must not burn a credit, because the ticket it\n' +
+      '    would have paid for does not exist. See `pnpm credits`.',
+  );
+}
+
+/** The ledger's own maintenance: write off what died, warn about what will. */
+async function scenarioCreditExpiry() {
+  console.log('\n━━ 7. The credit ledger: forfeiture is a number, not a status ━━\n');
+  const org = await db.query.organizations.findFirst();
+  if (!org) throw new Error('No organization in the seed');
+
+  const now = new Date();
+  const before = await creditExposure(db, org.id, now);
+  const swept = await runCreditMaintenance(db, org.id, now);
+  const after = await creditExposure(db, org.id, now);
+
+  // The spendable total does not move: an expired credit was already unspendable.
+  // What the sweep changes is the *forfeited* total — the number that says how
+  // much the org lost, which a status flip alone could never produce.
+  console.log(`    still spendable    ${usd(after.liveCents)}  (unchanged — expired money was never spendable)`);
+  console.log(`    forfeited before   ${usd(before.forfeitedCents)}`);
+  console.log(`    forfeited after    ${usd(after.forfeitedCents)}  — ${swept.sweptCount} credit(s) written off`);
+  console.log(`    needs a phone call ${usd(after.redeemableElsewhereCents)} — real money, not reachable from here`);
+  console.log(`    warned             ${swept.warned} credit(s), ${swept.alertsSent} alert(s) written`);
+
+  const again = await runCreditMaintenance(db, org.id, now);
+  console.log(
+    `\n    run again: ${usd(again.forfeitedCents)} written off, ${again.alertsSent} new alert(s) — ` +
+      'each threshold speaks once.',
+  );
+  console.log('\n    (the whole ledger: pnpm credits · one credit: pnpm credits <id>)');
+}
+
 async function scenarioAuditTrail() {
-  console.log('\n━━ 6. The audit trail, as a person reads it ━━');
+  console.log('\n━━ 8. The audit trail, as a person reads it ━━');
   const request = await db.query.travelRequests.findFirst({
     where: eq(s.travelRequests.idempotencyKey, 'demo-approval'),
   });
@@ -333,6 +431,8 @@ async function main() {
   await scenarioNoOptions();
   await scenarioExpirySweep();
   await scenarioKillSwitch();
+  await scenarioCreditFirst();
+  await scenarioCreditExpiry();
   await scenarioAuditTrail();
 
   const bookings = await db.select().from(s.bookings);

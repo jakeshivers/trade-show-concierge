@@ -260,6 +260,38 @@ checks the credit pool before purchasing anything new.**
 Both 5a and 5b share one property: they are only possible because we *transact*. A
 competitor can copy the UI and still cannot ship them.
 
+**Correction from building it (step 6).** "Auto-apply credits before new spend" reads like
+a ledger problem. It is not — it is a *redemption* problem, and the distinction changes
+the feature:
+
+- A credit is redeemed by the **carrier**, through whoever sells the ticket. Duffel can
+  apply the credits it surfaces on an offer (`available_airline_credit_ids`); it cannot
+  apply a credit that exists only as a row in our database, because it has no relationship
+  to that ticket coupon.
+- So every credit is one of two kinds. **Redeemable here** — we hold a provider id for it,
+  the agent passes it at purchase, done. **Redeemable elsewhere** — real money, still ours,
+  but it takes a person on the phone to the airline.
+- The agent must never pretend to have applied the second kind. It **escalates** instead,
+  and alerts the traveler and a travel manager *at the moment cash is about to be spent*,
+  carrying the ticket number and record locator they will be asked for. That is why
+  `credit_first` is an escalation rule and not a discount calculation.
+
+Three further things the build settled:
+
+- **The balance is derived, never assigned.** `ticket_credits.remaining_value_cents` is a
+  cached projection of an append-only entry table. Nothing writes a balance; it appends a
+  signed delta. A credit's balance is money, and money that can be silently overwritten
+  cannot be audited.
+- **Forfeiture is an entry, not a status.** Expiry writes off the remaining value as a
+  negative entry rather than flipping a flag, because "how much did we lose to expiry last
+  year" is the question that justifies this whole feature — and a status change alone
+  leaves it unanswerable.
+- **A hold costs the credit.** A credit attaches when an order is *created*; a held order
+  was created before anyone approved it. So the hold taken in §6b to give an approver a
+  real deadline is mutually exclusive with applying a credit to that itinerary. The agent
+  records the trade rather than hiding it. Attaching the credit at hold time is the fix,
+  once the provider's hold payload is confirmed against a live response.
+
 ---
 
 ## 6. The booking agent
@@ -611,7 +643,16 @@ invert phases A and C.
       switch (`booking_controls`, append-only), traveler passenger identity that
       fails loudly rather than defaulting, a `failed` landing place for a purchase
       that throws, ticketing notifications, and `pnpm booking:audit`. 155 tests.
-- [ ] **6.** **Ticket credit ledger** (§5b) — expiry alerts, auto-applied before new spend
+- [x] **6.** **Ticket credit ledger** (§5b) — expiry alerts, applied before new spend.
+      Added `ticket_credit_entries` (append-only, signed) with `ticket_credits`
+      demoted to a cached projection of it; per-offer credit matching (carrier,
+      currency, expiry, one credit per ticket, redeemable-here preferred);
+      settlement from the *provider's* reported figure rather than our intent;
+      release on cancellation; a bucketed expiry sweep and alerts; and
+      `pnpm credits`. The correction folded back into §5b above — a credit we
+      hold is not a credit we can spend — reshaped the feature: the agent
+      escalates on unreachable credit instead of silently paying cash.
+      205 tests.
 
 ### Phase B — the planning core, built knowing what the spine needs
 

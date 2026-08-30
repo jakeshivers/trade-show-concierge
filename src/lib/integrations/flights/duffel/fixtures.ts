@@ -181,6 +181,17 @@ export const holdableOffer: DuffelOffer = {
     price_guarantee_expires_at: '2026-03-02T23:59:00Z',
   },
   available_airline_credit_ids: ['acr_00009htYpSCXrwaB9DnCr1'],
+  // The same credit with its value, which is what makes a purchase computable:
+  // the payment is the fare minus this, and the adapter refuses to guess it.
+  available_airline_credits: [
+    {
+      id: 'acr_00009htYpSCXrwaB9DnCr1',
+      credit_amount: '184.00',
+      credit_currency: 'USD',
+      credit_name: 'AA unused ticket credit',
+      issued_on: '2025-11-14',
+    },
+  ],
   private_fares: [{ type: 'corporate', corporate_code: 'NWR2026' }],
 };
 

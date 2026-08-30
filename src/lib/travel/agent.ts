@@ -23,7 +23,15 @@ import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
 import { passengerForUser, type Passenger } from './passengers';
-import { notifyTicketed } from './notify';
+import { notifyTicketed, notifyUnreachableCredit } from './notify';
+import {
+  applyCreditsToBooking,
+  creditPool,
+  matchCreditsToOffer,
+  releaseCreditsForBooking,
+  type CreditMatch,
+  type CreditRow,
+} from './credits';
 
 /**
  * The booking agent's spine.
@@ -362,24 +370,6 @@ async function showTravelSpent(
   return Number(rows[0]?.total ?? 0);
 }
 
-/** Credits this traveler could put against a given carrier's fare. SCOPE.md §5b. */
-async function applicableCredits(
-  deps: AgentDeps,
-  travelerId: string,
-): Promise<{ airlineCode: string; remainingValueCents: number }[]> {
-  const now = deps.now();
-  const rows = await deps.db
-    .select({
-      airlineCode: s.ticketCredits.airlineCode,
-      remainingValueCents: s.ticketCredits.remainingValueCents,
-      expiresOn: s.ticketCredits.expiresOn,
-    })
-    .from(s.ticketCredits)
-    .where(
-      and(eq(s.ticketCredits.userId, travelerId), eq(s.ticketCredits.status, 'available')),
-    );
-  return rows.filter((r) => r.expiresOn > now);
-}
 
 async function buildContext(
   deps: AgentDeps,
@@ -387,7 +377,7 @@ async function buildContext(
 ): Promise<{
   base: Omit<EvaluationContext, 'offer'>;
   resolution: PolicyResolution;
-  credits: { airlineCode: string; remainingValueCents: number }[];
+  credits: CreditRow[];
 }> {
   const resolution = await resolveTravelPolicy(
     request.orgId,
@@ -408,7 +398,14 @@ async function buildContext(
       showTravelSpentCents: await showTravelSpent(deps, request.showId),
     },
     resolution,
-    credits: await applicableCredits(deps, request.travelerId),
+    // The ledger decides what is spendable; this file only sequences it.
+    // SCOPE.md §5b, and see `PROVIDER_VISIBILITY` in credits.ts for why holding
+    // a credit is not the same as being able to spend it here.
+    credits: await creditPool(deps.db, {
+      orgId: request.orgId,
+      travelerId: request.travelerId,
+      now: deps.now(),
+    }),
   };
 }
 
@@ -485,6 +482,24 @@ async function snapshotOffers(
 }
 
 /**
+ * The credits that bear on one specific offer.
+ *
+ * Read fresh wherever it is needed rather than carried along from the search.
+ * An approval queue lives overnight, and in that time the traveler's credit can
+ * be spent on another trip — reusing a match computed hours ago would apply money
+ * that is no longer there. Same reasoning as re-pricing on approval (§6b), for
+ * the same reason.
+ */
+function matchOfferCredits(pool: CreditRow[], offer: Offer, now: Date): CreditMatch {
+  return matchCreditsToOffer(pool, {
+    carriers: offerFacts.marketingAirlines(offer),
+    currency: offer.currency,
+    fareCents: offer.totalCents,
+    now,
+  });
+}
+
+/**
  * Search, snapshot, and rule. Shared by the first run and by the re-search that
  * an expired offer forces at approval time — the same code path both times, so
  * a re-priced itinerary is judged exactly as strictly as the original.
@@ -516,13 +531,13 @@ async function searchAndEvaluate(
   // Credits are matched per offer: a Delta credit does nothing for an American
   // fare, and pretending otherwise would escalate every request for no reason.
   const scored = rankOffers(result.offers, base).map((entry) => {
-    const carriers = new Set(offerFacts.marketingAirlines(entry.offer));
-    const credit = credits
-      .filter((c) => carriers.has(c.airlineCode))
-      .reduce((sum, c) => sum + c.remainingValueCents, 0);
-    if (credit === 0) return entry;
+    const match = matchOfferCredits(credits, entry.offer, base.now);
+    if (match.applicableCents === 0) return entry;
     // Re-rule this offer with its credit in view; the credit-first rule cares.
-    const [reranked] = rankOffers([entry.offer], { ...base, applicableCreditCents: credit });
+    const [reranked] = rankOffers([entry.offer], {
+      ...base,
+      applicableCreditCents: match.applicableCents,
+    });
     return reranked;
   });
 
@@ -781,8 +796,34 @@ async function purchaseOrFail(
   request: TravelRequestRow,
   best: RankedOffer,
   existing: typeof s.bookings.$inferSelect | undefined,
+  creditMatch: CreditMatch,
   actor?: Actor,
 ) {
+  // Only the credits this provider can actually redeem. A credit we hold but
+  // Duffel has never heard of is money for a human to recover, not an id to
+  // send. SCOPE.md §5b; `PROVIDER_VISIBILITY` in credits.ts.
+  let creditIds = creditMatch.redeemableHere.map((c) => c.providerCreditId!).filter(Boolean);
+
+  // A credit attaches when the order is created, and a held order was created
+  // before anyone approved it. So the hold — taken to give the approver a real
+  // deadline instead of a 30-minute fuse — costs the credit. That trade is worth
+  // recording rather than hiding: it is the argument for holding *with* the
+  // credit attached once the provider's hold payload is confirmed against a live
+  // response.
+  if (existing?.isHold && creditIds.length > 0) {
+    await logRun(deps, {
+      travelRequestId: request.id,
+      step: 'credit_blocked_by_hold',
+      actor,
+      summary:
+        `${creditIds.length} redeemable credit(s) cannot be applied: this seat is already held as ` +
+        `order ${existing.providerOrderId}, and a credit attaches when an order is created, not ` +
+        'when it is paid for. Paying full fare and leaving the credit intact.',
+      detail: { orderId: existing.providerOrderId, creditIds },
+    });
+    creditIds = [];
+  }
+
   try {
     return await deps.provider.purchase({
       offerId: best.offer.id,
@@ -792,6 +833,7 @@ async function purchaseOrFail(
       passengers: await passengersFor(deps, request),
       amountCents: best.offer.totalCents,
       currency: best.offer.currency,
+      creditIds,
       idempotencyKey: request.idempotencyKey,
     });
   } catch (err) {
@@ -811,6 +853,162 @@ async function purchaseOrFail(
     });
     throw err;
   }
+}
+
+/* --------------------------------- credits --------------------------------- */
+
+/**
+ * Say, in the audit trail, what the credit pool looked like at the moment of
+ * spending — including the credits that did *not* apply and why.
+ *
+ * §5b's promise is that the agent checks the credit pool before purchasing
+ * anything new. Checking it silently would be indistinguishable from not
+ * checking it, and the question this has to answer later is "we had $2,400 in
+ * Delta credit, why did we pay cash?"
+ */
+async function reportCreditPosition(
+  deps: AgentDeps,
+  request: TravelRequestRow,
+  best: RankedOffer,
+  match: CreditMatch,
+  actor?: Actor,
+): Promise<void> {
+  if (match.chosen.length === 0 && match.rejected.length === 0) return;
+
+  const here = match.redeemableHere.reduce((n, c) => n + c.remainingValueCents, 0);
+  const elsewhere = match.redeemableElsewhere.reduce((n, c) => n + c.remainingValueCents, 0);
+
+  await logRun(deps, {
+    travelRequestId: request.id,
+    step: 'credit_check',
+    actor,
+    summary:
+      match.chosen.length === 0
+        ? `No credit applies to ${best.offer.id}; ${match.rejected.length} held credit(s) considered`
+        : `${usd(here + elsewhere)} of credit matches ${best.offer.id}` +
+          (elsewhere > 0
+            ? ` — but ${usd(elsewhere)} of it is not redeemable through ${deps.provider.name} ` +
+              'and must be recovered from the airline by a person'
+            : ''),
+    detail: {
+      redeemableHereCents: here,
+      redeemableElsewhereCents: elsewhere,
+      chosen: match.chosen.map((c) => ({
+        id: c.id,
+        airline: c.airlineCode,
+        remainingValueCents: c.remainingValueCents,
+        expiresOn: c.expiresOn,
+        providerCreditId: c.providerCreditId,
+      })),
+      rejected: match.rejected.map((r) => ({
+        id: r.credit.id,
+        airline: r.credit.airlineCode,
+        remainingValueCents: r.credit.remainingValueCents,
+        reason: r.reason,
+      })),
+    },
+  });
+
+  // Money we hold, could have used, and cannot reach from here. Somebody has to
+  // be told at the moment it matters; a monthly report is how it gets forfeited.
+  if (elsewhere > 0) {
+    await notifyUnreachableCredit(deps.db, {
+      orgId: request.orgId,
+      showId: request.showId,
+      travelerId: request.travelerId,
+      credits: match.redeemableElsewhere,
+      requestId: request.id,
+      now: deps.now(),
+    });
+  }
+}
+
+/**
+ * Settle the ledger against what the provider actually did.
+ *
+ * The amount comes from `PurchaseResult.creditAppliedCents` — the provider's own
+ * figure — and never from the ids we sent or the value our rows claim. Believing
+ * our own intent here is precisely how a ledger drifts away from the airline's,
+ * and this ledger is only worth keeping while the two agree.
+ */
+async function settleCredits(
+  deps: AgentDeps,
+  args: {
+    request: TravelRequestRow;
+    best: RankedOffer;
+    booking: typeof s.bookings.$inferSelect;
+    match: CreditMatch;
+    /** What the provider says a credit covered. Absent on a dry run. */
+    providerCreditCents?: number;
+    actor?: Actor;
+  },
+): Promise<number> {
+  const { request, best, booking, match, actor } = args;
+  const heldHere = match.redeemableHere.reduce((n, c) => n + c.remainingValueCents, 0);
+
+  if (!deps.live) {
+    // A dry run must not burn a credit: the ticket it would have paid for does
+    // not exist, and the next real booking would find the money gone. So the
+    // amount is recorded on the (already `live: false`) booking row as part of
+    // "what would have been bought", and no ledger entry is written.
+    const wouldApply = Math.min(heldHere, best.offer.totalCents);
+    if (wouldApply > 0) {
+      await deps.db
+        .update(s.bookings)
+        .set({ creditAppliedCents: wouldApply })
+        .where(eq(s.bookings.id, booking.id));
+      await logRun(deps, {
+        travelRequestId: request.id,
+        step: 'credit_dry_run',
+        actor,
+        summary: `Would have applied ${usd(wouldApply)} of credit. No credit was drawn down.`,
+        detail: { creditIds: match.redeemableHere.map((c) => c.id) },
+      });
+    }
+    return wouldApply;
+  }
+
+  const charged = booking.chargedCents ?? best.offer.totalCents;
+  const discount = Math.max(0, args.providerCreditCents ?? 0);
+  if (discount === 0) return 0;
+
+  // The provider took more off than the credits we sent could cover. That is a
+  // real disagreement about money, so it is recorded loudly and the ledger is
+  // drawn down only by what it can actually support — inventing the difference
+  // would leave a balance the airline will not honour.
+  if (discount > heldHere) {
+    await logRun(deps, {
+      travelRequestId: request.id,
+      step: 'credit_discrepancy',
+      actor,
+      summary:
+        `${deps.provider.name} took ${usd(discount)} off the fare but our ledger holds only ` +
+        `${usd(heldHere)} of redeemable credit for it. Drawing down ${usd(heldHere)} and ` +
+        'flagging the difference for reconciliation against the carrier statement.',
+      detail: { discountCents: discount, ledgerCents: heldHere, bookingId: booking.id },
+    });
+  }
+
+  const { appliedCents } = await applyCreditsToBooking(deps.db, {
+    credits: match.redeemableHere,
+    appliedCents: Math.min(discount, heldHere),
+    booking,
+    travelRequestId: request.id,
+    actorId: actor?.userId ?? null,
+    now: deps.now(),
+  });
+
+  if (appliedCents > 0) {
+    await logRun(deps, {
+      travelRequestId: request.id,
+      step: 'credit_applied',
+      actor,
+      summary: `Applied ${usd(appliedCents)} of unused credit; ${usd(charged)} was new spend`,
+      detail: { creditIds: match.redeemableHere.map((c) => c.id), appliedCents },
+    });
+  }
+
+  return appliedCents;
 }
 
 async function book(
@@ -845,6 +1043,17 @@ async function book(
   // but a rail that only exists on the paths someone remembered is not a rail.
   await assertPurchasingAllowed(request.orgId, deps.db);
 
+  // §5b: look at the credit pool before spending new money, and read it *now*
+  // rather than reusing the search's view — an approval queue lives overnight
+  // and the traveler's credit may have been spent on another trip since.
+  const pool = await creditPool(deps.db, {
+    orgId: request.orgId,
+    travelerId: request.travelerId,
+    now: deps.now(),
+  });
+  const creditMatch = matchOfferCredits(pool, best.offer, deps.now());
+  await reportCreditPosition(deps, request, best, creditMatch, actor);
+
   const moving = await transition(deps, request, 'booking', {
     step: 'booking_start',
     actor,
@@ -859,9 +1068,11 @@ async function book(
   });
 
   let booking: typeof s.bookings.$inferSelect;
+  let providerCreditCents = 0;
 
   if (deps.live) {
-    const purchased = await purchaseOrFail(deps, moving, best, existing, actor);
+    const purchased = await purchaseOrFail(deps, moving, best, existing, creditMatch, actor);
+    providerCreditCents = purchased.creditAppliedCents;
     booking = existing
       ? (
           await deps.db
@@ -938,6 +1149,19 @@ async function book(
             .returning()
         )[0];
   }
+
+  // §5b: the ledger settles against what actually happened, not what we asked
+  // for. Done before the state moves to `ticketed`, so a booking is never
+  // announced as complete with its credit accounting still outstanding.
+  const creditApplied = await settleCredits(deps, {
+    request,
+    best,
+    booking,
+    match: creditMatch,
+    providerCreditCents,
+    actor,
+  });
+  if (creditApplied > 0) booking = { ...booking, creditAppliedCents: creditApplied };
 
   const ticketed = await transition(deps, moving, 'ticketed', {
     step: 'ticketed',
@@ -1257,6 +1481,62 @@ export async function cancelRequest(
   deps: AgentDeps,
 ): Promise<TravelRequestRow> {
   const request = await loadRequest(requestId, deps);
+
+  const booking = await deps.db.query.bookings.findFirst({
+    where: eq(s.bookings.travelRequestId, request.id),
+  });
+
+  if (booking) {
+    // Any credit this booking consumed goes back on the shelf. The carrier
+    // reinstates the coupon, so the ledger must too — a credit left burned by a
+    // trip that never happened is exactly the forfeited money §5b is about,
+    // except that this time it would be our bug rather than the airline's clock.
+    const released = await releaseCreditsForBooking(deps.db, {
+      bookingId: booking.id,
+      reason: `Booking ${booking.providerOrderId} cancelled: ${reason}`,
+      actorId: actor.userId,
+      now: deps.now(),
+    });
+    if (released.length > 0) {
+      await logRun(deps, {
+        travelRequestId: request.id,
+        step: 'credit_released',
+        actor,
+        summary:
+          `Returned ${usd(released.reduce((n, e) => n + e.deltaCents, 0))} of credit to ` +
+          `${released.length} credit(s) after cancellation`,
+        detail: { creditIds: released.map((e) => e.creditId) },
+      });
+    }
+
+    // The other half — a cancelled non-refundable *ticket* becomes a new credit
+    // — is deliberately not automatic. The credit's value and expiry come from
+    // the carrier's cancellation response, and both vary by fare; a guessed
+    // expiry either alarms people early or lets the money quietly die while the
+    // ledger claims it is fine. So the ticket is flagged for a human to record
+    // with `issueCreditFromCancellation`, and the alert is the durable reminder.
+    if (booking.live && !booking.isHold && (booking.chargedCents ?? 0) > 0) {
+      await logRun(deps, {
+        travelRequestId: request.id,
+        step: 'credit_recoverable',
+        actor,
+        summary:
+          `${usd(booking.chargedCents ?? 0)} ticket ${booking.bookingReference ?? booking.providerOrderId} ` +
+          'was cancelled — record the carrier credit and its expiry date to keep it from being forfeited',
+        detail: {
+          bookingId: booking.id,
+          chargedCents: booking.chargedCents,
+          ticketNumbers: booking.ticketNumbers,
+        },
+      });
+    }
+
+    await deps.db
+      .update(s.bookings)
+      .set({ cancelledAt: deps.now() })
+      .where(eq(s.bookings.id, booking.id));
+  }
+
   return transition(deps, request, 'cancelled', {
     step: 'cancelled',
     actor,

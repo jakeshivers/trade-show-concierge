@@ -13,6 +13,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "booking:dry-run": "tsx scripts/booking-dry-run.ts",
     "booking:audit": "tsx scripts/booking-audit.ts",
+    "credits": "tsx scripts/credits.ts",
     "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
