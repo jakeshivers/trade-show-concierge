@@ -1,13 +1,21 @@
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import { users, type organizations } from '@/db/schema';
+import { authMode } from '@/lib/auth/mode';
+
+export { authMode, type AuthMode } from '@/lib/auth/mode';
 
 /**
  * The authentication seam.
  *
- * Every query in the app resolves its caller through `getActor()`. Today that
- * reads a seeded dev user; at build step 7 it reads a Clerk session. Nothing
- * downstream changes, because nothing downstream knows which it was.
+ * Every query in the app resolves its caller through `getActor()`. It reads a
+ * Clerk session when Clerk is configured and a seeded dev user when it is not.
+ * Nothing downstream changes, because nothing downstream knows which it was —
+ * which is what step 1 bought us and step 7 spent.
+ *
+ * **The switch is one-way.** With Clerk configured, `DEV_ACTOR_EMAIL` is never
+ * consulted, even if a Clerk lookup fails. A fallback here would be a backdoor
+ * that only opens when the front door is jammed.
  *
  * See SCOPE.md §10, "A correction to §2 and §3".
  */
@@ -32,6 +40,29 @@ export class NotAuthenticatedError extends Error {
   }
 }
 
+/**
+ * Authenticated, but nobody here. A Clerk session whose email matches no user row
+ * is a person who signed in and has no access: provisioning is an admin act, and
+ * creating the row on the way past would make sign-up the provisioning flow.
+ */
+export class NotProvisionedError extends Error {
+  constructor(readonly identity: string) {
+    super(
+      `No user in this workspace matches ${identity}. An admin must add the account ` +
+        'before it can be used.',
+    );
+    this.name = 'NotProvisionedError';
+  }
+}
+
+/** The org's login-method allowlist refused this account. See `login-methods.ts`. */
+export class LoginMethodNotPermittedError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'LoginMethodNotPermittedError';
+  }
+}
+
 export class ForbiddenError extends Error {
   constructor(action: string) {
     super(`Actor is not permitted to ${action}`);
@@ -42,10 +73,23 @@ export class ForbiddenError extends Error {
 /**
  * Resolve the current actor.
  *
+ * Clerk mode: the session, mapped to a provisioned user row. Role and org come
+ * from that row, never from Clerk metadata — see `clerk.ts`.
+ *
  * Dev mode: `DEV_ACTOR_EMAIL` selects a seeded user, which makes it trivial to
- * exercise member / travel-manager / admin paths without a login flow.
+ * exercise member / travel-manager / admin paths without a login flow, and keeps
+ * `pnpm db:reset && pnpm test` working on a clean clone with zero accounts.
  */
 export async function getActor(): Promise<Actor> {
+  if (authMode() === 'clerk') {
+    // Dynamic so a plain `tsx` script never drags Next's server runtime in.
+    const { resolveClerkActor } = await import('@/lib/auth/clerk');
+    return resolveClerkActor();
+  }
+  return devActor();
+}
+
+async function devActor(): Promise<Actor> {
   const email = process.env.DEV_ACTOR_EMAIL;
   if (!email) throw new NotAuthenticatedError();
 
@@ -63,6 +107,24 @@ export async function getActor(): Promise<Actor> {
     role: row.role,
     costCenterId: row.costCenterId,
   };
+}
+
+/**
+ * The same resolution, with "nobody is signed in" as a value rather than a throw.
+ * The app shell needs to render a sign-in page without treating it as an error;
+ * everything that touches data keeps using `getActor()`.
+ *
+ * Only *absence* is softened. A provisioning failure or a refused login method
+ * still throws: those are answers, and swallowing them would show a stranger the
+ * same blank page as a signed-out visitor.
+ */
+export async function getActorOrNull(): Promise<Actor | null> {
+  try {
+    return await getActor();
+  } catch (err) {
+    if (err instanceof NotAuthenticatedError) return null;
+    throw err;
+  }
 }
 
 /* --------------------------------- policy ---------------------------------- */

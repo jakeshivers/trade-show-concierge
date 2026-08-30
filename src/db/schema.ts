@@ -254,6 +254,55 @@ export const users = pgTable(
   ],
 );
 
+/* ------------------------------ login methods ------------------------------ */
+
+/**
+ * How an org's permitted sign-in strategies are expressed.
+ *
+ * `unrestricted` is the default and means exactly that — any strategy Clerk has
+ * enabled for the instance is acceptable. `allowlist` names the permitted ones;
+ * anything else is a violation. There is deliberately no "denylist" mode: a
+ * security control that fails open when a new strategy appears is not a control.
+ */
+export const loginPolicyModeEnum = pgEnum('login_policy_mode', ['unrestricted', 'allowlist']);
+
+/**
+ * Per-org control over permitted authentication strategies — "everyone signs in
+ * with Okta, no passwords." SCOPE.md §3 calls this an enterprise security-review
+ * blocker rather than a feature request.
+ *
+ * Versioned and append-only, like `travel_policies` and for the same reason: six
+ * months later an auditor asks when the org went SSO-only and who decided it. A
+ * row updated in place cannot answer that.
+ *
+ * The *primary* enforcement of this policy lives in Clerk, at sign-in. This table
+ * is the org's recorded intent and the input to our second gate — see
+ * `src/lib/auth/login-methods.ts` for what that gate can and cannot verify.
+ */
+export const orgLoginPolicies = pgTable(
+  'org_login_policies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    version: integer('version').notNull().default(1),
+    mode: loginPolicyModeEnum('mode').notNull().default('unrestricted'),
+    /** Our own strategy vocabulary; see LOGIN_STRATEGIES in lib/auth/login-methods.ts. */
+    allowedStrategies: jsonb('allowed_strategies').$type<string[]>().notNull().default([]),
+    /** Required in both directions — restricting and relaxing are both decisions. */
+    reason: text('reason').notNull(),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Set when a newer version replaces this one; null means live. */
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('org_login_policies_version_idx').on(t.orgId, t.version),
+    index('org_login_policies_live_idx').on(t.orgId, t.supersededAt),
+  ],
+);
+
 /* ---------------------------------- shows ---------------------------------- */
 
 export const shows = pgTable(
@@ -1344,6 +1393,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   users: many(users),
   shows: many(shows),
   costCenters: many(costCenters),
+  loginPolicies: many(orgLoginPolicies),
   assets: many(assets),
   collateralItems: many(collateralItems),
   ticketCredits: many(ticketCredits),
@@ -1364,6 +1414,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   flights: many(flights),
   shiftAssignments: many(shiftAssignments),
   ticketCredits: many(ticketCredits),
+}));
+
+export const orgLoginPoliciesRelations = relations(orgLoginPolicies, ({ one }) => ({
+  org: one(organizations, { fields: [orgLoginPolicies.orgId], references: [organizations.id] }),
+  actor: one(users, { fields: [orgLoginPolicies.actorId], references: [users.id] }),
 }));
 
 export const showsRelations = relations(shows, ({ one, many }) => ({

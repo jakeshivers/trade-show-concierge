@@ -84,6 +84,28 @@ over which authentication strategies are permitted**. "Everyone signs in with Ok
 passwords" is a hard blocker in enterprise security review, not a feature request.
 Building that on Auth.js is a quarter of work that isn't our product.
 
+**Clerk says who you are; this database says what you may do.** Role, org, and cost
+center come from the `users` row, never from Clerk metadata — spend authority that can
+be edited in another vendor's dashboard is spend authority outside our audit trail, and
+the separation of duties above would fall to a `publicMetadata` edit. For the same
+reason **signing in is not provisioning**: a verified session whose email matches no
+`users` row is authenticated and has no access, and we never create the row on the way
+past.
+
+**What login-method control actually enforces (corrected at step 7).** The restriction
+is enforced at *sign-in*, and we are not present at sign-in — Clerk is. Its session
+carries no record of which strategy authenticated it: the Backend `Session` object holds
+id, client, user, status, activity and an impersonation actor, and the token claims
+carry `factorVerificationAge` but never the factor itself. What the Backend API does
+expose is the set of credentials a user **holds** — `passwordEnabled`,
+`externalAccounts`, `enterpriseAccounts`, `web3Wallets`. So our gate is a
+**standing-credential check, not a sign-in-event check**: an SSO-only org refuses a
+session the moment the account holds a password, whether or not it was used — which is
+the case that matters, because a forbidden credential that exists is one that can be
+used. Clerk's instance settings remain the primary control; `org_login_policies` is the
+org's recorded, versioned intent and the input to our second gate. It fails closed: under
+an allowlist, an account whose identities cannot be read is refused, never admitted.
+
 **Impersonation** (admin support tool) lands post-v1, and only with three rules: the
 session is banner-marked, every action logs *both* identities, and **impersonation can
 never authorize a purchase or approve a travel request**. The separation-of-duties rule
@@ -107,6 +129,7 @@ have since been corrected against real payload shapes and a working pipeline.
 organization
  ├── user (role: member | travel_manager | admin)
  ├── cost_center           ← finance dimension on every dollar
+ ├── org_login_policy      ← permitted sign-in methods, versioned, append-only
  ├── travel_policy         ← thresholds, versioned, optionally per cost center
  ├── asset                 ← booth, displays, furniture (capital)
  │    └── asset_reservation  (which show has it, chain of custody)
@@ -656,7 +679,16 @@ invert phases A and C.
 
 ### Phase B — the planning core, built knowing what the spine needs
 
-- [ ] **7.** Clerk wired to the `getActor()` seam · login-method control · app shell
+- [x] **7.** **Clerk wired to the `getActor()` seam** · login-method control · app shell.
+      The seam now reads a Clerk session when both keys are present and
+      `DEV_ACTOR_EMAIL` when they are not — and the switch is one-way, so a
+      configured deployment has no dev backdoor. Added `org_login_policies`
+      (versioned, append-only, a written reason required in both directions), the
+      pure gate in `lib/auth/login-methods.ts`, a first app shell that shows on
+      every page who the server thinks you are and how it decided, and the admin
+      screen at `/settings/security`. The correction is folded into §3 below:
+      Clerk's session does not record *which* method signed it in, so our gate is
+      a standing-credential check, not a sign-in-event check. 231 tests.
 - [ ] **8.** Show list · show detail tabs · My Itinerary · cloning · intake
 - [ ] **9.** Travel request UI + approvals queue (the UI for steps 4–5)
 - [ ] **10.** Readiness — checklist CRUD, templates, scoring, portfolio rollup
@@ -696,7 +728,10 @@ the benefit of the model without the setup cost blocking the spine.
 1. **Who pays the airline?** Duffel Payments (recommended — keeps card data out of our
    PCI scope) vs. a corporate card we hold vs. per-user cards. Changes §6d materially.
 2. ~~**Auth provider**~~ — **resolved: Clerk.** Per-org login-method control decided it.
-   Still open: is SSO/SAML needed at step 7, or later at step 20?
+   Partly settled at step 7: the *policy* half is built and provider-agnostic, and
+   enabling a SAML/OIDC connection is Clerk configuration rather than our code, so
+   SSO needs no further build here. What still waits for step 20 is the rollout —
+   a real IdP connection, and the domain-to-org mapping that goes with it.
 3. **Approval routing:** single Travel Manager queue for the org, or per-department
    approvers? Recommending a single queue for v1; per-department is a schema addition
    that's cheap now and expensive later if wrong.

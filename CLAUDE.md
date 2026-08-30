@@ -35,15 +35,16 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 ## Where we are
 
-Building **Phase A: the vertical slice through the booking spine** (`SCOPE.md` §10).
+Phase A (**the vertical slice through the booking spine**) is done; Phase B has started.
 
-**Done:** steps 1–6 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–7 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
-with a kill switch and a readable audit trail; and the ticket credit ledger.
-205 tests, no keys required.
+with a kill switch and a readable audit trail; the ticket credit ledger; and Clerk wired
+to the seam with per-org login-method control and a first app shell. 231 tests, no keys
+required.
 
-`pnpm booking:dry-run` walks the whole loop headless — auto-book within policy,
+`pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
 reasons worth relaxing, the request expiry sweep, the kill switch, credit-first
 escalation, the credit expiry sweep, and the audit trail as a person reads it. Read
@@ -51,26 +52,35 @@ that output before reading the code; it is the fastest way to understand the spi
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
 and `pnpm credits` prints the credit ledger.
 
-**What step 6 added, and where:** `src/lib/travel/credits.ts` — the ledger, with its
-decision half pure and testable like the policy engine; `ticket_credit_entries` in the
-schema (append-only, signed), with `ticket_credits.remaining_value_cents` demoted to a
-cached projection of it; credit application in `agent.ts` (`reportCreditPosition`,
-`settleCredits`) and release in `cancelRequest`; `resolveCredits` in the Duffel client,
-which prices credits from the offer and refuses rather than guessing; expiry alerts in
-`notify.ts`; and `pnpm credits`.
+**What step 7 added, and where:** `src/lib/auth/mode.ts` — `authMode()`, dependency-free
+so `proxy.ts` can read it without pulling PGlite's WASM into the proxy bundle;
+`src/lib/auth/clerk.ts` — session → provisioned user, with the three rules that file
+exists to hold; `src/lib/auth/login-methods.ts` — the login-method gate, pure and
+testable like the policy engine; `org_login_policies` in the schema (versioned,
+append-only, a written reason required in both directions) with
+`src/lib/auth/login-policy-store.ts` over it; `src/proxy.ts` (Next 16's rename of
+Middleware) which is Clerk's context in Clerk mode and a pass-through otherwise; and the
+first screens — the app shell under `src/app/(app)/`, the overview, `/settings/security`,
+and Clerk's sign-in and sign-up routes.
 
-**The correction step 6 turned up, because it reshaped the feature:** a credit we hold
-is not a credit we can spend. Duffel can only redeem credits it surfaces on an offer;
-a credit that exists only as a row here needs a person on the phone to the airline. So
-the agent *escalates* on unreachable credit and alerts at the moment cash is about to
-move — it never pretends to have applied it. `PROVIDER_VISIBILITY` in `credits.ts` is
-the long version; `SCOPE.md` §5b has the rest.
+**The correction step 7 turned up, because it reshaped the feature:** a login-method
+restriction is enforced at sign-in, and we are not present at sign-in. Clerk's session
+records *that* you are authenticated, never *how* — verified against the installed
+`@clerk/backend` 3.16 types, where `Session` has no strategy and the claims carry only
+`factorVerificationAge`. So our gate checks the credentials an account **holds**
+(`passwordEnabled`, `externalAccounts`, `enterpriseAccounts`, `web3Wallets`) rather than
+the one it used: an SSO-only org refuses a session the moment the account still has a
+password. It fails closed. The header of `login-methods.ts` is the long version;
+`SCOPE.md` §3 has the rest, and `/settings/security` says it on screen so no admin
+believes this page turns passwords off inside Clerk.
 
-**Next:** step 7 — Clerk wired to the `getActor()` seam (`SCOPE.md` §10, Phase B).
+**Next:** step 8 — show list, show detail tabs, My Itinerary, cloning, intake
+(`SCOPE.md` §10, Phase B).
 
-**Deliberately not built:** any product UI. Phase B builds screens *after* the spine has
-shown what they need, so `next dev` today serves the default template. An off-plan dev
-console was started and abandoned — `next.config.ts` and `lib/readiness.ts` are the
+**Deliberately not built:** the planning screens. The shell has two nav entries because
+two pages exist; steps 8–12 add the rest, and a nav that promised Shows and Itinerary now
+would read as a broken product rather than an unbuilt one. An off-plan dev console was
+started and abandoned at step 3 — `next.config.ts` and `lib/readiness.ts` are the
 surviving pieces; the page itself was never built.
 
 **Outstanding:** the Duffel adapter — search, hold, *and now purchase* — is verified
@@ -87,10 +97,29 @@ The adapter is built so a wrong guess fails loudly rather than quietly — it re
 purchase when an offer names a credit without its value, so the worst case is an
 escalation to a human, not a fare paid over an unused credit.
 
+Clerk is in the same position as of step 7: the seam, the linking, and the login-method
+gate are tested against a mocked `@clerk/nextjs/server`, and no real Clerk session has
+ever reached this app. A free dev instance would confirm the three things worth
+confirming — that `auth()` under `proxy.ts` resolves in Next 16, that
+`externalAccounts[].provider` and `enterpriseAccounts[].provider` carry the slugs
+`normalizeProvider()` expects, and that an impersonation session surfaces `actor.sub`
+where `clerk.ts` reads it.
+
 ## Ground rules that are easy to violate
 
 - **No fake data behind a real integration.** Missing key → an error naming the env var,
   never an invented fare or delay. Seed data lives only in `scripts/seed.ts`.
+- **Clerk says who you are; the database says what you may do.** Role, org, and cost
+  center are read from the `users` row, never from Clerk metadata — and a verified
+  session that matches no row gets no access and no row created for it.
+- **The dev seam closes when Clerk opens.** Both Clerk keys present means
+  `DEV_ACTOR_EMAIL` is never consulted again, including when a Clerk lookup fails. A
+  fallback that only triggers when the front door jams is a back door.
+- **Login-method control checks credentials held, not the method used.** Clerk's session
+  does not record the strategy. Under an allowlist the gate fails closed. `SCOPE.md` §3.
+- **Nothing under `src/app/(app)/` may be prerendered.** Every page there is resolved per
+  actor; the layout's `dynamic = 'force-dynamic'` is what stops a build from shipping one
+  person's session to everyone as static HTML.
 - **An LLM never decides to spend money.** It parses requests into constraints and
   narrates verdicts. The policy engine is deterministic, pure, and the only thing that
   authorizes. `SCOPE.md` §6a.
@@ -135,19 +164,24 @@ pnpm booking:audit <id | idempotency-key>   # the audit trail for one request
 pnpm credits          # credit exposure and every live credit
 pnpm credits <id>     # one credit's ledger, entry by entry
 pnpm credits --sweep  # write off what expired, warn about what will
+pnpm dev          # the app shell; runs with no Clerk keys on the dev seam
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
 ```
 
-`DEV_ACTOR_EMAIL` in `.env.local` selects the acting user until Clerk lands at step 7.
-Seeded roles: `dana@` admin, `marcus@` travel_manager, `priya@` member.
+`DEV_ACTOR_EMAIL` in `.env.local` selects the acting user whenever Clerk is not
+configured. Seeded roles: `dana@` admin, `marcus@` travel_manager, `priya@` member.
+Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 
 ## Layout
 
 ```
 src/db/schema.ts              ~35 tables, the domain model
-src/lib/auth/actor.ts         getActor() seam; Clerk swaps in behind it at step 7
+src/app/(app)/               the app shell and its screens; never prerendered
+src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
+src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
+                              control (pure gate + versioned policy store)
 src/lib/policy/               the decision layer — pure, deterministic, 47 tests
 src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
 src/lib/travel/               the spine — state machine, policy store, booking agent,

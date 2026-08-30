@@ -171,11 +171,15 @@ original plan.
 pnpm install
 pnpm db:reset          # embedded Postgres (PGlite), schema push, realistic seed
 pnpm booking:dry-run   # the whole booking loop, headless
-pnpm test              # 131 tests; no keys, no network, no browser
+pnpm dev               # the app shell, on the dev seam, with no accounts
+pnpm test              # 231 tests; no keys, no network, no browser
 ```
 
-`DEV_ACTOR_EMAIL` in `.env.local` selects the acting user until Clerk lands at step 7.
-Seeded roles: `dana@` admin, `marcus@` travel manager, `priya@` member.
+`DEV_ACTOR_EMAIL` in `.env.local` selects the acting user whenever Clerk is not
+configured. Seeded roles: `dana@` admin, `marcus@` travel manager, `priya@` member. Set
+both Clerk keys and the same seam serves real sessions instead — and stops consulting
+`DEV_ACTOR_EMAIL` entirely, because a dev fallback that survives into a configured
+deployment is a back door.
 
 The offers in a keyless run come from a provider named `recorded`, which replays captured
 wire payloads through the **production** normalizer. It is not a fake Duffel: it
@@ -201,8 +205,12 @@ wrong, and the corrections are recorded in `git log` rather than silently fixed.
 | ✅ | **2.** Policy engine — pure, versioned, structured verdicts | 47 unit tests |
 | ✅ | **3.** Duffel adapter, booking schema corrected against real payload shapes | |
 | ✅ | **4.** State machine + dry-run booking end to end | 131 tests |
-| ⬜ | **5.** Live purchase behind the flag, kill switch, audit surfacing | |
-| ⬜ | **6.** Ticket credit ledger — expiry alerts, auto-applied before new spend | |
+| ✅ | **5.** Live purchase behind the flag, kill switch, audit surfacing | 155 tests |
+| ✅ | **6.** Ticket credit ledger — expiry alerts, applied before new spend | 205 tests |
+
+| | Phase B — the planning core | |
+|---|---|---|
+| ✅ | **7.** Clerk behind the seam, login-method control, app shell | 231 tests |
 
 Phase B builds the planning core and the screens, *knowing what the spine needs*. Phases
 C and D cover logistics telemetry, ROI attribution, and an offline day-of PWA — show-floor
@@ -218,8 +226,9 @@ differentiators: **[`RESEARCH.md`](RESEARCH.md)**.
 ## Layout
 
 ```
-src/db/schema.ts                 ~34 tables, the domain model
-src/lib/auth/actor.ts            getActor() seam; Clerk swaps in behind it at step 7
+src/db/schema.ts                 ~36 tables, the domain model
+src/app/(app)/                   the app shell and its screens
+src/lib/auth/                    the seam — getActor(), Clerk, login-method control
 src/lib/policy/                  the decision layer — pure, deterministic, no DB
 src/lib/travel/                  the spine — state machine, policy store, booking agent
 src/lib/integrations/flights/    provider interface, Duffel adapter, recorded replay
@@ -229,7 +238,7 @@ scripts/booking-dry-run.ts       the whole loop, headless
 ```
 
 **Stack:** Next.js 16 · TypeScript · Drizzle ORM · PGlite locally, Postgres in
-production · Vitest · Duffel for air content · Clerk for auth (step 7).
+production · Vitest · Duffel for air content · Clerk for auth.
 
 ---
 
