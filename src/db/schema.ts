@@ -113,6 +113,9 @@ export const approvalOutcomeEnum = pgEnum('approval_outcome', [
 
 export const userRoleEnum = pgEnum('user_role', ['member', 'travel_manager', 'admin']);
 
+/** Where a rule set came from. Resolved most-specific-first. SCOPE.md §7. */
+export const policyScopeEnum = pgEnum('policy_scope', ['org', 'cost_center', 'show', 'role']);
+
 export const deadlineKindEnum = pgEnum('deadline_kind', [
   'advance_order',      // the big one: 25-40% surcharge after this date
   'electrical',
@@ -510,6 +513,70 @@ export const expenses = pgTable(
  * "I need to be in Vegas by Tuesday noon" into these columns and the user
  * confirms them, but from here down everything is deterministic. SCOPE.md §6a.
  */
+/**
+ * Travel policy rule sets, versioned and layered.
+ *
+ * The policy engine (`src/lib/policy`) is pure and knows nothing about this table;
+ * these rows are its *input*. A row is one layer — an org baseline, or a narrower
+ * override for a cost center, show, or role — and `resolveTravelPolicy()` merges
+ * them most-specific-first into the single rule set that actually runs.
+ *
+ * **Null means inherit, on an override layer only.** The org layer is the base and
+ * its nulls are real values ("no hotel cap set"); an override that leaves a column
+ * null simply does not speak to that rule. The consequence is deliberate: an
+ * override can tighten or loosen a limit but cannot *remove* one, because removing
+ * a spend limit by omission is exactly the accident this table must not permit.
+ *
+ * Versions are immutable. Editing a policy writes a new version and stamps
+ * `supersededAt` on the old one, so a `policy_evaluations` row from six months ago
+ * can still be read against the rules that were live when it ran.
+ */
+export const travelPolicies = pgTable(
+  'travel_policies',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    scope: policyScopeEnum('scope').notNull().default('org'),
+    /** The cost center / show id, or the role name, this layer applies to. */
+    scopeRef: text('scope_ref'),
+    version: integer('version').notNull().default(1),
+    label: text('label'),
+
+    maxAirfareDomesticCents: integer('max_airfare_domestic_cents'),
+    maxAirfareInternationalCents: integer('max_airfare_international_cents'),
+    autoApproveUnderCents: integer('auto_approve_under_cents'),
+    denyOverCents: integer('deny_over_cents'),
+
+    maxCabinDomestic: text('max_cabin_domestic'),
+    maxCabinInternational: text('max_cabin_international'),
+    premiumCabinAllowedOverHours: integer('premium_cabin_allowed_over_hours'),
+
+    minAdvanceBookingDays: integer('min_advance_booking_days'),
+    maxStops: integer('max_stops'),
+    minConnectionMinutes: integer('min_connection_minutes'),
+    arrivalBufferHoursBeforeMoveIn: integer('arrival_buffer_hours_before_move_in'),
+
+    nonRefundableAllowedUnderCents: integer('non_refundable_allowed_under_cents'),
+    maxAcceptableRefundPenaltyCents: integer('max_acceptable_refund_penalty_cents'),
+    preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
+    blockedAirlines: jsonb('blocked_airlines').$type<string[]>(),
+
+    maxHotelNightlyRateCents: integer('max_hotel_nightly_rate_cents'),
+    perShowTravelBudgetCents: integer('per_show_travel_budget_cents'),
+    requireCreditFirst: boolean('require_credit_first'),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Set when a newer version replaces this one; null means live. */
+    supersededAt: timestamp('superseded_at', { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex('travel_policies_layer_version_idx').on(t.orgId, t.scope, t.scopeRef, t.version),
+    index('travel_policies_live_idx').on(t.orgId, t.supersededAt),
+  ],
+);
+
 export const travelRequests = pgTable(
   'travel_requests',
   {
@@ -579,7 +646,12 @@ export const offerSnapshots = pgTable(
       .references(() => travelRequests.id, { onDelete: 'cascade' }),
     provider: text('provider').notNull(),
     providerOfferId: text('provider_offer_id').notNull(),
-    providerSearchId: text('provider_search_id'),
+    /**
+     * Which search produced this row. Part of the identity of a snapshot, not a
+     * decoration: a request that gets re-searched after its offer expired has
+     * two legitimate captures of the same itinerary, and the audit needs both.
+     */
+    providerSearchId: text('provider_search_id').notNull(),
 
     totalCents: integer('total_cents').notNull(),
     currency: text('currency').notNull().default('USD'),
@@ -616,7 +688,15 @@ export const offerSnapshots = pgTable(
   },
   (t) => [
     index('offer_snapshots_request_idx').on(t.travelRequestId, t.rank),
-    uniqueIndex('offer_snapshots_provider_offer_idx').on(t.travelRequestId, t.providerOfferId),
+    // Discovered building step 4: keying on (request, offer) alone made the
+    // re-search-on-approval path impossible, because a provider may return the
+    // same offer id twice and a snapshot is a point-in-time capture, not a
+    // singleton. One row per offer *per search* is the rule that was meant.
+    uniqueIndex('offer_snapshots_provider_offer_idx').on(
+      t.travelRequestId,
+      t.providerSearchId,
+      t.providerOfferId,
+    ),
   ],
 );
 
@@ -742,6 +822,15 @@ export const agentRuns = pgTable(
     travelRequestId: uuid('travel_request_id')
       .notNull()
       .references(() => travelRequests.id, { onDelete: 'cascade' }),
+    /**
+     * Position in this request's history, 1-based.
+     *
+     * `occurredAt` alone cannot order the trail: several steps of one run share
+     * a timestamp — deliberately, since the clock is injected so the pipeline is
+     * reproducible — and an audit log you cannot put in order is not an audit
+     * log. The sequence is the ordering; the timestamp is the fact.
+     */
+    sequence: integer('sequence').notNull(),
     step: text('step').notNull(),
     fromStatus: travelRequestStatusEnum('from_status'),
     toStatus: travelRequestStatusEnum('to_status'),
@@ -759,7 +848,10 @@ export const agentRuns = pgTable(
     durationMs: integer('duration_ms'),
     occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('agent_runs_request_idx').on(t.travelRequestId, t.occurredAt)],
+  (t) => [
+    index('agent_runs_request_idx').on(t.travelRequestId, t.sequence),
+    uniqueIndex('agent_runs_sequence_idx').on(t.travelRequestId, t.sequence),
+  ],
 );
 
 /* -------------------------- service manual deadlines ----------------------- */
@@ -1287,6 +1379,10 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
 
 export const showOutcomesRelations = relations(showOutcomes, ({ one }) => ({
   show: one(shows, { fields: [showOutcomes.showId], references: [shows.id] }),
+}));
+
+export const travelPoliciesRelations = relations(travelPolicies, ({ one }) => ({
+  org: one(organizations, { fields: [travelPolicies.orgId], references: [organizations.id] }),
 }));
 
 export const travelRequestsRelations = relations(travelRequests, ({ one, many }) => ({

@@ -35,16 +35,21 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 ## Where we are
 
-<!-- Keep this section current. It is the first thing a cleared session reads. -->
-
 Building **Phase A: the vertical slice through the booking spine** (`SCOPE.md` §10).
 
-**Done:** steps 1–3 — local Postgres + schema + `getActor()` seam; the policy engine;
-the Duffel adapter with the booking schema corrected against real payload shapes.
-94 tests, no keys required.
+**Done:** steps 1–4 — local Postgres + schema + `getActor()` seam; the policy engine;
+the Duffel adapter with the booking schema corrected against real payload shapes; and
+the request state machine with dry-run booking working end to end. 131 tests, no keys
+required.
 
-**Next:** step 4 — travel request state machine + dry-run booking end-to-end, headless
-and script-driven. Idempotency, offer expiry, re-search-on-approval.
+`pnpm booking:dry-run` walks the whole loop headless — auto-book within policy,
+escalation with re-price-on-approval after the offer expires, `no_options` with the
+reasons worth relaxing, and the expiry sweep. Read that output before reading the code;
+it is the fastest way to understand the spine.
+
+**Next:** step 5 — live purchase behind the flag, kill switch, audit trail surfacing.
+The seams are already in place: `AgentDeps.live` is the single gate, and
+`DuffelProvider.purchase()` is the only stub left to fill in.
 
 **Deliberately not built:** any product UI. Phase B builds screens *after* the spine has
 shown what they need, so `next dev` today serves the default template. An off-plan dev
@@ -62,6 +67,12 @@ normalizer tests should pass unchanged against recorded real responses.
 - **An LLM never decides to spend money.** It parses requests into constraints and
   narrates verdicts. The policy engine is deterministic, pure, and the only thing that
   authorizes. `SCOPE.md` §6a.
+- **Dry run is the default and the `recorded` provider cannot buy.** Live purchasing
+  needs `FLIGHT_BOOKING_LIVE=true` *and* a configured real provider. Dry-run bookings
+  are stamped `live: false` with a `dryrun:`-prefixed order id so they can never be
+  mistaken for real ones in a query or a report.
+- **An approval authorizes an amount, not an offer.** Offers expire in ~30 minutes;
+  approval queues do not. Re-price on approval and re-run policy. `SCOPE.md` §6b.
 - **Runs with zero API keys and zero cloud accounts.** `pnpm db:reset && pnpm test`
   must work on a clean clone. Hosting is deferred; do not wire a cloud provider.
 - **Every financial row carries a cost center at creation.** Never backfilled.
@@ -76,6 +87,7 @@ normalizer tests should pass unchanged against recorded real responses.
 ```bash
 pnpm db:reset     # rm .pglite, push schema, seed — safe any time
 pnpm db:seed      # reseed only
+pnpm booking:dry-run  # the whole booking loop, headless, no keys, no purchases
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -90,7 +102,8 @@ Seeded roles: `dana@` admin, `marcus@` travel_manager, `priya@` member.
 src/db/schema.ts              ~35 tables, the domain model
 src/lib/auth/actor.ts         getActor() seam; Clerk swaps in behind it at step 7
 src/lib/policy/               the decision layer — pure, deterministic, 60+ tests
-src/lib/integrations/flights/ provider interface + Duffel adapter
+src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
+src/lib/travel/               the spine — state machine, policy store, booking agent
 src/lib/money/ src/lib/datetime/  correctness primitives; see ground rules
 scripts/seed.ts               the only place seed data lives
 ```

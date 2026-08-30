@@ -11,6 +11,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:seed": "tsx scripts/seed.ts",
+    "booking:dry-run": "tsx scripts/booking-dry-run.ts",
     "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",
     "test": "vitest run",
     "test:watch": "vitest",

@@ -100,7 +100,8 @@ Executive gets $1,800."
 
 ## 4. Domain model
 
-Implemented in `src/db/schema.ts`; the travel-request tables below are the next addition.
+Implemented in `src/db/schema.ts`. The travel-request tables landed at steps 3–4 and
+have since been corrected against real payload shapes and a working pipeline.
 
 ```
 organization
@@ -148,7 +149,17 @@ Modeling choices worth calling out:
   exactly why a purchase was allowed.
 - **`offer_snapshot`** stores the full fare the agent chose *and the ones it rejected*.
   Airline offers expire in minutes and vanish; without this, "why did it pick the
-  $780 flight?" is unanswerable.
+  $780 flight?" is unanswerable. **One row per offer *per search*, not per request**
+  (corrected at step 4): a request that gets re-searched after its offer expired has
+  two legitimate captures of the same itinerary, and the audit needs both.
+- **`travel_policy` rows are layers, and null means inherit — on overrides only.** The
+  org row is the base, where null is a real answer ("no hotel cap"). A cost-center or
+  show override that leaves a column null simply does not speak to that rule. The
+  asymmetry is deliberate: an override must be able to tighten or loosen a limit but
+  never to *remove* one by omission, because absent must never quietly read as unlimited.
+- **`agent_run` carries an explicit `sequence`, not just a timestamp.** Several steps of
+  one agent run share a timestamp — the clock is injected so the pipeline is
+  reproducible — and an audit log that cannot be put in order is not an audit log.
 - **Cost is derived, never entered.** A show's true cost is a rollup of booth/space fees,
   every `flight.price_cents`, every `lodging` night, every `shipment.cost_cents`, and
   `expense` rows for the rest. Nobody assembles it. This is what makes §8 credible.
@@ -284,20 +295,38 @@ constraints before anything is searched.
 
 ```
 draft → submitted → searching → offers_found
-                                    ├─ within policy ────→ auto_approved → booking → ticketed
+                                    ├─ within policy ────→ booking → ticketed
                                     ├─ needs approval ──→ pending_approval ─┬→ approved → booking → ticketed
+                                    │                                        ├→ searching (offer died; re-price)
                                     │                                        └→ rejected
                                     └─ no viable offer ─→ no_options (notify user, suggest relaxations)
 
 any state → cancelled | failed | expired
+no_options | expired | failed → searching   (relax a constraint and try again)
 ticketed → change_requested → … | cancelled_refunded
 ```
+
+**Correction from building it (step 4):** the earlier sketch had an `auto_approved`
+state between `offers_found` and `booking`. There is no such state. Nothing waits in
+it and nothing can observe it, and keeping it would have created a second, weaker
+record of a fact the `policy_evaluation` row already holds. An auto-approved request
+goes straight to `booking`. The machine is `src/lib/travel/machine.ts`; every write
+passes through it, so an illegal transition throws where it happens rather than
+surfacing later as a corrupt row.
 
 `expired` is not an edge case. **Duffel offers expire in roughly 30 minutes.** If a
 request sits in `pending_approval` overnight, the offer is dead and the agent must
 re-search on approval — the approved *price* may no longer exist. The approval UI must
 show this, and re-search-on-approval must re-run policy against the new fare. This
 single detail is where most booking integrations break.
+
+**What an approval actually authorizes** (settled at step 4): an *amount*, not an offer
+id. Approving means "buy this trip, up to the price I signed off on." So when the offer
+has died, the agent re-searches, re-runs policy on the new fare, and then compares:
+at or below the approved price it books; above it, the request goes back into the queue
+for a fresh decision rather than quietly charging the difference. A hold changes this
+only where the fare was also guaranteed — a held-but-unguaranteed offer still has to
+survive the re-price.
 
 **Hold orders are the mitigation**, and Duffel names this exact use case. When an offer
 carries `payment_requirements.requires_instant_payment: false`, we can create a `hold`
@@ -325,6 +354,15 @@ order that reserves the space without paying, giving the approver a real deadlin
 5. **Kill switch** — an admin toggle halting all automated purchasing instantly.
 6. **Every purchase notifies the traveler and a Travel Manager** at the moment of
    ticketing, not on a digest.
+
+**How rails 4 and non-negotiable #1 coexist** (step 4): the spine must run end-to-end on
+a clean clone with no API keys, and it must never serve invented data from behind a real
+integration. Both hold, because the offers in a keyless run come from a separately named
+`recorded` provider that replays captured wire payloads through the *production*
+normalizer. It announces itself as `recorded` in every snapshot and booking row, stamps
+`live: false`, and its `purchase()` throws unconditionally — there is no configuration of
+it that can spend money. It is not a fake Duffel; Duffel with no key still refuses to do
+anything at all.
 
 ### 6d. What buying tickets actually entails
 
@@ -523,8 +561,12 @@ invert phases A and C.
 - [x] **3.** **Duffel adapter** written against the published v2 schema; `travel_request` /
       `offer_snapshot` / `policy_evaluation` / `approval` / `booking` / `agent_run` schema
       corrected from real payload shapes. Live test-key run still pending.
-- [ ] **4.** Travel request state machine + **dry-run booking end-to-end**, headless and
-      script-driven. Idempotency, offer expiry, re-search-on-approval.
+- [x] **4.** Travel request state machine + **dry-run booking end-to-end**, headless and
+      script-driven. Idempotency, offer expiry, re-search-on-approval. Added a
+      `travel_policies` table (the engine had rules but nowhere to read them from),
+      a DB-backed layer resolver, and the `recorded` provider that replays captured
+      wire payloads through the production normalizer so the spine runs with no keys.
+      `pnpm booking:dry-run` walks all four outcomes. 131 tests.
 - [ ] **5.** Live purchase behind flag, kill switch, audit trail
 - [ ] **6.** **Ticket credit ledger** (§5b) — expiry alerts, auto-applied before new spend
 

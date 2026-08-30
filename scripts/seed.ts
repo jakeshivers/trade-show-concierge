@@ -40,6 +40,58 @@ async function main() {
     .returning();
   const [mkt, se, exec] = costCenters;
 
+  console.log('· travel policy layers');
+  // The org row is the base: its nulls are real answers. The override rows below
+  // speak only to the rules they change and inherit the rest — see the note on
+  // `travelPolicies` in src/db/schema.ts for why that asymmetry matters.
+  await db.insert(s.travelPolicies).values([
+    {
+      orgId: org.id,
+      scope: 'org',
+      version: 1,
+      label: 'Northwind standard travel policy',
+      maxAirfareDomesticCents: 65_000,
+      maxAirfareInternationalCents: 180_000,
+      autoApproveUnderCents: 50_000,
+      denyOverCents: 120_000,
+      maxCabinDomestic: 'economy',
+      maxCabinInternational: 'premium_economy',
+      premiumCabinAllowedOverHours: 6,
+      minAdvanceBookingDays: 14,
+      maxStops: 1,
+      minConnectionMinutes: 60,
+      arrivalBufferHoursBeforeMoveIn: 4,
+      nonRefundableAllowedUnderCents: 50_000,
+      maxAcceptableRefundPenaltyCents: 15_000,
+      preferredAirlines: ['DL', 'AA'],
+      blockedAirlines: [],
+      maxHotelNightlyRateCents: 30_000,
+      perShowTravelBudgetCents: 1_200_000,
+      requireCreditFirst: true,
+    },
+    {
+      orgId: org.id,
+      scope: 'cost_center',
+      scopeRef: exec.id,
+      version: 1,
+      label: 'Executive — long-haul allowance',
+      maxAirfareDomesticCents: 95_000,
+      maxAirfareInternationalCents: 450_000,
+      autoApproveUnderCents: 120_000,
+      denyOverCents: 500_000,
+      maxCabinInternational: 'business',
+    },
+    {
+      orgId: org.id,
+      scope: 'cost_center',
+      scopeRef: se.id,
+      version: 1,
+      label: 'Sales Engineering — nonstop only, tighter cap',
+      maxAirfareDomesticCents: 55_000,
+      maxStops: 1,
+    },
+  ]);
+
   console.log('· users');
   const people = await db
     .insert(s.users)
@@ -387,6 +439,7 @@ async function main() {
     users: people.length,
     shows: 2,
     costCenters: costCenters.length,
+    policyLayers: 3,
     assets: assetRows.length,
     shifts: shifts.length,
   };

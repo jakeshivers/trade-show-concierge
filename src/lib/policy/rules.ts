@@ -43,8 +43,14 @@ const na = (ruleId: string, label: string, message: string): RuleResult => ({
   message,
 });
 
+// Whole dollars read better in a rule message ("over the $500 limit"), but a
+// fare with cents must show both of them: "$1,284.9" looks like a rendering bug
+// on an approval screen, and this text is the approval screen.
 const usd = (cents: number) =>
-  `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  `$${(cents / 100).toLocaleString('en-US', {
+    minimumFractionDigits: cents % 100 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 /* ---------------------------------- rules ---------------------------------- */
 
