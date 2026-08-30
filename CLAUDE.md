@@ -101,7 +101,7 @@ Seeded roles: `dana@` admin, `marcus@` travel_manager, `priya@` member.
 ```
 src/db/schema.ts              ~35 tables, the domain model
 src/lib/auth/actor.ts         getActor() seam; Clerk swaps in behind it at step 7
-src/lib/policy/               the decision layer — pure, deterministic, 60+ tests
+src/lib/policy/               the decision layer — pure, deterministic, 47 tests
 src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
 src/lib/travel/               the spine — state machine, policy store, booking agent
 src/lib/money/ src/lib/datetime/  correctness primitives; see ground rules

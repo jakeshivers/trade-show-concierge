@@ -557,7 +557,7 @@ invert phases A and C.
 - [x] **0.** Next.js + Tailwind scaffold, initial Drizzle schema
 - [x] **1.** PGlite, migrations, `getActor()` seam, cost centers & roles, realistic seed
 - [x] **2.** **Policy engine** — pure functions, versioned rules, resolved most-specific-first,
-      structured verdicts, 52 unit tests. No UI, no DB dependency.
+      structured verdicts, 47 unit tests. No UI, no DB dependency.
 - [x] **3.** **Duffel adapter** written against the published v2 schema; `travel_request` /
       `offer_snapshot` / `policy_evaluation` / `approval` / `booking` / `agent_run` schema
       corrected from real payload shapes. Live test-key run still pending.
