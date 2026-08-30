@@ -69,9 +69,15 @@ Three org-level roles. Show-level assignment is separate from role.
 | Manage cost centers & per-cost-center caps | — | — | ✅ |
 | Restrict permitted login methods | — | — | ✅ |
 
-**Separation of duties:** a Travel Manager can approve others' requests but **not their
-own** — over-policy self-requests escalate to an Admin. This is an ordinary
-enterprise-audit expectation and is far cheaper to build in now than to bolt on.
+**Separation of duties:** nobody approves their own over-policy request — a Travel
+Manager's escalates to an Admin, and an Admin's needs a different Admin. This is an
+ordinary enterprise-audit expectation and is far cheaper to build in now than to bolt on.
+
+**Break-glass.** Strict separation deadlocks a one-admin org: their own over-policy
+request would have no eligible approver and sit forever. So when *no* eligible approver
+exists, the requester may self-approve — but only with a written justification, and the
+audit record is flagged as a break-glass exception rather than a normal approval. The rule
+stays real; it just never becomes a trap.
 
 **Provider: Clerk.** Org support, roles, SSO/SAML, and — decisively — **per-org control
 over which authentication strategies are permitted**. "Everyone signs in with Okta, no
@@ -498,9 +504,9 @@ invert phases A and C.
 ### Phase A — foundation & the spine
 
 - [x] **0.** Next.js + Tailwind scaffold, initial Drizzle schema
-- [ ] **1.** PGlite, migrations, `getActor()` seam, cost centers & roles, realistic seed
-- [ ] **2.** **Policy engine** — pure functions, versioned rules, resolved most-specific-first,
-      structured verdicts, comprehensive unit tests. No UI, no DB dependency.
+- [x] **1.** PGlite, migrations, `getActor()` seam, cost centers & roles, realistic seed
+- [x] **2.** **Policy engine** — pure functions, versioned rules, resolved most-specific-first,
+      structured verdicts, 52 unit tests. No UI, no DB dependency.
 - [ ] **3.** **Duffel adapter against test mode** — see real payloads, then correct the
       `travel_request` / `offer_snapshot` / `policy_evaluation` schema *before* anything
       is built on it
