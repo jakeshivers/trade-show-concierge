@@ -35,14 +35,15 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 ## Where we are
 
-Phase A (**the vertical slice through the booking spine**) is done; Phase B has started.
+Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
 
-**Done:** steps 1–7 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–8 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
-with a kill switch and a readable audit trail; the ticket credit ledger; and Clerk wired
-to the seam with per-org login-method control and a first app shell. 231 tests, no keys
-required.
+with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
+to the seam with per-org login-method control and a first app shell; and the planning
+core — show list, show detail tabs, My Itinerary, cloning, and intake. 267 tests, no
+keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -52,36 +53,61 @@ that output before reading the code; it is the fastest way to understand the spi
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
 and `pnpm credits` prints the credit ledger.
 
+**What step 8 added, and where:** `src/lib/shows/` is the planning core, split the same
+way the booking spine is — pure decisions apart from the rows. `clone.ts` is a pure
+planner (source + options → a plan of what to write, plus plain-language lists of what it
+carried and what it deliberately did not); `intake.ts` is pure validation and the
+decidable-status guard; `visibility.ts` holds the one visibility rule the screens share;
+`store.ts` is the only file that touches the database, and it org-scopes at the source
+rather than loading-then-checking. `show_decisions` in the schema is append-only, with a
+written rationale required in both directions. The datetime primitives gained
+`instantToZoned`, `shiftDaysPreservingLocalTime`, and `calendarDaysBetween`, which is what
+the clone shifts dates with. Screens: `/shows`, `/shows/new`, `/shows/[id]` with five tab
+routes, `/shows/[id]/clone`, `/itinerary`, plus `src/app/(app)/_components/ui.tsx` — a
+deliberately plain shared vocabulary, not a design system invented before ten screens
+exist to test it against. The seed grew a prospect, a *declined* show with its reasoning,
+intake history for the two originals, and three manually-entered flights so My Itinerary
+has something real in it.
+
+**The two corrections step 8 turned up:**
+
+1. **"See own shows" scopes travel, not the calendar.** §3's table draws its line around
+   travel; reading it as "a Member only sees shows they're staffed on" hides next
+   quarter's calendar from the engineer who will staff it, which is less useful and no
+   safer. The calendar and every planning fact on a show are org-wide; flights, lodging
+   assignments, and travel requests narrow to the actor unless they can approve. The
+   narrowing is in the query, so a Member's page never contains a colleague's fare.
+   `SCOPE.md` §3.
+2. **A clone that copies too much manufactures facts.** Copied rows look like this year's
+   facts. So: dates shift on the local calendar rather than by elapsed milliseconds (a
+   5:00pm deadline moved 364 days by arithmetic lands at 4:00pm across a DST boundary);
+   confirmations are never carried, so every cloned deadline arrives unconfirmed and
+   every attendee re-invited; and the "shipping plan" the scope asked us to clone turns
+   out to be shipments with tracking numbers, which a copy would fabricate — what clones
+   is the asset reservations and the deadlines that gate them. The header of
+   `src/lib/shows/clone.ts` is the long version; `SCOPE.md` §5c has the rest, and the
+   clone screen lists what it will not carry on the page.
+
 **What step 7 added, and where:** `src/lib/auth/mode.ts` — `authMode()`, dependency-free
 so `proxy.ts` can read it without pulling PGlite's WASM into the proxy bundle;
-`src/lib/auth/clerk.ts` — session → provisioned user, with the three rules that file
-exists to hold; `src/lib/auth/login-methods.ts` — the login-method gate, pure and
-testable like the policy engine; `org_login_policies` in the schema (versioned,
-append-only, a written reason required in both directions) with
+`src/lib/auth/clerk.ts` — session → provisioned user; `src/lib/auth/login-methods.ts` —
+the login-method gate, pure and testable like the policy engine; `org_login_policies`
+(versioned, append-only, a written reason required in both directions) with
 `src/lib/auth/login-policy-store.ts` over it; `src/proxy.ts` (Next 16's rename of
-Middleware) which is Clerk's context in Clerk mode and a pass-through otherwise; and the
-first screens — the app shell under `src/app/(app)/`, the overview, `/settings/security`,
-and Clerk's sign-in and sign-up routes.
+Middleware), Clerk's context in Clerk mode and a pass-through otherwise. Its correction,
+still standing: a login-method restriction is enforced at sign-in and we are not present
+at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
+It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**The correction step 7 turned up, because it reshaped the feature:** a login-method
-restriction is enforced at sign-in, and we are not present at sign-in. Clerk's session
-records *that* you are authenticated, never *how* — verified against the installed
-`@clerk/backend` 3.16 types, where `Session` has no strategy and the claims carry only
-`factorVerificationAge`. So our gate checks the credentials an account **holds**
-(`passwordEnabled`, `externalAccounts`, `enterpriseAccounts`, `web3Wallets`) rather than
-the one it used: an SSO-only org refuses a session the moment the account still has a
-password. It fails closed. The header of `login-methods.ts` is the long version;
-`SCOPE.md` §3 has the rest, and `/settings/security` says it on screen so no admin
-believes this page turns passwords off inside Clerk.
+**Next:** step 9 — the travel request UI and the approvals queue, which is the first
+screen over the spine steps 4–6 built (`SCOPE.md` §10, Phase B).
 
-**Next:** step 8 — show list, show detail tabs, My Itinerary, cloning, intake
-(`SCOPE.md` §10, Phase B).
-
-**Deliberately not built:** the planning screens. The shell has two nav entries because
-two pages exist; steps 8–12 add the rest, and a nav that promised Shows and Itinerary now
-would read as a broken product rather than an unbuilt one. An off-plan dev console was
-started and abandoned at step 3 — `next.config.ts` and `lib/readiness.ts` are the
-surviving pieces; the page itself was never built.
+**Deliberately not built, and visible as such:** every step-8 tab is read-only apart from
+intake and cloning. Checklist editing is step 10, the deadline engine step 11, team and
+lodging step 12, shipment tracking step 14 — and each tab says so where the interaction
+would be, rather than showing a dead button. The nav still grows one entry per screen
+that exists. `lib/readiness.ts` is now used for real (the list and the readiness tab);
+the off-plan dev console it was written for was abandoned at step 3 and never built.
 
 **Outstanding:** the Duffel adapter — search, hold, *and now purchase* — is verified
 against fixtures and mocked HTTP written to the published v2 schema, not a live
@@ -148,6 +174,13 @@ where `clerk.ts` reads it.
   that drifts from the airline's is worth nothing.
 - **A dry run never burns a credit.** The ticket it would have paid for does not exist,
   and the next real booking would find the money gone.
+- **A clone never carries a confirmation, and never carries a shipment.** Cloned
+  deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
+  lodging, expenses, and the booth number do not come at all. Dates shift on the local
+  calendar, not by elapsed milliseconds. `SCOPE.md` §5c.
+- **A declined show is kept.** Intake decisions are append-only rows with a written
+  reason; `shows.status` is the projection. The declines are the half that argues with
+  next year's calendar.
 - **Scheduled times are immutable.** Live/estimated times go in separate columns.
 - **Money is integer cents.** Providers send decimal strings — parse with
   `src/lib/money/decimal.ts`, never `parseFloat`.
@@ -164,7 +197,7 @@ pnpm booking:audit <id | idempotency-key>   # the audit trail for one request
 pnpm credits          # credit exposure and every live credit
 pnpm credits <id>     # one credit's ledger, entry by entry
 pnpm credits --sweep  # write off what expired, warn about what will
-pnpm dev          # the app shell; runs with no Clerk keys on the dev seam
+pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -179,6 +212,8 @@ Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 ```
 src/db/schema.ts              ~35 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
+src/lib/shows/                the planning core — pure clone planner, pure intake,
+                              the visibility rule, and the org-scoped store
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)

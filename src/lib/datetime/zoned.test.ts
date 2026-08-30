@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { zonedToInstant, hasExplicitOffset, ZonedTimeError } from './zoned';
+import {
+  zonedToInstant,
+  hasExplicitOffset,
+  instantToZoned,
+  shiftDaysPreservingLocalTime,
+  calendarDaysBetween,
+  ZonedTimeError,
+} from './zoned';
 
 describe('zonedToInstant', () => {
   it('interprets a naive time in the given zone', () => {
@@ -43,5 +50,65 @@ describe('zonedToInstant', () => {
   it('throws on malformed input rather than yielding Invalid Date', () => {
     expect(() => zonedToInstant('not-a-date', 'UTC')).toThrow(ZonedTimeError);
     expect(() => zonedToInstant('2026-03-29T08:15:00', 'Mars/Olympus')).toThrow(ZonedTimeError);
+  });
+});
+
+describe('instantToZoned', () => {
+  it('round-trips a naive local time', () => {
+    const naive = '2026-11-04T17:00:00';
+    const instant = zonedToInstant(naive, 'America/Detroit');
+    expect(instantToZoned(instant, 'America/Detroit')).toBe(naive);
+  });
+
+  it('renders local midnight as 00, not 24', () => {
+    const instant = zonedToInstant('2026-07-04T00:00:00', 'America/Chicago');
+    expect(instantToZoned(instant, 'America/Chicago')).toBe('2026-07-04T00:00:00');
+  });
+
+  it('shows the same instant differently in two zones', () => {
+    const instant = new Date('2026-03-01T12:00:00Z');
+    expect(instantToZoned(instant, 'UTC')).toBe('2026-03-01T12:00:00');
+    expect(instantToZoned(instant, 'America/Los_Angeles')).toBe('2026-03-01T04:00:00');
+  });
+});
+
+describe('shiftDaysPreservingLocalTime', () => {
+  it('keeps the wall clock across a spring-forward boundary', () => {
+    // Naive arithmetic (+14 * 86_400_000 ms) lands this at 18:00.
+    const before = zonedToInstant('2026-03-05T17:00:00', 'America/Detroit');
+    const after = shiftDaysPreservingLocalTime(before, 14, 'America/Detroit');
+    expect(instantToZoned(after, 'America/Detroit')).toBe('2026-03-19T17:00:00');
+    expect(after.getTime() - before.getTime()).not.toBe(14 * 86_400_000);
+  });
+
+  it('keeps the wall clock across a fall-back boundary', () => {
+    const before = zonedToInstant('2026-10-28T09:00:00', 'America/Detroit');
+    const after = shiftDaysPreservingLocalTime(before, 14, 'America/Detroit');
+    expect(instantToZoned(after, 'America/Detroit')).toBe('2026-11-11T09:00:00');
+  });
+
+  it('shifts backwards and across a year boundary', () => {
+    const before = zonedToInstant('2027-01-05T08:30:00', 'Europe/London');
+    const after = shiftDaysPreservingLocalTime(before, -10, 'Europe/London');
+    expect(instantToZoned(after, 'Europe/London')).toBe('2026-12-26T08:30:00');
+  });
+
+  it('refuses a fractional shift rather than rounding it silently', () => {
+    const t = zonedToInstant('2026-06-01T09:00:00', 'UTC');
+    expect(() => shiftDaysPreservingLocalTime(t, 1.5, 'UTC')).toThrow(ZonedTimeError);
+  });
+});
+
+describe('calendarDaysBetween', () => {
+  it('counts calendar days, not elapsed 24-hour periods', () => {
+    const from = zonedToInstant('2026-03-07T23:00:00', 'America/Detroit');
+    const to = zonedToInstant('2026-03-08T01:00:00', 'America/Detroit');
+    expect(calendarDaysBetween(from, to, 'America/Detroit')).toBe(1);
+  });
+
+  it('is the inverse of the shift', () => {
+    const from = zonedToInstant('2026-06-08T09:00:00', 'America/Detroit');
+    const to = shiftDaysPreservingLocalTime(from, 364, 'America/Detroit');
+    expect(calendarDaysBetween(from, to, 'America/Detroit')).toBe(364);
   });
 });

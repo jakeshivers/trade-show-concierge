@@ -26,6 +26,17 @@ export const showStatusEnum = pgEnum('show_status', [
   'cancelled',
 ]);
 
+/**
+ * The intake transitions worth recording. `proposed` is the entry point, and
+ * `cloned` is a proposal too — it just arrives pre-filled from a prior year.
+ */
+export const showDecisionEnum = pgEnum('show_decision', [
+  'proposed',
+  'cloned',
+  'committed',
+  'declined',
+]);
+
 export const taskStatusEnum = pgEnum('task_status', [
   'not_started',
   'in_progress',
@@ -341,6 +352,36 @@ export const shows = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('shows_org_starts_idx').on(t.orgId, t.startsOn)],
+);
+
+/**
+ * Show intake decisions — append-only.
+ *
+ * SCOPE.md §5: "should we do this show?" is the question the ROI loop exists to
+ * answer, and the answer is worth as much when it was *no*. A status column alone
+ * forgets: it can say a show is `cancelled` but not that we declined it in March
+ * because the booth cost doubled and last year's pipeline was thin. So each
+ * transition is a row, with the deciding actor and a written rationale, and the
+ * `shows.status` column is the projection of the latest one.
+ *
+ * A declined prospect is therefore a permanent record rather than a deleted row.
+ */
+export const showDecisions = pgTable(
+  'show_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    decision: showDecisionEnum('decision').notNull(),
+    /** Never null: a decision with no stated reason is the thing this table is against. */
+    rationale: text('rationale').notNull(),
+    decidedById: uuid('decided_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Set when the show was created by cloning another. */
+    clonedFromId: uuid('cloned_from_id').references(() => shows.id, { onDelete: 'set null' }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('show_decisions_show_idx').on(t.showId, t.decidedAt)],
 );
 
 /* -------------------------------- readiness -------------------------------- */

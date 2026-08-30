@@ -85,3 +85,68 @@ export function zonedToInstant(naive: string, timeZone: string): Date {
   const refined = offsetMsAt(first, timeZone);
   return refined === offset ? first : new Date(asIfUtc.getTime() - refined);
 }
+
+/**
+ * Render an instant as the naive local datetime a person in `timeZone` reads
+ * off the wall — `"2026-11-04T17:00:00"`, no offset. The inverse of
+ * `zonedToInstant`, and the halfway point of any calendar arithmetic.
+ */
+export function instantToZoned(instant: Date, timeZone: string): string {
+  if (Number.isNaN(instant.getTime())) {
+    throw new ZonedTimeError('Invalid instant');
+  }
+  let parts;
+  try {
+    parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour12: false,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    }).formatToParts(instant);
+  } catch {
+    throw new ZonedTimeError(`Unknown time zone: "${timeZone}"`);
+  }
+  const get = (type: string) => parts.find((p) => p.type === type)!.value;
+  // Intl renders midnight as hour "24" under hour12:false in some ICU versions.
+  const hour = get('hour') === '24' ? '00' : get('hour');
+  return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}:${get('second')}`;
+}
+
+/**
+ * Move an instant forward by whole calendar days, keeping the local clock time.
+ *
+ * Adding `days * 86_400_000` milliseconds is the obvious implementation and it is
+ * wrong across a DST boundary: a 5:00pm advance-order deadline shifted 364 days
+ * that way lands at 4:00pm or 6:00pm. An hour is usually survivable; a deadline
+ * that crosses midnight is not, and being an hour off is exactly the failure the
+ * deadline engine (SCOPE.md §5a) exists to prevent. So the shift is done on the
+ * local calendar and re-resolved to an instant against the zone.
+ */
+export function shiftDaysPreservingLocalTime(
+  instant: Date,
+  days: number,
+  timeZone: string,
+): Date {
+  if (!Number.isInteger(days)) {
+    throw new ZonedTimeError(`Day shift must be a whole number of days, got ${days}`);
+  }
+  const naive = instantToZoned(instant, timeZone);
+  const [date, clock] = naive.split('T');
+  const [y, m, d] = date.split('-').map(Number);
+  const shifted = new Date(Date.UTC(y, m - 1, d + days));
+  const iso = shifted.toISOString().slice(0, 10);
+  return zonedToInstant(`${iso}T${clock}`, timeZone);
+}
+
+/** Whole calendar days between two instants, as read in `timeZone`. */
+export function calendarDaysBetween(from: Date, to: Date, timeZone: string): number {
+  const dayOf = (d: Date) => {
+    const [y, m, day] = instantToZoned(d, timeZone).slice(0, 10).split('-').map(Number);
+    return Date.UTC(y, m - 1, day);
+  };
+  return Math.round((dayOf(to) - dayOf(from)) / 86_400_000);
+}

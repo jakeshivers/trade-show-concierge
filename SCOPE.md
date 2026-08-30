@@ -106,6 +106,17 @@ used. Clerk's instance settings remain the primary control; `org_login_policies`
 org's recorded, versioned intent and the input to our second gate. It fails closed: under
 an allowlist, an account whose identities cannot be read is refused, never admitted.
 
+**What "see own shows" actually scopes** — corrected at step 8. The table above draws
+its line around *travel*, not around shows, and reading it as "a Member may only see
+shows they are staffed on" is the wrong split: the show calendar is the org's plan, and
+hiding next quarter's calendar from the engineer who will staff it makes the app less
+useful without making anything safer. So the show list and every planning fact on a show
+— tasks, deadlines, roster, assets, the intake record — are org-wide. What is scoped is
+the per-person rows hanging off a show: flights, lodging assignments, and travel
+requests, narrowed to the actor unless they may approve travel. The narrowing happens in
+the query (`travelerScope` in `src/lib/shows/store.ts`), not in the markup, so a Member's
+page never contains a colleague's fare in the first place.
+
 **Impersonation** (admin support tool) lands post-v1, and only with three rules: the
 session is banner-marked, every action logs *both* identities, and **impersonation can
 never authorize a purchase or approve a travel request**. The separation-of-duties rule
@@ -206,8 +217,8 @@ Modeling choices worth calling out:
 
 | Area | What it does |
 |---|---|
-| **Show calendar** | Create/edit shows; venue, booth, budget, goals, move-in/out windows. **Clone a prior show** with its tasks, deadlines, and shipping plan — calendars are ~80% the same events yearly. |
-| **Show intake** | "Should we do this show?" request → `prospect` status → commit or decline. Closes the ROI loop: last year's numbers argue for next year's calendar. |
+| **Show calendar** | Create/edit shows; venue, booth, budget, goals, move-in/out windows. **Clone a prior show** with its tasks, deadlines, and asset reservations — calendars are ~80% the same events yearly. What a clone must *not* carry is the harder half; §5c. |
+| **Show intake** | "Should we do this show?" proposal → `prospect` status → commit or decline, each with a **written rationale kept permanently** in `show_decisions`. Closes the ROI loop: last year's numbers argue for next year's calendar, and the shows we declined argue hardest. §5c. |
 | **Readiness** | Weighted checklist with categories, owners, due dates. 0–100 score per show, rolled up to a portfolio view. Templates seed ~25 standard tasks. |
 | **Service deadlines** ⭐ | Exhibitor-manual deadlines with dollar penalties and escalating alerts. The highest-hard-dollar feature in the product. §5a. |
 | **Team & shifts** | Attendees per show, roles, confirm/decline, arrival windows. **Booth shift coverage by hour**, plus actual presence vs. roster. Double-booking detection across overlapping shows. |
@@ -314,6 +325,49 @@ Three further things the build settled:
   real deadline is mutually exclusive with applying a credit to that itinerary. The agent
   records the trade rather than hiding it. Attaching the credit at hold time is the fix,
   once the provider's hold payload is confirmed against a live response.
+
+---
+
+### 5c. Cloning and intake — what step 8 corrected
+
+Both features are about *records that survive a year*, and both turned out to be defined
+by what they refuse to do.
+
+**A clone is a draft, and it lands as a `prospect`.** Cloning drafts next year's show; it
+does not commit to one. That also means a Travel Manager can build next year's calendar
+for review without admin rights, while the commit stays an admin act.
+
+**A clone that copies too much is worse than no clone at all**, because the copied rows
+look like this year's facts. Three rules fell out of building it, and they live in the
+header of `src/lib/shows/clone.ts`:
+
+1. **Dates shift on the local calendar, not by elapsed milliseconds.** A 5:00pm
+   advance-order deadline moved 364 days by arithmetic lands at 4:00pm or 6:00pm across a
+   DST boundary — and a §5a deadline an hour early is a surcharge nobody can appeal.
+   `shiftDaysPreservingLocalTime` in `src/lib/datetime/zoned.ts` is the primitive.
+2. **Confirmation is never carried.** Every cloned deadline arrives *unconfirmed* and
+   every cloned attendee arrives *invited*. Last year's exhibitor manual is not evidence
+   about this year's, and a shifted date is a prediction until somebody re-reads the new
+   manual. Presenting last year's "yes" as this year's is precisely the mechanism by
+   which a $312,500 surcharge gets missed.
+3. **The "shipping plan" is not the shipments.** The original scope line said a clone
+   carries the shipping plan. In this schema a shipment row carries a carrier, a tracking
+   number, and a delivery history — copying one *fabricates a shipment*. What is
+   genuinely plannable is which assets are reserved and the deadlines that gate them, so
+   those clone and shipments do not. Flights, lodging with its confirmation codes,
+   expenses, leads, meetings, outcomes, and the booth number (halls reassign them) are
+   dropped for the same reason, and the clone screen lists them on the page rather than
+   in a tooltip.
+
+**Intake's value is in the declines.** `shows.status` can say a show is `cancelled`; it
+cannot say we passed on it in March because booth space rose 40% and last year sourced
+$190k against $61k all-in. So each transition is an append-only `show_decisions` row with
+the deciding actor and a required written rationale, `shows.status` is the projection of
+the latest one, and **a declined show is kept, never deleted**. Anyone may propose;
+only an admin commits or declines; the status change and its reason are written in one
+transaction, because a status with no recorded reasoning is the thing the table exists to
+prevent. Only a `prospect` is decidable — cancelling committed work has contracts and
+refunds attached and is a different decision, not this one.
 
 ---
 
@@ -689,7 +743,16 @@ invert phases A and C.
       screen at `/settings/security`. The correction is folded into §3 below:
       Clerk's session does not record *which* method signed it in, so our gate is
       a standing-credential check, not a sign-in-event check. 231 tests.
-- [ ] **8.** Show list · show detail tabs · My Itinerary · cloning · intake
+- [x] **8.** **Show list · show detail tabs · My Itinerary · cloning · intake.** The
+      planning core, read-only except for the two writes that are actually step 8's:
+      proposing/deciding a show and cloning one. Added `show_decisions` (append-only,
+      a written rationale required in both directions), `src/lib/shows/` — a pure clone
+      planner, pure intake validation, a visibility rule, and an org-scoped store — and
+      `shiftDaysPreservingLocalTime` / `calendarDaysBetween` in the datetime primitives.
+      Screens: `/shows`, `/shows/new`, `/shows/[id]` with five tabs, `/shows/[id]/clone`,
+      `/itinerary`. Two corrections folded into §3 and §5c above: "see own shows" scopes
+      *travel*, not the calendar; and a clone that carries confirmations or shipments
+      manufactures facts. 267 tests.
 - [ ] **9.** Travel request UI + approvals queue (the UI for steps 4–5)
 - [ ] **10.** Readiness — checklist CRUD, templates, scoring, portfolio rollup
 - [ ] **11.** **Service manual deadline engine** (§5a) — registry, penalties, escalating alerts

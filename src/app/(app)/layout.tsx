@@ -14,11 +14,13 @@ import {
 /**
  * The app shell.
  *
- * It is the first screen in the project, and it is deliberately thin: steps 8–12
- * build the planning core, and a shell that guesses at their navigation now would
- * be rebuilt then. What it does own is the thing step 7 is actually for — showing,
- * on every page, *who the server thinks you are and how it decided that*. An auth
- * seam you cannot see is an auth seam you debug by print statement.
+ * The nav grows one entry per screen that actually exists — step 8 added Shows
+ * and My itinerary; steps 9–12 add the rest. A nav that advertises unbuilt pages
+ * reads as a broken product rather than an unfinished one.
+ *
+ * What the shell owns beyond that is the thing step 7 is for — showing, on every
+ * page, *who the server thinks you are and how it decided that*. An auth seam you
+ * cannot see is an auth seam you debug by print statement.
  */
 
 type NavItem = { href: string; label: string; see: (actor: Actor) => boolean };
@@ -34,6 +36,8 @@ export const dynamic = 'force-dynamic';
 
 const NAV: NavItem[] = [
   { href: '/', label: 'Overview', see: () => true },
+  { href: '/shows', label: 'Shows', see: () => true },
+  { href: '/itinerary', label: 'My itinerary', see: () => true },
   { href: '/settings/security', label: 'Security', see: isAdmin },
 ];
 

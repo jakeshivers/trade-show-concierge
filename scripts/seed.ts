@@ -179,7 +179,7 @@ async function main() {
   const [dana, marcus, priya, tomas, reese, ingrid] = people;
 
   console.log('· shows');
-  const [automate, medtech] = await db
+  const [automate, medtech, packexpo, roboticsSummit] = await db
     .insert(s.shows)
     .values([
       {
@@ -223,8 +223,106 @@ async function main() {
         budgetCents: 6_200_000,
         goals: 'Regulated-market positioning; 40 qualified leads.',
       },
+      {
+        // A prospect: intake's reason for existing. Nobody has decided yet, and
+        // the decision row carries the argument for considering it at all.
+        orgId: org.id,
+        name: 'PACK EXPO International 2027',
+        status: 'prospect',
+        website: 'https://www.packexpointernational.com/',
+        venueName: 'McCormick Place',
+        city: 'Chicago',
+        region: 'IL',
+        country: 'US',
+        airportCode: 'ORD',
+        timezone: 'America/Chicago',
+        startsOn: at(310, 9),
+        endsOn: at(313, 16),
+        boothSize: '10x20',
+        budgetCents: 7_800_000,
+        goals: 'Adjacent-market test: packaging automation buyers.',
+      },
+      {
+        // Declined, and still here. The value of the intake record is entirely in
+        // the ones we said no to — a deleted row cannot argue with next year.
+        orgId: org.id,
+        name: 'Robotics Summit & Expo 2026',
+        status: 'cancelled',
+        venueName: 'Boston Convention & Exhibition Center',
+        city: 'Boston',
+        region: 'MA',
+        country: 'US',
+        airportCode: 'BOS',
+        timezone: 'America/New_York',
+        startsOn: at(84, 9),
+        endsOn: at(85, 16),
+        boothSize: '10x10',
+        budgetCents: 3_400_000,
+        goals: 'Considered for developer-audience reach.',
+      },
     ])
     .returning();
+
+  console.log('· intake decisions');
+  // shows.status is the projection; these rows are the record. SCOPE.md §5.
+  await db.insert(s.showDecisions).values([
+    {
+      showId: automate.id,
+      decision: 'proposed',
+      rationale:
+        'Our largest source of qualified automotive and logistics leads two years running.',
+      decidedById: dana.id,
+      decidedAt: at(-210),
+    },
+    {
+      showId: automate.id,
+      decision: 'committed',
+      rationale:
+        'Committed the 20x20 island. 2024 sourced $2.1M pipeline against $138k all-in; the island pays for itself at half that.',
+      decidedById: dana.id,
+      decidedAt: at(-200),
+    },
+    {
+      showId: medtech.id,
+      decision: 'proposed',
+      rationale:
+        'Regulated-market positioning; sales asked for a credible medical-device presence.',
+      decidedById: ingrid.id,
+      decidedAt: at(-60),
+    },
+    {
+      showId: medtech.id,
+      decision: 'committed',
+      rationale:
+        'Committed a 10x20 inline. Smaller bet than Automate, and the first year is a read on whether the audience converts.',
+      decidedById: dana.id,
+      decidedAt: at(-52),
+    },
+    {
+      showId: packexpo.id,
+      decision: 'proposed',
+      rationale:
+        'Packaging automation is adjacent to our arm business and three inbound deals last quarter came from that segment. Worth a 10x20 test.',
+      decidedById: ingrid.id,
+      decidedAt: at(-14),
+    },
+    {
+      showId: roboticsSummit.id,
+      decision: 'proposed',
+      rationale:
+        'Developer-audience reach; engineering wanted a recruiting and community presence.',
+      decidedById: reese.id,
+      decidedAt: at(-95),
+    },
+    {
+      showId: roboticsSummit.id,
+      decision: 'declined',
+      rationale:
+        'Declined: booth space rose 40% year over year and 2025 sourced $190k pipeline against $61k all-in — the worst ratio on the calendar. Revisit if we ship the developer SDK.',
+      decidedById: dana.id,
+      decidedAt: at(-88),
+    },
+  ]);
 
   console.log('· service manual deadlines');
   // The advance order deadline is the expensive one: 25-40% surcharge after it.
@@ -440,6 +538,62 @@ async function main() {
     { orgId: org.id, name: 'Branded water bottle', sku: 'SWAG-BTL-01', quantityOnHand: 95, lowStockThreshold: 150, unitCostCents: 640 },
   ]);
 
+  console.log('· flights (manually entered — nothing here came from a provider)');
+  // My Itinerary needs something to show, and a manually recorded flight is a real
+  // product state: `bookingProvider` is null, so nothing downstream can mistake
+  // these for anything the agent bought. Times are airport-local; see
+  // src/lib/datetime/zoned.ts.
+  await db.insert(s.flights).values([
+    {
+      showId: automate.id,
+      userId: priya.id,
+      airlineCode: 'DL',
+      airlineName: 'Delta Air Lines',
+      flightNumber: '2218',
+      originAirport: 'SFO',
+      destinationAirport: 'DTW',
+      scheduledDeparture: at(51, 7),
+      scheduledArrival: at(51, 15),
+      seat: '14A',
+      cabin: 'economy',
+      priceCents: 48_600,
+      costCenterId: se.id,
+      bookingReference: 'JHQ4M2',
+    },
+    {
+      showId: automate.id,
+      userId: priya.id,
+      airlineCode: 'DL',
+      airlineName: 'Delta Air Lines',
+      flightNumber: '1141',
+      originAirport: 'DTW',
+      destinationAirport: 'SFO',
+      scheduledDeparture: at(55, 18),
+      scheduledArrival: at(55, 21),
+      seat: '22A',
+      cabin: 'economy',
+      priceCents: 48_600,
+      costCenterId: se.id,
+      bookingReference: 'JHQ4M2',
+    },
+    {
+      showId: automate.id,
+      userId: dana.id,
+      airlineCode: 'AA',
+      airlineName: 'American Airlines',
+      flightNumber: '318',
+      originAirport: 'SFO',
+      destinationAirport: 'DTW',
+      scheduledDeparture: at(50, 6),
+      scheduledArrival: at(50, 14),
+      seat: '8C',
+      cabin: 'economy',
+      priceCents: 52_100,
+      costCenterId: mkt.id,
+      bookingReference: 'RB80KP',
+    },
+  ]);
+
   console.log('· expenses');
   await db.insert(s.expenses).values([
     { showId: automate.id, category: 'Booth space', description: '20x20 island, Automate 2026', amountCents: 5_600_000, paid: true, costCenterId: mkt.id, incurredOn: at(-40) },
@@ -574,7 +728,7 @@ async function main() {
 
   const counts = {
     users: people.length,
-    shows: 2,
+    shows: 4,
     costCenters: costCenters.length,
     policyLayers: 3,
     assets: assetRows.length,

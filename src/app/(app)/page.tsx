@@ -3,22 +3,36 @@ import { getActor, authMode, isAdmin, canApprove } from '@/lib/auth/actor';
 import { readLoginPolicy } from '@/lib/auth/login-policy-store';
 import { formatStrategies } from '@/lib/auth/login-methods';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
+import { getItinerary, listShows } from '@/lib/shows/store';
 import { getDb } from '@/db';
+import { Badge, Card, Row, dateRange, daysUntil, place, readinessTone } from './_components/ui';
 
 /**
- * The overview. It reports the state of the seam and the spine, and it does not
- * pretend the planning screens exist yet — those are steps 8–12. A page that
- * showed empty "Shows" and "Itinerary" cards would read as a broken product
- * rather than an unbuilt one.
+ * The overview.
+ *
+ * As of step 8 there is real work to point at, so it leads with it: what needs
+ * deciding, what is coming up, and where you personally are going. It still ends
+ * with the state of the seam and the spine, because the spine remains headless
+ * until step 9 and a person needs to be told that rather than left to infer it
+ * from an absence.
  */
 
 export default async function OverviewPage() {
   const actor = await getActor();
   const db = getDb();
-  const [policy, purchasing] = await Promise.all([
+  const [policy, purchasing, shows, trips] = await Promise.all([
     readLoginPolicy(actor.orgId, db),
     purchasingStatus(actor.orgId, db),
+    listShows(actor),
+    getItinerary(actor),
   ]);
+
+  const prospects = shows.filter((s) => s.status === 'prospect');
+  const upcoming = shows
+    .filter((s) => ['committed', 'planning', 'ready', 'live'].includes(s.status))
+    .filter((s) => daysUntil(s.endsOn) >= 0)
+    .slice(0, 4);
+  const myNext = trips.filter((t) => daysUntil(t.show.endsOn) >= 0).slice(0, 3);
 
   const capabilities = [
     'See your shows, flights, lodging, and itinerary',
@@ -48,6 +62,88 @@ export default async function OverviewPage() {
           the identity provider.
         </p>
       </section>
+
+      {prospects.length > 0 && (
+        <Card title="Awaiting a decision">
+          <ul className="space-y-1">
+            {prospects.map((s) => (
+              <li key={s.id}>
+                <Link href={`/shows/${s.id}`} className="font-medium hover:underline">
+                  {s.name}
+                </Link>{' '}
+                <span className="text-zinc-500">
+                  {dateRange(s.startsOn, s.endsOn, s.timezone)} · {place(s)}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-2 text-xs text-zinc-500">
+            {isAdmin(actor)
+              ? 'You can commit or decline these, with a written reason.'
+              : 'An admin commits or declines these.'}
+          </p>
+        </Card>
+      )}
+
+      <Card title="Next up">
+        {upcoming.length === 0 ? (
+          <p className="text-zinc-500">Nothing on the calendar. </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {upcoming.map((s) => (
+              <li key={s.id} className="flex flex-wrap items-baseline gap-x-3">
+                <Link href={`/shows/${s.id}`} className="font-medium hover:underline">
+                  {s.name}
+                </Link>
+                <span className="text-zinc-500">
+                  {dateRange(s.startsOn, s.endsOn, s.timezone)} · {place(s)}
+                </span>
+                {s.taskCount > 0 && (
+                  <Badge tone={readinessTone(s.readiness)}>{s.readiness}% ready</Badge>
+                )}
+                <span className="ml-auto text-xs text-zinc-500">in {daysUntil(s.startsOn)} days</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="mt-3 text-xs">
+          <Link className="underline" href="/shows">
+            All shows
+          </Link>
+        </p>
+      </Card>
+
+      <Card title="Where you're going">
+        {myNext.length === 0 ? (
+          <p className="text-zinc-500">
+            You are not staffed on an upcoming show.{' '}
+            <Link className="underline" href="/itinerary">
+              My itinerary
+            </Link>
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {myNext.map((t) => (
+              <li key={t.show.id} className="flex flex-wrap items-baseline gap-x-3">
+                <Link href={`/shows/${t.show.id}`} className="font-medium hover:underline">
+                  {t.show.name}
+                </Link>
+                <span className="text-zinc-500">
+                  {t.flights.length
+                    ? `${t.flights.length} flights booked`
+                    : 'no flights booked yet'}
+                  {t.lodging.length ? ` · ${t.lodging[0].hotelName}` : ' · no room yet'}
+                </span>
+                <span className="ml-auto text-xs">
+                  <Link className="underline" href="/itinerary">
+                    details
+                  </Link>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card title="What you can do here">
         <ul className="list-disc space-y-1 pl-5">
@@ -94,9 +190,10 @@ export default async function OverviewPage() {
 
       <Card title="The booking spine runs headless">
         <p>
-          Steps 1&ndash;6 built the part that spends money, and it has no screens yet: the
-          travel request UI and the approvals queue land at step 9. Until then the whole
-          loop is legible from the command line.
+          Steps 1&ndash;6 built the part that spends money, and it still has no screens: the
+          travel request form and the approvals queue land at step 9. Until then the whole
+          loop is legible from the command line, and the Travel tab on a show shows what it
+          has recorded.
         </p>
         <ul className="mt-3 space-y-1 font-mono text-xs">
           <li>pnpm booking:dry-run</li>
@@ -108,20 +205,4 @@ export default async function OverviewPage() {
   );
 }
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
-      <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">{title}</h2>
-      <div className="mt-3 text-sm text-zinc-700 dark:text-zinc-300">{children}</div>
-    </section>
-  );
-}
 
-function Row({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="flex flex-wrap gap-x-2 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800">
-      <span className="w-48 shrink-0 text-zinc-500">{label}</span>
-      <span>{children}</span>
-    </div>
-  );
-}
