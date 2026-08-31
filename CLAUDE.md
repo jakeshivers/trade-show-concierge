@@ -14,7 +14,8 @@ admin-defined spend and schedule constraints.
   engine and ticket-credit recovery are the differentiators.
 - **`UI-REWORK.md`** — proposed, not started, gates nothing. The app layer's deferred
   consolidation, measured, plus one framing defect on the roster. Needs a scope call
-  (`SCOPE.md` §11.11). Read it before adding a sixth `forms.tsx`.
+  (`SCOPE.md` §11.11); step 12.5 was taken first, deliberately. Read it before adding a
+  sixth `forms.tsx`.
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
@@ -329,27 +330,56 @@ is deliberately deferred until the standard list has been used and argued with, 
 templates card says on the page. The nav still grows one entry per screen
 that exists.
 
-**Outstanding:** the Duffel adapter — search, hold, *and now purchase* — is verified
-against fixtures and mocked HTTP written to the published v2 schema, not a live
-response. Nothing has ever been bought. A free test key from duffel.com would confirm
-it end to end; the normalizer and purchase tests should pass unchanged against recorded
-real responses. Purchasing with that key would produce `live_mode: false` orders, which
-the pipeline correctly records as not-spend.
+**Outstanding — and step 12.5 built the tools to close it.** The Duffel adapter is still
+verified only against fixtures and mocked HTTP written to the published v2 schema.
+Nothing has ever been bought. What is new is that the loop can now be opened:
+`pnpm duffel:capture` records real responses into `fixtures/live/` and
+`tests/duffel-conformance.test.ts` checks our wire types and the unmodified normalizer
+against them, skipping cleanly when there are no captures so a clean clone still needs
+zero keys.
 
-The credit path is the least-verified part of that: `available_airline_credits` (the
-credit *values* on an offer) and `airline_credits` on the order payload are written to
-what the v2 schema implies, and a live response is what would confirm the field names.
-The adapter is built so a wrong guess fails loudly rather than quietly — it refuses to
-purchase when an offer names a credit without its value, so the worst case is an
-escalation to a human, not a fare paid over an unused credit.
+**Why that matters more than it sounds:** `duffel/fixtures.ts` is the single source for
+the unit tests, the `recorded` provider, *and* the seed's travel requests. So `pnpm test`,
+`pnpm booking:dry-run` and every seeded booking all validate against payloads we invented.
+That is a closed loop — it proves internal consistency and structurally cannot catch a
+wrong field name.
 
-Clerk is in the same position as of step 7: the seam, the linking, and the login-method
-gate are tested against a mocked `@clerk/nextjs/server`, and no real Clerk session has
-ever reached this app. A free dev instance would confirm the three things worth
-confirming — that `auth()` under `proxy.ts` resolves in Next 16, that
-`externalAccounts[].provider` and `enterpriseAccounts[].provider` carry the slugs
-`normalizeProvider()` expects, and that an impersonation session surfaces `actor.sub`
-where `clerk.ts` reads it.
+**The credit path is where that bites, and doc research says it is probably already
+broken.** `wire.ts` declares two credit fields and hedges between them:
+`available_airline_credit_ids` (string ids — real, three independent doc reads agree, and
+`normalize.ts` reads it) and `available_airline_credits` (objects carrying values — absent
+from the published Offer schema). `client.ts:resolveCredits` reads **only** the second and
+throws when it is empty, so if it is fictional then **every credit-first purchase has
+always escalated to a human and §5b has never once fired.** It fails loudly, which is
+exactly why nothing caught it. The docs describe credit values living on the credit
+resource (`GET /air/airline_credits/:id`) and credits applying through the order's
+`payments` array as `{type: "airline_credit", airline_credit_id, …}` rather than the
+top-level `airline_credits: [{id}]` we send at `client.ts:440`. A third suspect: the
+adapter *computes* `creditAppliedCents` instead of reading back what the carrier applied,
+which the ground rule below forbids.
+
+None of that is confirmed. Doc sources contradicted each other once during research, so
+**the live key is the arbiter** — capture first, change code second. The three questions
+are labelled Q1/Q2/Q3 in `scripts/duffel-capture.ts` and asserted in the conformance
+suite, each failure naming the file, the line, and the fix.
+
+Clerk is in the same position, and `pnpm clerk:verify` is its equivalent: it reads the
+Backend API and prints what really comes back next to what the code assumes. Four claims,
+none yet confirmed — that `externalAccounts[].provider` and `enterpriseAccounts[].provider`
+carry slugs `normalizeProvider()`'s `oauth_|saml_|oidc_|custom_` strip recognises (if not,
+the strip silently no-ops and an org permitting Okta refuses the person using Okta); that
+those identity arrays are always arrays and never `undefined` (`credentialsHeld` iterates
+them directly, so `undefined` is a 500 rather than the promised fail-closed refusal); that
+an impersonation session surfaces `actor.sub` where `clerk.ts` reads it — **a path with
+zero test coverage today, since every test passes `actor: null`**; and that `auth()`
+resolves under `proxy.ts` in Next 16, whose Clerk branch is also untested. Enterprise SSO
+may need a paid plan; if it is unreachable that half stays unverified and this file will
+say so rather than implying otherwise.
+
+One Clerk bug *was* confirmed and fixed without any key: `authMode()` returned `'dev'`
+when exactly one of the two keys was set, so a deployment with the publishable key
+injected and the secret key forgotten served `DEV_ACTOR_EMAIL`'s seeded user to everyone,
+silently. One key is now `AuthConfigError`.
 
 ## Ground rules that are easy to violate
 
@@ -484,6 +514,9 @@ pnpm deadlines        # the deadline register, its exposure, and tonight's alert
 pnpm deadlines --sweep # write those alerts; run twice, nothing is written the second time
 pnpm roster           # booth coverage everywhere: target, assigned, who can actually work it
 pnpm roster <show id> # one show, shift by shift
+pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/ (needs a test key)
+pnpm duffel:capture --search   # stop after search; create no orders
+pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
