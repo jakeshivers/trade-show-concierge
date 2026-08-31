@@ -2,7 +2,12 @@ import Link from 'next/link';
 import { getActor, canApprove } from '@/lib/auth/actor';
 import { listRequests } from '@/lib/travel/queue';
 import { selectProviderOrNull } from '@/lib/travel/provider';
-import { Card, Empty, LinkButton } from '../_components/ui';
+import {
+  Card,
+  Empty,
+  LinkButton,
+  PageHeader,
+} from '../_components/ui';
 import { RequestRow } from './_components';
 
 /**
@@ -23,29 +28,29 @@ export default async function TravelPage() {
 
   return (
     <div className="space-y-6">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">My travel</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+      <PageHeader
+        title="My travel"
+        blurb={
+          <>
             Requests you opened or are flying on. An approver sees everyone&rsquo;s on the{' '}
             <Link href="/travel/approvals" className="underline">
               approvals queue
             </Link>
             .
-          </p>
-        </div>
-        <LinkButton href="/travel/new">New request</LinkButton>
-      </header>
+          </>
+        }
+        action={<LinkButton href="/travel/new">New request</LinkButton>}
+      />
 
       {'unavailable' in provider && (
-        <p className="rounded-md bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <p className="rounded-md bg-warn-soft px-3 py-2 text-xs text-warn">
           <strong>No flight provider is configured</strong>, so nothing can be searched. Requests
           can still be opened — they are yours, not the airline&rsquo;s. {provider.unavailable}
         </p>
       )}
 
       {replayed && (
-        <p className="rounded-md bg-sky-100 px-3 py-2 text-xs text-sky-900 dark:bg-sky-950 dark:text-sky-200">
+        <p className="rounded-md bg-info-soft px-3 py-2 text-xs text-info">
           Offers come from the <code>recorded</code> provider — captured payloads replayed through
           the real normalizer. They are genuine past responses, not live availability, and nothing
           here can spend money.

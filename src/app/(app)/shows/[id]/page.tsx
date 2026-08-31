@@ -40,7 +40,7 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
           <Row label="Venue">
             {show.venueName ?? '—'}
             {show.venueAddress && (
-              <span className="block text-xs text-zinc-500">{show.venueAddress}</span>
+              <span className="block text-xs text-text-muted">{show.venueAddress}</span>
             )}
           </Row>
           <Row label="Location">
@@ -68,7 +68,7 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
               <Badge tone={readinessTone(detail.readiness.score)}>
                 {readinessLabel(detail.readiness.score)}
               </Badge>{' '}
-              <span className="text-zinc-500">
+              <span className="text-text-muted">
                 across {detail.readiness.counted}{' '}
                 {detail.readiness.counted === 1 ? 'task' : 'tasks'}
                 {detail.readiness.overdue > 0 && `, ${detail.readiness.overdue} past due`}
@@ -78,7 +78,7 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
             <Row label="Budget">{money(show.budgetCents)}</Row>
             <Row label="Recorded spend">
               {money(committedCents)}
-              <span className="block text-xs text-zinc-500">
+              <span className="block text-xs text-text-muted">
                 {expenses.length} expense {expenses.length === 1 ? 'line' : 'lines'}. The true-cost
                 rollup that folds in flights, lodging, and shipping lands at step 16.
               </span>
@@ -111,10 +111,10 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
         ) : (
           <ol className="space-y-3">
             {decisions.map(({ decision, by }) => (
-              <li key={decision.id} className="border-l-2 border-zinc-200 pl-3 dark:border-zinc-800">
+              <li key={decision.id} className="border-l-2 border-border pl-3">
                 <div className="flex flex-wrap items-baseline gap-2">
                   <Badge tone={TONE[decision.decision]}>{decision.decision}</Badge>
-                  <span className="text-xs text-zinc-500">
+                  <span className="text-xs text-text-muted">
                     {by?.fullName ?? 'Unknown'} · {decision.decidedAt.toLocaleDateString('en-US')}
                   </span>
                 </div>

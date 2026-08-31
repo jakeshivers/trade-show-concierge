@@ -20,18 +20,18 @@ import type { FormState } from '../../_components/form';
  */
 
 const field =
-  'w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950';
+  'w-full rounded-md border border-border-strong bg-panel p-2 text-sm';
 
 function Result({ state }: { state: FormState }) {
   if (state.error)
     return (
-      <p className="mt-2 rounded-md bg-rose-100 px-2 py-1.5 text-xs text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+      <p className="mt-2 rounded-md bg-bad-soft px-2 py-1.5 text-xs text-bad">
         {state.error}
       </p>
     );
   if (state.ok)
     return (
-      <p className="mt-2 rounded-md bg-emerald-100 px-2 py-1.5 text-xs text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200">
+      <p className="mt-2 rounded-md bg-good-soft px-2 py-1.5 text-xs text-good">
         {state.ok}
       </p>
     );
@@ -54,7 +54,7 @@ export function Search({
       <Button type="submit" disabled={pending || disabled}>
         {pending ? 'Searching…' : 'Search and evaluate'}
       </Button>
-      <p className="mt-1 text-xs text-zinc-500">
+      <p className="mt-1 text-xs text-text-muted">
         {disabled
           ? disabledReason
           : 'Searches, ranks against your policy, then books it or sends it for approval.'}
@@ -72,7 +72,7 @@ export function Confirm({ requestId }: { requestId: string }) {
       <Button type="submit" disabled={pending}>
         Confirm these constraints
       </Button>
-      <p className="mt-1 text-xs text-zinc-500">
+      <p className="mt-1 text-xs text-text-muted">
         Nothing is searched until a person signs off on what the parser read.
       </p>
       <Result state={state} />
@@ -112,7 +112,7 @@ export function Decide({
               className={field}
               placeholder="Break-glass justification — at least 20 characters"
             />
-            <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+            <p className="mt-1 text-xs text-warn">
               You opened this request. Self-approval is only possible if no other approver exists,
               and it is recorded as an exception rather than a normal approval.
             </p>
@@ -168,13 +168,13 @@ export function Cancel({ requestId, ticketed }: { requestId: string; ticketed: b
         {pending ? 'Cancelling…' : ticketed ? 'Close this record' : 'Cancel request'}
       </Button>
       {ticketed ? (
-        <p className="text-xs text-amber-700 dark:text-amber-400">
+        <p className="text-xs text-warn">
           This closes the record here and returns any credit the booking used. It does{' '}
           <strong>not</strong> cancel the ticket with the airline — voiding and refunding are not
           built yet, so call the carrier as well.
         </p>
       ) : (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-text-muted">
           Nothing was bought, so there is nothing to unwind with the airline.
         </p>
       )}

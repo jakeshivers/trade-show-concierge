@@ -4,7 +4,7 @@ import { getActor } from '@/lib/auth/actor';
 import { loadCloneSource, NotFoundError } from '@/lib/shows/store';
 import { canCloneShow } from '@/lib/shows/visibility';
 import { instantToZoned, shiftDaysPreservingLocalTime } from '@/lib/datetime/zoned';
-import { Card, dateRange } from '../../../_components/ui';
+import { Card, PageHeader, dateRange } from '../../../_components/ui';
 import { CloneForm } from './form';
 
 /**
@@ -21,7 +21,7 @@ export default async function CloneShowPage({ params }: { params: Promise<{ id: 
 
   if (!canCloneShow(actor)) {
     return (
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="text-sm text-text-muted">
         Cloning a show is a travel manager or admin capability.
       </p>
     );
@@ -46,14 +46,19 @@ export default async function CloneShowPage({ params }: { params: Promise<{ id: 
   return (
     <div className="space-y-6">
       <div>
-        <Link href={`/shows/${show.id}`} className="text-xs text-zinc-500 hover:underline">
+        <Link href={`/shows/${show.id}`} className="text-xs text-text-muted hover:underline">
           ← {show.name}
         </Link>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Clone this show</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Source: {show.name}, {dateRange(show.startsOn, show.endsOn, show.timezone)}. The clone
-          lands as a <strong>prospect</strong> — cloning drafts a show, it does not commit to one.
-        </p>
+        <PageHeader
+          title="Clone this show"
+          blurb={
+            <>
+              Source: {show.name}, {dateRange(show.startsOn, show.endsOn, show.timezone)}. The
+              clone lands as a <strong>prospect</strong> — cloning drafts a show, it does not
+              commit to one.
+            </>
+          }
+        />
       </div>
 
       <Card>

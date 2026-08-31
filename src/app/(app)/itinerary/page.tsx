@@ -5,6 +5,7 @@ import {
   Badge,
   Card,
   Empty,
+  PageHeader,
   dateRange,
   daysUntil,
   money,
@@ -32,12 +33,14 @@ export default async function ItineraryPage() {
 
   return (
     <div className="space-y-8">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">My itinerary</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Every show you are staffed on, with your flights, your room, and your shifts.
-        </p>
-      </header>
+      <PageHeader
+        title="My itinerary"
+        blurb={
+          <>
+            Every show you are staffed on, with your flights, your room, and your shifts.
+          </>
+        }
+      />
 
       {upcoming.length === 0 && (
         <Empty>
@@ -52,7 +55,7 @@ export default async function ItineraryPage() {
 
       {past.length > 0 && (
         <section className="space-y-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">Past</h2>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">Past</h2>
           {past.map((trip) => (
             <Trip key={trip.show.id} trip={trip} />
           ))}
@@ -76,10 +79,10 @@ function Trip({ trip }: { trip: Trip }) {
           {show.name}
         </Link>
         <Badge tone={attendee.status === 'confirmed' ? 'good' : 'info'}>{attendee.status}</Badge>
-        <span className="text-zinc-500">{attendee.role}</span>
-        {days > 0 && <span className="ml-auto text-xs text-zinc-500">in {days} days</span>}
+        <span className="text-text-muted">{attendee.role}</span>
+        {days > 0 && <span className="ml-auto text-xs text-text-muted">in {days} days</span>}
       </div>
-      <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="mt-1 text-sm text-text-muted">
         {dateRange(show.startsOn, show.endsOn, tz)} · {place(show)}
         {show.venueName && ` · ${show.venueName}`}
         {show.boothNumber && ` · booth ${show.boothNumber}`}
@@ -97,7 +100,7 @@ function Trip({ trip }: { trip: Trip }) {
                     {f.airlineCode} {f.flightNumber}
                   </span>{' '}
                   {f.originAirport} → {f.destinationAirport}
-                  <span className="block text-xs text-zinc-500">
+                  <span className="block text-xs text-text-muted">
                     {showDateTime(f.scheduledDeparture, tz)}
                     {f.seat && ` · seat ${f.seat}`}
                     {f.bookingReference && ` · ${f.bookingReference}`}
@@ -116,12 +119,12 @@ function Trip({ trip }: { trip: Trip }) {
               {lodging.map((l) => (
                 <li key={l.id}>
                   <span className="font-medium">{l.hotelName}</span>
-                  <span className="block text-xs text-zinc-500">
+                  <span className="block text-xs text-text-muted">
                     {showDateTime(l.checkIn, tz)} → {showDateTime(l.checkOut, tz)}
                     {l.confirmationCode && ` · #${l.confirmationCode}`}
                     {l.nightlyRateCents != null && ` · ${money(l.nightlyRateCents)}/night`}
                   </span>
-                  {l.address && <span className="block text-xs text-zinc-500">{l.address}</span>}
+                  {l.address && <span className="block text-xs text-text-muted">{l.address}</span>}
                 </li>
               ))}
             </ul>
@@ -132,7 +135,7 @@ function Trip({ trip }: { trip: Trip }) {
           {shifts.length === 0 ? (
             <Empty>No shifts assigned. Coverage planning is step 12.</Empty>
           ) : (
-            <ul className="space-y-1 text-xs text-zinc-600 dark:text-zinc-400">
+            <ul className="space-y-1 text-xs text-text-muted">
               {shifts.map((sh) => (
                 <li key={sh.id}>
                   {showDateTime(sh.startsAt, tz)} → {showDateTime(sh.endsAt, tz)}
@@ -166,7 +169,7 @@ function Trip({ trip }: { trip: Trip }) {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">{title}</h3>
+      <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-text-muted">{title}</h3>
       <div className="text-sm">{children}</div>
     </div>
   );

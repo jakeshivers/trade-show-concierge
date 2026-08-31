@@ -53,7 +53,7 @@ export function RequestForm({
   return (
     <form action={action} className="space-y-5">
       {state.error && (
-        <p className="rounded-md bg-rose-100 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <p className="rounded-md bg-bad-soft px-3 py-2 text-sm text-bad">
           {state.error}
         </p>
       )}
@@ -141,8 +141,8 @@ export function RequestForm({
         />
       </Field>
 
-      <fieldset className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
-        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+      <fieldset className="rounded-md border border-border p-4">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
           Outbound
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -155,8 +155,8 @@ export function RequestForm({
         </div>
       </fieldset>
 
-      <fieldset className="rounded-md border border-zinc-200 p-4 dark:border-zinc-800">
-        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+      <fieldset className="rounded-md border border-border p-4">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-text-muted">
           Return — leave blank for one way
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -192,7 +192,7 @@ export function RequestForm({
         <Button type="submit" disabled={pending}>
           {pending ? 'Opening…' : 'Open request'}
         </Button>
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-text-muted">
           This opens the request. Searching is the next step, and it is deliberate.
         </span>
       </div>

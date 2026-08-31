@@ -21,7 +21,7 @@ export function DecideForm({ showId }: { showId: string }) {
       <input type="hidden" name="showId" value={showId} />
       <label className="block">
         <span className="text-sm font-medium">Why?</span>
-        <span className="mt-0.5 block text-xs text-zinc-500">
+        <span className="mt-0.5 block text-xs text-text-muted">
           Recorded permanently against this show. A year from now this is the note that
           argues for — or against — doing it again.
         </span>
@@ -31,7 +31,7 @@ export function DecideForm({ showId }: { showId: string }) {
           required
           minLength={20}
           placeholder="Booth space rose 40% and last year sourced $190k against $61k all-in…"
-          className="mt-2 w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950"
+          className="mt-2 w-full rounded-md border border-border-strong bg-panel p-2 text-sm"
         />
       </label>
 

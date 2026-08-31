@@ -29,7 +29,7 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
               <span className="font-medium">
                 {m === 'unrestricted' ? 'Unrestricted' : 'Allowlist'}
               </span>
-              <span className="block text-zinc-500">
+              <span className="block text-text-muted">
                 {m === 'unrestricted'
                   ? 'Any sign-in method enabled for this instance is acceptable.'
                   : 'Only the methods checked below. Anything else on an account is refused.'}
@@ -61,7 +61,7 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
           required
           minLength={10}
           placeholder="e.g. Security review 2026-Q3: SSO only, passwords removed."
-          className="w-full rounded border border-zinc-300 bg-white p-2 dark:border-zinc-700 dark:bg-zinc-950"
+          className="w-full rounded border border-border-strong bg-panel p-2"
         />
       </label>
 
@@ -70,7 +70,7 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
       <button
         type="submit"
         disabled={pending}
-        className="rounded bg-zinc-900 px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+        className="rounded-lg bg-brand px-4 py-2 font-medium text-brand-fg hover:bg-brand-hover disabled:opacity-50"
       >
         {pending ? 'Saving…' : 'Save new version'}
       </button>

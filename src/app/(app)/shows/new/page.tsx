@@ -1,5 +1,8 @@
 import { getActor } from '@/lib/auth/actor';
-import { Card } from '../../_components/ui';
+import {
+  Card,
+  PageHeader,
+} from '../../_components/ui';
 import { IntakeForm } from './form';
 
 /**
@@ -15,13 +18,15 @@ export default async function NewShowPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Propose a show</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          This creates a <strong>prospect</strong>, not a commitment. An admin decides, and both
+      <PageHeader
+        title="Propose a show"
+        blurb={
+          <>
+            This creates a <strong>prospect</strong>, not a commitment. An admin decides, and both
           the yes and the no are recorded with their reasoning.
-        </p>
-      </header>
+          </>
+        }
+      />
 
       <Card>
         <IntakeForm defaultTimezone="America/Chicago" />

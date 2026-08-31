@@ -6,6 +6,7 @@ import {
   Badge,
   Card,
   Empty,
+  PageHeader,
   money,
   readinessLabel,
   readinessTone,
@@ -34,14 +35,16 @@ export default async function ReadinessPortfolio() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Readiness</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Every committed show, worst first. Ranked by how far behind pace each one is —
+      <PageHeader
+        title="Readiness"
+        blurb={
+          <>
+            Every committed show, worst first. Ranked by how far behind pace each one is —
           not by its score, because a low score a long way out is not a problem and a high
           score next week can be.
-        </p>
-      </header>
+          </>
+        }
+      />
 
       {rows.length === 0 ? (
         <Empty>
@@ -67,7 +70,7 @@ export default async function ReadinessPortfolio() {
                 note="Deadlines open and already past due. Not recoverable."
               />
             </div>
-            <p className="mt-3 text-xs text-zinc-500">
+            <p className="mt-3 text-xs text-text-muted">
               Pace is a straight line over the {PLANNING_WINDOW_DAYS} days before a show opens:
               halfway through the window, half the weighted checklist is expected to be done.
               It is a heuristic, said out loud rather than dressed up — what makes it useful is
@@ -95,7 +98,7 @@ const SEVERITY_TONE: Record<PortfolioRow['severity'], Tone> = {
 
 function ShowRow({ row }: { row: PortfolioRow }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-lg border border-border bg-panel p-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Link href={`/shows/${row.id}/readiness`} className="font-medium hover:underline">
           {row.name}
@@ -106,27 +109,27 @@ function ShowRow({ row }: { row: PortfolioRow }) {
         {row.behindBy !== null && row.behindBy > 0 && (
           <Badge tone={SEVERITY_TONE[row.severity]}>{row.behindBy} pts behind pace</Badge>
         )}
-        <span className="text-xs text-zinc-500">
+        <span className="text-xs text-text-muted">
           {row.daysUntil > 0
             ? `opens in ${row.daysUntil} days`
             : row.daysUntil === 0
               ? 'opens today'
               : `opened ${-row.daysUntil} days ago`}
         </span>
-        <span className="ml-auto text-xs text-zinc-500">
+        <span className="ml-auto text-xs text-text-muted">
           expected {row.expected}% by now
         </span>
       </div>
 
       {row.concerns.length === 0 ? (
-        <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">
+        <p className="mt-2 text-sm text-good">
           On pace, nothing overdue, nothing blocked.
         </p>
       ) : (
         <ul className="mt-2 space-y-1 text-sm">
           {row.concerns.map((c) => (
             <li key={c} className="flex gap-2">
-              <span className={row.severity === 'critical' ? 'text-rose-600' : 'text-amber-600'}>
+              <span className={row.severity === 'critical' ? 'text-bad' : 'text-warn'}>
                 •
               </span>
               <span>{c}</span>
@@ -151,11 +154,11 @@ function Fact({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={`text-lg font-semibold ${tone === 'bad' ? 'text-rose-700 dark:text-rose-400' : ''}`}>
+      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+      <div className={`text-lg font-semibold ${tone === 'bad' ? 'text-bad' : ''}`}>
         {value}
       </div>
-      {note && <div className="text-xs text-zinc-500">{note}</div>}
+      {note && <div className="text-xs text-text-muted">{note}</div>}
     </div>
   );
 }

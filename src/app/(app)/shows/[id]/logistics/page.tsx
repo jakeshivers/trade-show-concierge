@@ -27,16 +27,16 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
             {shipments.map((shipment) => (
               <li
                 key={shipment.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
               >
                 <span className="font-medium">{shipment.description}</span>
                 <Badge>{shipment.direction}</Badge>
                 <Badge>{shipment.status}</Badge>
-                <span className="text-zinc-500">{shipment.carrier.toUpperCase()}</span>
+                <span className="text-text-muted">{shipment.carrier.toUpperCase()}</span>
                 {shipment.trackingNumber && (
                   <span className="font-mono text-xs">{shipment.trackingNumber}</span>
                 )}
-                <span className="ml-auto text-xs text-zinc-500">
+                <span className="ml-auto text-xs text-text-muted">
                   must arrive {showDateTime(shipment.mustArriveBy, show.timezone)}
                 </span>
               </li>
@@ -53,17 +53,17 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
             {reservations.map(({ reservation, asset }) => (
               <li
                 key={reservation.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
               >
                 <span className="font-medium">{asset.name}</span>
                 {asset.assetTag && <span className="font-mono text-xs">{asset.assetTag}</span>}
                 <Badge tone={asset.condition === 'needs_repair' ? 'warn' : 'neutral'}>
                   {asset.condition.replace('_', ' ')}
                 </Badge>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-text-muted">
                   {money(asset.purchaseValueCents)} · {asset.storageLocation ?? 'location unknown'}
                 </span>
-                <span className="ml-auto text-xs text-zinc-500">
+                <span className="ml-auto text-xs text-text-muted">
                   {showDateTime(reservation.reservedFrom, show.timezone)} →{' '}
                   {showDateTime(reservation.reservedTo, show.timezone)}
                 </span>

@@ -1,6 +1,9 @@
 import { getActor } from '@/lib/auth/actor';
 import { costCentersFor, showsForRequest, travelersFor } from '@/lib/travel/queue';
-import { Card } from '../../_components/ui';
+import {
+  Card,
+  PageHeader,
+} from '../../_components/ui';
 import { RequestForm } from './form';
 
 /**
@@ -28,13 +31,15 @@ export default async function NewTravelRequestPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">New travel request</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          State the window you need to travel in, not a flight. The agent searches, ranks against
+      <PageHeader
+        title="New travel request"
+        blurb={
+          <>
+            State the window you need to travel in, not a flight. The agent searches, ranks against
           the policy that applies to you, and either books it or sends it for approval.
-        </p>
-      </header>
+          </>
+        }
+      />
 
       <Card>
         <RequestForm

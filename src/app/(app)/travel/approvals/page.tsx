@@ -3,7 +3,11 @@ import { getActor, canApprove, canApproveRequestFor } from '@/lib/auth/actor';
 import { approvalsQueue } from '@/lib/travel/queue';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
 import { getDb } from '@/db';
-import { Card, Empty } from '../../_components/ui';
+import {
+  Card,
+  Empty,
+  PageHeader,
+} from '../../_components/ui';
 import { Fare, StatusBadge } from '../_components';
 import { standingMatters } from '@/lib/travel/review';
 
@@ -37,23 +41,25 @@ export default async function ApprovalsPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Approvals</h1>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
-          Requests the policy engine would not auto-book. Approving authorizes{' '}
+      <PageHeader
+        title="Approvals"
+        blurb={
+          <>
+            Requests the policy engine would not auto-book. Approving authorizes{' '}
           <strong>an amount, not an offer</strong> — where the fare has already expired, the agent
           re-searches and holds the result to what you signed off.
-        </p>
-      </header>
+          </>
+        }
+      />
 
       {!canApprove(actor) && (
-        <p className="rounded-md bg-zinc-100 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-text-muted">
           You are not an approver, so this shows only your own requests waiting on someone else.
         </p>
       )}
 
       {halt.halted && (
-        <p className="rounded-md bg-rose-100 px-3 py-2 text-xs text-rose-900 dark:bg-rose-950 dark:text-rose-200">
+        <p className="rounded-md bg-bad-soft px-3 py-2 text-xs text-bad">
           <strong>Automated purchasing is halted org-wide.</strong>{' '}
           {halt.reason ?? 'No reason recorded.'} Approvals are refused while it is off — the agent
           keeps searching and judging, so this queue is a backlog rather than a hole. An admin
@@ -76,18 +82,18 @@ export default async function ApprovalsPage() {
               return (
                 <li
                   key={r.id}
-                  className="border-b border-zinc-100 pb-4 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-4 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <StatusBadge status={r.status} />
                     <Link href={`/travel/${r.id}`} className="font-medium hover:underline">
                       {r.originAirport} &rarr; {r.destinationAirport}
                     </Link>
-                    <span className="text-sm text-zinc-500">{r.traveler.fullName}</span>
+                    <span className="text-sm text-text-muted">{r.traveler.fullName}</span>
                     {r.show && (
                       <Link
                         href={`/shows/${r.show.id}`}
-                        className="text-xs text-zinc-500 hover:underline"
+                        className="text-xs text-text-muted hover:underline"
                       >
                         {r.show.name}
                       </Link>
@@ -102,19 +108,19 @@ export default async function ApprovalsPage() {
 
                   {/* The sentence that makes the number above mean something. */}
                   {r.standing && (
-                    <p className="mt-1.5 text-xs text-zinc-600 dark:text-zinc-400">
+                    <p className="mt-1.5 text-xs text-text-muted">
                       {r.standing.meaning}
                     </p>
                   )}
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-xs text-zinc-500">
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 text-xs text-text-muted">
                     <span>waiting {waitedHours < 1 ? 'under an hour' : `${waitedHours}h`}</span>
                     {mayDecide ? (
                       <Link href={`/travel/${r.id}`} className="font-medium underline">
                         Review and decide &rarr;
                       </Link>
                     ) : (
-                      <span className="text-amber-700 dark:text-amber-400">
+                      <span className="text-warn">
                         {r.requester.id === actor.userId
                           ? 'Yours — it needs another approver.'
                           : 'Not yours to approve.'}

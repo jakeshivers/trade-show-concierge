@@ -11,7 +11,7 @@ import { cn } from './cn';
  * exists because at least three screens had hand-rolled it.
  *
  * Everything is on the semantic tokens in `globals.css`. No screen names a
- * palette colour: `border-border`, never `border-zinc-200`. That is what makes
+ * palette colour: `border-border`, never `border-border`. That is what makes
  * a palette change one diff instead of a search.
  */
 
@@ -249,7 +249,7 @@ export function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+    <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
         <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
         {blurb && <p className="mt-1 max-w-2xl text-sm text-text-muted">{blurb}</p>}

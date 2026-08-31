@@ -47,35 +47,35 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
               return (
                 <li
                   key={l.id}
-                  className="border-b border-zinc-100 pb-4 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-4 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-medium">{l.hotelName}</span>
                     {l.confirmationCode && (
                       <span className="font-mono text-xs">{l.confirmationCode}</span>
                     )}
-                    <span className="text-zinc-500">
+                    <span className="text-text-muted">
                       {showDate(l.checkIn, show.timezone)} → {showDate(l.checkOut, show.timezone)}
                       {entry.nights !== null && ` · ${entry.nights} nights`}
                     </span>
                     {l.nightlyRateCents != null && (
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-text-muted">
                         {money(l.nightlyRateCents)}/night
                         {entry.estimatedCents !== null && ` · ${money(entry.estimatedCents)} per room`}
                       </span>
                     )}
-                    <span className="ml-auto text-xs text-zinc-500">
+                    <span className="ml-auto text-xs text-text-muted">
                       {entry.costCenter
                         ? `${entry.costCenter.code} · ${entry.costCenter.name}`
                         : 'No cost center'}
                     </span>
                   </div>
 
-                  {l.address && <p className="mt-0.5 text-xs text-zinc-500">{l.address}</p>}
-                  {l.notes && <p className="mt-0.5 text-xs text-zinc-500">{l.notes}</p>}
+                  {l.address && <p className="mt-0.5 text-xs text-text-muted">{l.address}</p>}
+                  {l.notes && <p className="mt-0.5 text-xs text-text-muted">{l.notes}</p>}
 
                   {/* The cutoff, and what the register already says about it. */}
-                  <div className="mt-2 rounded-md bg-zinc-50 p-2 text-xs dark:bg-zinc-950">
+                  <div className="mt-2 rounded-md bg-muted p-2 text-xs">
                     {l.roomBlockCutoff ? (
                       <>
                         <div className="flex flex-wrap items-baseline gap-2">
@@ -85,7 +85,7 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
                           {d && !d.confirmedAt && !missed && <Badge tone="warn">unconfirmed</Badge>}
                           {d && !d.ownerId && <Badge tone="warn">unowned</Badge>}
                         </div>
-                        <p className="mt-1 text-zinc-500">
+                        <p className="mt-1 text-text-muted">
                           {d ? (
                             <>
                               This date has a row{' '}
@@ -113,7 +113,7 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
                         )}
                       </>
                     ) : (
-                      <span className="text-zinc-500">
+                      <span className="text-text-muted">
                         No room block cutoff recorded, so nothing is chasing one. If this hotel has
                         a block, the date is the single most valuable field on this page.
                       </span>
@@ -121,7 +121,7 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
                   </div>
 
                   <div className="mt-2">
-                    <p className="text-xs text-zinc-500">
+                    <p className="text-xs text-text-muted">
                       In this block:{' '}
                       {entry.guests.length === 0
                         ? 'nobody yet'
@@ -164,11 +164,11 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
         )}
 
         {may.manage ? (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <AddLodgingForm showId={id} timezone={show.timezone} costCenters={costCenters} />
           </div>
         ) : (
-          <p className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
             Whoever runs the show books and records the hotels. You see the one you are in.
           </p>
         )}
@@ -183,7 +183,7 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
             {cutoffExposure.unowned > 0 && `, ${cutoffExposure.unowned} with nobody chasing`}
             {cutoffExposure.missed > 0 && `; ${cutoffExposure.missed} already gone`}.
           </p>
-          <p className="mt-1 text-xs text-zinc-500">
+          <p className="mt-1 text-xs text-text-muted">
             Counted by the same model as every other deadline on this show — see the{' '}
             <Link href={`/shows/${id}/readiness`} className="underline">
               register

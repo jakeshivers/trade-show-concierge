@@ -61,8 +61,8 @@ export default async function TravelRequestPage({
           </h1>
           <StatusBadge status={request.status} />
         </div>
-        <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{presentation.meaning}</p>
-        <p className="mt-1 text-xs text-zinc-500">
+        <p className="mt-1 text-sm text-text-muted">{presentation.meaning}</p>
+        <p className="mt-1 text-xs text-text-muted">
           {trail.traveler?.fullName ?? 'Unknown traveler'}
           {trail.requester && trail.requester.id !== trail.traveler?.id && (
             <> · opened by {trail.requester.fullName}</>
@@ -77,15 +77,15 @@ export default async function TravelRequestPage({
       {/* ---------------------------- what happens next --------------------------- */}
       <Card title="Decide">
         {request.status === 'pending_approval' && standing && (
-          <div className="mb-4 rounded-md bg-amber-50 px-3 py-2.5 text-sm dark:bg-amber-950/40">
+          <div className="mb-4 rounded-md bg-warn-soft px-3 py-2.5 text-sm">
             <p className="flex flex-wrap items-baseline gap-x-2 font-medium">
               Approving authorizes{' '}
               <Fare cents={snapshot?.totalCents ?? null} standing={standing} />{' '}
               {standing.bookableAtShownPrice ? 'as the fare.' : 'as a ceiling.'}
             </p>
-            <p className="mt-1 text-xs text-zinc-700 dark:text-zinc-300">{standing.meaning}</p>
+            <p className="mt-1 text-xs text-text">{standing.meaning}</p>
             {standing.goodUntil && (
-              <p className="mt-1 text-xs text-zinc-500">
+              <p className="mt-1 text-xs text-text-muted">
                 Good until {standing.goodUntil.toLocaleString()}.
               </p>
             )}
@@ -114,7 +114,7 @@ export default async function TravelRequestPage({
         </div>
 
         {/* Refusals are shown, not hidden. A missing button reads as a bug. */}
-        <ul className="mt-4 space-y-1 text-xs text-zinc-500">
+        <ul className="mt-4 space-y-1 text-xs text-text-muted">
           {actions
             .filter((a) => !a.available && a.reason && a.action !== 'confirm_constraints')
             .map((a) => (
@@ -170,18 +170,18 @@ export default async function TravelRequestPage({
           <div className="space-y-5">
             {trail.searches.map((s, i) => (
               <div key={s.searchId ?? i}>
-                <div className="mb-2 text-xs text-zinc-500">
+                <div className="mb-2 text-xs text-text-muted">
                   Search {i + 1} of {trail.searches.length} · {s.capturedAt.toLocaleString()} ·{' '}
                   <code>{s.searchId}</code>
                   {i > 0 && (
-                    <span className="ml-2 text-amber-700 dark:text-amber-400">
+                    <span className="ml-2 text-warn">
                       the agent looked again — the earlier offer had died
                     </span>
                   )}
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="text-zinc-500">
+                    <thead className="text-text-muted">
                       <tr>
                         <th className="py-1 pr-3 font-medium">#</th>
                         <th className="py-1 pr-3 font-medium">Fare</th>
@@ -195,9 +195,7 @@ export default async function TravelRequestPage({
                       {s.offers.map((o) => (
                         <tr
                           key={o.offerId}
-                          className={`border-t border-zinc-100 dark:border-zinc-800 ${
-                            o.selected ? 'font-medium' : 'text-zinc-600 dark:text-zinc-400'
-                          }`}
+                          className={`border-t border-border ${ o.selected ? 'font-medium' : 'text-text-muted' }`}
                         >
                           <td className="py-1.5 pr-3">{o.rank ?? '—'}</td>
                           <td className="py-1.5 pr-3">
@@ -233,7 +231,7 @@ export default async function TravelRequestPage({
         <Card title="Approvals">
           <ul className="space-y-2">
             {trail.approvals.map((a) => (
-              <li key={a.id} className="border-b border-zinc-100 pb-2 last:border-0 dark:border-zinc-800">
+              <li key={a.id} className="border-b border-border pb-2 last:border-0">
                 <div className="flex flex-wrap items-baseline gap-x-3">
                   <Badge tone={a.outcome === 'rejected' ? 'bad' : a.outcome === 'break_glass' ? 'warn' : 'good'}>
                     {a.outcome.replace('_', ' ')}
@@ -241,19 +239,19 @@ export default async function TravelRequestPage({
                   <span className="text-sm">
                     up to {money(a.priceAtApprovalCents)}
                   </span>
-                  <span className="ml-auto text-xs text-zinc-500">
+                  <span className="ml-auto text-xs text-text-muted">
                     {a.decidedAt.toLocaleString()}
                   </span>
                 </div>
-                {a.reason && <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">{a.reason}</p>}
+                {a.reason && <p className="mt-1 text-xs text-text-muted">{a.reason}</p>}
                 {a.reSearchedOnApproval && (
-                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="mt-1 text-xs text-warn">
                     The offer had expired when this was approved, so the agent re-searched and held
                     the result to this amount.
                   </p>
                 )}
                 {a.breakGlassJustification && (
-                  <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">
+                  <p className="mt-1 text-xs text-warn">
                     Break-glass: no eligible approver existed. &ldquo;
                     {a.breakGlassJustification}&rdquo;
                   </p>
@@ -300,7 +298,7 @@ export default async function TravelRequestPage({
             {trail.creditEntries.map((e) => (
               <li key={e.id} className="flex justify-between gap-3">
                 <span>{e.reason}</span>
-                <span className={e.deltaCents < 0 ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400'}>
+                <span className={e.deltaCents < 0 ? 'text-bad' : 'text-good'}>
                   {e.deltaCents < 0 ? '' : '+'}
                   {money(e.deltaCents)}
                 </span>
@@ -314,17 +312,17 @@ export default async function TravelRequestPage({
       <Card title="Timeline">
         <ol className="space-y-2">
           {trail.timeline.map((t) => (
-            <li key={t.id} className="flex flex-wrap gap-x-3 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800">
-              <span className="w-10 shrink-0 text-xs text-zinc-400">{t.sequence}</span>
-              <span className="w-32 shrink-0 text-xs text-zinc-500">
+            <li key={t.id} className="flex flex-wrap gap-x-3 border-b border-border py-1.5 last:border-0">
+              <span className="w-10 shrink-0 text-xs text-text-muted">{t.sequence}</span>
+              <span className="w-32 shrink-0 text-xs text-text-muted">
                 {t.fromStatus ? `${t.fromStatus} → ${t.toStatus ?? '·'}` : (t.toStatus ?? t.step)}
               </span>
               <span className="min-w-0 flex-1 text-sm">{t.summary}</span>
-              <span className="text-xs text-zinc-400">{t.occurredAt.toLocaleTimeString()}</span>
+              <span className="text-xs text-text-muted">{t.occurredAt.toLocaleTimeString()}</span>
             </li>
           ))}
         </ol>
-        <p className="mt-3 text-xs text-zinc-500">
+        <p className="mt-3 text-xs text-text-muted">
           Ordered by sequence, not by clock: the agent&rsquo;s clock is injected so the pipeline is
           reproducible, which means several steps of one run legitimately share an instant.
         </p>

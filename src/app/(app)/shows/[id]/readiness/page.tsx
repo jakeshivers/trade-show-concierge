@@ -143,7 +143,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
               return (
                 <li
                   key={d.id}
-                  className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-3 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className={d.status === 'not_applicable' ? 'font-medium line-through' : 'font-medium'}>
@@ -160,21 +160,21 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                         {!d.ownerId && <Badge tone="warn">unowned</Badge>}
                       </>
                     )}
-                    <span className="text-zinc-500">{showDateTime(d.dueAt, show.timezone)}</span>
+                    <span className="text-text-muted">{showDateTime(d.dueAt, show.timezone)}</span>
                     {d.penaltyEstimateCents != null && d.status === 'open' && (
-                      <span className="text-rose-700 dark:text-rose-400">
+                      <span className="text-bad">
                         {/* The tense is the product. Past the date it is not at risk. */}
                         {money(d.penaltyEstimateCents)}{' '}
                         {missed ? 'already incurred' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
                       </span>
                     )}
-                    <span className="ml-auto text-xs text-zinc-500">
+                    <span className="ml-auto text-xs text-text-muted">
                       {entry.owner?.fullName ?? 'Unowned'}
                     </span>
                   </div>
 
                   {d.lodgingId && (
-                    <p className="mt-1 text-xs text-zinc-500">
+                    <p className="mt-1 text-xs text-text-muted">
                       Derived from a hotel&rsquo;s room block cutoff, so its date lives on the{' '}
                       <Link href={`/shows/${id}/lodging`} className="underline">
                         Lodging tab
@@ -184,22 +184,22 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                       facts.
                     </p>
                   )}
-                  {d.penaltyNote && <p className="mt-1 text-xs text-zinc-500">{d.penaltyNote}</p>}
+                  {d.penaltyNote && <p className="mt-1 text-xs text-text-muted">{d.penaltyNote}</p>}
                   {d.statusNote && (
-                    <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                    <p className="mt-1 text-xs text-warn">
                       Does not apply: {d.statusNote}
                     </p>
                   )}
                   {d.sourceUrl && (
                     <p className="mt-1 text-xs">
-                      <a href={d.sourceUrl} className="text-zinc-500 underline" rel="noreferrer">
+                      <a href={d.sourceUrl} className="text-text-muted underline" rel="noreferrer">
                         the manual page this came from
                       </a>
                     </p>
                   )}
 
                   {entry.pending && (
-                    <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                    <p className="mt-1 text-xs text-text-muted">
                       <span className="font-medium">Alert:</span> {entry.pending.title} — to{' '}
                       {entry.pending.audience === 'owner'
                         ? entry.owner?.fullName ?? 'its owner'
@@ -221,18 +221,18 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
         )}
 
         {register.may.edit ? (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <AddDeadlineForm showId={id} timezone={show.timezone} people={register.people} />
           </div>
         ) : (
-          <p className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
             You can mark a deadline you own as ordered. Adding, re-dating and confirming
             deadlines belongs to whoever runs the show — a date here is what the alerts fire
             against and what the exposure above is computed from.
           </p>
         )}
 
-        <p className="mt-3 text-xs text-zinc-500">
+        <p className="mt-3 text-xs text-text-muted">
           Alerts escalate at 30, 14 and 3 days out and on the day. A date nobody has confirmed
           against this year&rsquo;s manual is chased as a <em>date</em> rather than quoted as an
           amount, because a penalty figure behind a guessed date is a fabricated bill. Run{' '}
@@ -252,14 +252,14 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
               if (rows.length === 0) return null;
               return (
                 <section key={category}>
-                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                  <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
                     {category.replace('_', ' ')}
                   </h3>
                   <ul className="space-y-3">
                     {rows.map((entry) => (
                       <li
                         key={entry.task.id}
-                        className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800"
+                        className="border-b border-border pb-3 last:border-0"
                       >
                         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                           <Badge tone={TASK_TONE[entry.task.status]}>
@@ -270,18 +270,18 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                           </span>
                           {entry.task.weight >= 3 && <Badge tone="info">critical</Badge>}
                           {entry.overdue && <Badge tone="bad">past due</Badge>}
-                          <span className="ml-auto text-xs text-zinc-500">
+                          <span className="ml-auto text-xs text-text-muted">
                             {entry.assignee?.fullName ?? 'Unassigned'} · due{' '}
                             {showDate(entry.task.dueOn, show.timezone)}
                           </span>
                         </div>
 
                         {entry.task.description && (
-                          <p className="mt-1 text-xs text-zinc-500">{entry.task.description}</p>
+                          <p className="mt-1 text-xs text-text-muted">{entry.task.description}</p>
                         )}
                         {entry.task.statusNote && (
-                          <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
-                            {entry.task.status === 'skipped' ? 'Skipped: ' : 'Blocked on: '}
+                          <p className="mt-1 text-xs text-warn">
+                            {entry.task.status === 'skipped' ? 'Skipped: ':'Blocked on: '}
                             {entry.task.statusNote}
                           </p>
                         )}
@@ -291,7 +291,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                             <StatusControl showId={id} entry={entry} maySkip={may.skip} />
                           </div>
                         ) : (
-                          <p className="mt-2 text-xs text-zinc-500">
+                          <p className="mt-2 text-xs text-text-muted">
                             {entry.assignee
                               ? `${entry.assignee.fullName} reports progress on this one.`
                               : 'Unassigned — whoever runs the show can assign it.'}
@@ -316,7 +316,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
         )}
 
         {!may.skip && entries.some((e) => e.mayUpdate) && (
-          <p className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
             You can move your own tasks, but not skip one. A skipped task drops out of the
             readiness score entirely, so it is a change to the plan rather than a report of
             progress — it belongs to whoever runs the show.
@@ -324,7 +324,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
         )}
 
         {may.edit && (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <AddTaskForm showId={id} people={people} />
           </div>
         )}
@@ -332,7 +332,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
 
       {may.applyTemplate && (
         <Card title="Templates">
-          <p className="mb-3 text-xs text-zinc-500">
+          <p className="mb-3 text-xs text-text-muted">
             Built-in and versioned in the codebase, not editable here — a template builder is
             deferred until the standard list has been used and argued with. Dates are computed
             as offsets from this show&rsquo;s opening day, in {show.timezone}.
@@ -357,11 +357,11 @@ function Fact({
 }) {
   return (
     <div>
-      <div className="text-xs uppercase tracking-wide text-zinc-500">{label}</div>
-      <div className={`text-lg font-semibold ${tone === 'bad' ? 'text-rose-700 dark:text-rose-400' : tone === 'warn' ? 'text-amber-700 dark:text-amber-300' : ''}`}>
+      <div className="text-xs uppercase tracking-wide text-text-muted">{label}</div>
+      <div className={`text-lg font-semibold ${tone === 'bad' ? 'text-bad' : tone === 'warn' ? 'text-warn' : ''}`}>
         {value}
       </div>
-      {note && <div className="text-xs text-zinc-500">{note}</div>}
+      {note && <div className="text-xs text-text-muted">{note}</div>}
     </div>
   );
 }

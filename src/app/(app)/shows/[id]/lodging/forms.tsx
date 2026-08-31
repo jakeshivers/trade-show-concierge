@@ -141,10 +141,10 @@ export function AddLodgingForm(props: {
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(createLodging, {});
   return (
-    <details className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a hotel</summary>
       <Fields {...props} action={action} pending={pending} state={state} submitLabel="Add hotel" />
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-text-muted">
         Times are read in {props.timezone}, the show&rsquo;s own zone. Setting a room block cutoff
         creates a row in this show&rsquo;s deadline register and the escalation engine takes it from
         there — it arrives unconfirmed, like every hand-entered deadline, so it is chased as a date
@@ -169,7 +169,7 @@ export function EditLodgingForm({
   const [dropState, dropAction, dropping] = useActionState<FormState, FormData>(removeLodging, {});
   return (
     <details className="mt-2 text-xs">
-      <summary className="cursor-pointer text-zinc-500">Edit this hotel</summary>
+      <summary className="cursor-pointer text-text-muted">Edit this hotel</summary>
       <Fields
         showId={showId}
         timezone={timezone}
@@ -239,7 +239,7 @@ export function DropGuestButton({
         type="submit"
         disabled={pending}
         title="Take out of this room block"
-        className="text-xs text-zinc-400 hover:text-rose-600"
+        className="text-xs text-text-muted hover:text-bad"
       >
         ×
       </button>

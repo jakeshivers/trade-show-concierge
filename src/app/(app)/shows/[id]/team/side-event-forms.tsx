@@ -61,7 +61,7 @@ export function SideEventControls({
         </>
       )}
       {!entry.mayManage && entry.rsvps.some((r) => r.user?.id === actorId) && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-text-muted">
           Only the host and whoever runs the show change this guest list. Your own answer is on your
           row.
         </p>
@@ -121,14 +121,14 @@ export function RsvpControl({
           <button
             type="submit"
             disabled={dropping}
-            className="text-xs text-zinc-400 hover:text-rose-600"
+            className="text-xs text-text-muted hover:text-bad"
           >
             ×
           </button>
         </form>
       )}
       {(state.error || drop.error) && (
-        <span className="text-xs text-rose-700 dark:text-rose-400">
+        <span className="text-xs text-bad">
           {state.error ?? drop.error}
         </span>
       )}
@@ -158,7 +158,7 @@ function InviteGuestForm({
           </option>
         ))}
       </select>
-      <span className="text-xs text-zinc-400">or</span>
+      <span className="text-xs text-text-muted">or</span>
       <input name="guestName" placeholder="Guest name" className={inputClass} />
       <input name="guestCompany" placeholder="Company" className={inputClass} />
       <input name="guestEmail" type="email" placeholder="Email" className={inputClass} />
@@ -276,10 +276,10 @@ export function AddSideEventForm(props: {
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(createSideEvent, {});
   return (
-    <details className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a side event</summary>
       <Fields {...props} action={action} pending={pending} state={state} submitLabel="Add" />
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-text-muted">
         A dinner budget is money somebody gets charged for, so it carries a cost center like every
         other financial row — set at creation, never backfilled.
       </p>
@@ -307,7 +307,7 @@ function SideEventFields({
   );
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer text-zinc-500">Edit this event</summary>
+      <summary className="cursor-pointer text-text-muted">Edit this event</summary>
       <Fields
         showId={showId}
         timezone={timezone}

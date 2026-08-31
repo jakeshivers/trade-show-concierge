@@ -41,11 +41,11 @@ export function Fare({
   standing: OfferStanding | null;
 }) {
   if (cents === null) {
-    return <span className="text-zinc-500">not priced yet</span>;
+    return <span className="text-text-muted">not priced yet</span>;
   }
   return (
     <span className="inline-flex flex-wrap items-baseline gap-x-2">
-      <span className={standing?.bookableAtShownPrice ? 'font-medium' : 'font-medium text-zinc-500'}>
+      <span className={standing?.bookableAtShownPrice ? 'font-medium' : 'font-medium text-text-muted'}>
         {money(cents)}
       </span>
       {standing && (
@@ -76,14 +76,14 @@ export function RequestRow({
   showTraveler: boolean;
 }) {
   return (
-    <li className="border-b border-zinc-100 py-2.5 last:border-0 dark:border-zinc-800">
+    <li className="border-b border-border py-2.5 last:border-0">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <StatusBadge status={r.status} />
         <Link href={`/travel/${r.id}`} className="font-medium hover:underline">
           {r.originAirport} → {r.destinationAirport}
         </Link>
         {r.show && (
-          <Link href={`/shows/${r.show.id}`} className="text-xs text-zinc-500 hover:underline">
+          <Link href={`/shows/${r.show.id}`} className="text-xs text-text-muted hover:underline">
             {r.show.name}
           </Link>
         )}
@@ -91,7 +91,7 @@ export function RequestRow({
           <Fare cents={r.quotedCents} standing={standingMatters(r.status) ? r.standing : null} />
         </span>
       </div>
-      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-zinc-500">
+      <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-text-muted">
         <span>
           out {r.earliestDeparture.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
         </span>
@@ -100,7 +100,7 @@ export function RequestRow({
           <span>opened by {r.requester.fullName}</span>
         )}
         {r.awaitingConstraintConfirmation && (
-          <span className="text-amber-700 dark:text-amber-400">
+          <span className="text-warn">
             parsed constraints unconfirmed
           </span>
         )}

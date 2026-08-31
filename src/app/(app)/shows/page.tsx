@@ -6,6 +6,7 @@ import {
   Badge,
   Empty,
   LinkButton,
+  PageHeader,
   STATUS_TONE,
   dateRange,
   daysUntil,
@@ -60,16 +61,16 @@ export default async function ShowsPage() {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Shows</h1>
-          <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">
+      <PageHeader
+        title="Shows"
+        blurb={
+          <>
             The whole workspace calendar. Anyone can propose a show; travel and lodging
             details on each one are scoped to you unless you approve travel.
-          </p>
-        </div>
-        <LinkButton href="/shows/new">Propose a show</LinkButton>
-      </header>
+          </>
+        }
+        action={<LinkButton href="/shows/new">Propose a show</LinkButton>}
+      />
 
       {shows.length === 0 && (
         <Empty>
@@ -84,10 +85,10 @@ export default async function ShowsPage() {
         return (
           <section key={bucket.key} className="space-y-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
                 {bucket.heading}
               </h2>
-              {bucket.blurb && <p className="mt-1 text-xs text-zinc-500">{bucket.blurb}</p>}
+              {bucket.blurb && <p className="mt-1 text-xs text-text-muted">{bucket.blurb}</p>}
             </div>
             <div className="space-y-2">
               {rows.map((show) => (
@@ -106,7 +107,7 @@ function ShowRow({ show, canClone }: { show: ShowListEntry; canClone: boolean })
   const decided = show.status !== 'prospect' && show.status !== 'cancelled';
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-900">
+    <div className="rounded-lg border border-border bg-panel p-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <Link href={`/shows/${show.id}`} className="font-medium hover:underline">
           {show.name}
@@ -114,11 +115,11 @@ function ShowRow({ show, canClone }: { show: ShowListEntry; canClone: boolean })
         <Badge tone={STATUS_TONE[show.status]}>{statusLabel(show.status)}</Badge>
         {show.mine && <Badge tone="info">You&rsquo;re on this</Badge>}
         {decided && days > 0 && (
-          <span className="text-xs text-zinc-500">in {days} days</span>
+          <span className="text-xs text-text-muted">in {days} days</span>
         )}
       </div>
 
-      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-zinc-600 dark:text-zinc-400">
+      <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-text-muted">
         <span>{dateRange(show.startsOn, show.endsOn, show.timezone)}</span>
         <span>{place(show)}</span>
         {show.boothNumber && <span>Booth {show.boothNumber}</span>}

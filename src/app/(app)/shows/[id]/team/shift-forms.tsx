@@ -99,7 +99,7 @@ export function UnassignButton({
         type="submit"
         disabled={pending}
         title="Take off this shift"
-        className="text-xs text-zinc-400 hover:text-rose-600"
+        className="text-xs text-text-muted hover:text-bad"
       >
         ×
       </button>
@@ -162,13 +162,13 @@ function PresenceForm({
 export function AddShiftForm({ showId, timezone }: { showId: string; timezone: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(createShift, {});
   return (
-    <details className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a booth shift</summary>
       <form action={action} className="mt-3 flex flex-wrap items-end gap-2">
         <input type="hidden" name="showId" value={showId} />
         <ZonedDateTime label="from" dateName="startsOn" timeName="startsAt" timeZone={timezone} required />
         <ZonedDateTime label="to" dateName="endsOn" timeName="endsAt" timeZone={timezone} required />
-        <label className="flex items-center gap-1 text-xs text-zinc-500">
+        <label className="flex items-center gap-1 text-xs text-text-muted">
           staff needed
           <input
             type="number"
@@ -185,7 +185,7 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
         </Button>
         <Message state={state} />
       </form>
-      <p className="mt-2 text-xs text-zinc-500">Times are {timezone} — the show&rsquo;s zone.</p>
+      <p className="mt-2 text-xs text-text-muted">Times are {timezone} — the show&rsquo;s zone.</p>
     </details>
   );
 }
@@ -202,7 +202,7 @@ export function EditShiftForm({
   const [state, action, pending] = useActionState<FormState, FormData>(updateShift, {});
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer text-zinc-500">Edit this shift</summary>
+      <summary className="cursor-pointer text-text-muted">Edit this shift</summary>
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="shiftId" value={entry.shiftId} />

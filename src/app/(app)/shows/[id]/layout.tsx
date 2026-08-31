@@ -44,7 +44,7 @@ export default async function ShowLayout({
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <Link href="/shows" className="text-xs text-zinc-500 hover:underline">
+        <Link href="/shows" className="text-xs text-text-muted hover:underline">
           ← All shows
         </Link>
         <div className="flex flex-wrap items-baseline gap-3">
@@ -59,13 +59,13 @@ export default async function ShowLayout({
             </Link>
           )}
         </div>
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+        <p className="text-sm text-text-muted">
           {dateRange(show.startsOn, show.endsOn, show.timezone)} · {place(show)}
           {show.venueName && ` · ${show.venueName}`}
           {days > 0 && show.status !== 'cancelled' && ` · in ${days} days`}
         </p>
         {show.status === 'prospect' && (
-          <p className="text-sm text-sky-800 dark:text-sky-300">
+          <p className="text-sm text-info">
             This is a proposal.{' '}
             {canDecideShow(actor)
               ? 'Commit or decline it on the Overview tab.'

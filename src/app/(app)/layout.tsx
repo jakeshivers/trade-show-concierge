@@ -98,7 +98,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   return (
     <div className="mx-auto flex min-h-screen max-w-xl flex-col justify-center px-6">
       <h1 className="text-xl font-semibold">{title}</h1>
-      <div className="mt-3 space-y-3 text-sm text-zinc-600 dark:text-zinc-400">{children}</div>
+      <div className="mt-3 space-y-3 text-sm text-text-muted">{children}</div>
     </div>
   );
 }

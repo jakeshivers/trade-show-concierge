@@ -155,7 +155,7 @@ function RecordAnswerForm({
 
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer text-zinc-500">Record {first}&rsquo;s answer</summary>
+      <summary className="cursor-pointer text-text-muted">Record {first}&rsquo;s answer</summary>
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="attendeeId" value={entry.attendee.id} />
@@ -168,7 +168,7 @@ function RecordAnswerForm({
         <WindowFields timezone={timezone} attendee={entry.attendee} />
         <Submit pending={pending}>Record</Submit>
         <Message state={state} />
-        <p className="w-full text-zinc-500">
+        <p className="w-full text-text-muted">
           Secondhand: the row is only marked answered when {first} answers it.
         </p>
       </form>
@@ -188,7 +188,7 @@ function EditAttendee({
   const [state, action, pending] = useActionState<FormState, FormData>(updateAttendee, {});
   return (
     <details className="text-xs">
-      <summary className="cursor-pointer text-zinc-500">Edit</summary>
+      <summary className="cursor-pointer text-text-muted">Edit</summary>
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="attendeeId" value={entry.attendee.id} />
@@ -237,7 +237,7 @@ export function InviteForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(inviteAttendee, {});
   return (
-    <details className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Staff somebody on this show</summary>
       <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
@@ -257,7 +257,7 @@ export function InviteForm({
         </Button>
         <Message state={state} />
       </form>
-      <p className="mt-2 text-xs text-zinc-500">
+      <p className="mt-2 text-xs text-text-muted">
         Times are read in the show&rsquo;s own zone ({timezone}). A travel window is optional —
         plenty of people drive — but coverage uses it, so a shift somebody cannot physically reach
         is only visible once it is set.

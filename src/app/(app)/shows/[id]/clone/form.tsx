@@ -32,7 +32,7 @@ export function CloneForm({
 
       <label className="block">
         <span className="text-sm font-medium">First day</span>
-        <span className="mt-0.5 block text-xs text-zinc-500">
+        <span className="mt-0.5 block text-xs text-text-muted">
           Everything else shifts by the same number of calendar days, keeping its local time of
           day. A 5:00pm deadline stays a 5:00pm deadline even across a daylight-saving change.
         </span>
@@ -57,7 +57,7 @@ export function CloneForm({
             <input type="checkbox" name={`include:${key}`} defaultChecked className="mt-1" />
             <span>
               <span className="font-medium">{label}</span>
-              <span className="block text-xs text-zinc-500">{note}</span>
+              <span className="block text-xs text-text-muted">{note}</span>
             </span>
           </label>
         ))}

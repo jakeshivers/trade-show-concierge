@@ -61,7 +61,7 @@ export function StatusControl({
         name="status"
         value={next}
         onChange={(e) => setNext(e.target.value as typeof next)}
-        className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950"
+        className="rounded-md border border-border-strong bg-panel px-2 py-1 text-xs"
       >
         {PROGRESS.map((o) => (
           <option key={o.value} value={o.value}>
@@ -77,8 +77,8 @@ export function StatusControl({
           required
           minLength={MIN_NOTE}
           defaultValue={entry.task.statusNote ?? ''}
-          placeholder={next === 'skipped' ? 'Why is this being skipped?' : 'Blocked on what?'}
-          className="min-w-56 flex-1 rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950"
+          placeholder={next === 'skipped' ? 'Why is this being skipped?':'Blocked on what?'}
+          className="min-w-56 flex-1 rounded-md border border-border-strong bg-panel px-2 py-1 text-xs"
         />
       )}
 
@@ -100,7 +100,7 @@ export function AddTaskForm({
   const [state, action, pending] = useActionState<FormState, FormData>(createTask, {});
 
   return (
-    <details className="rounded-md border border-zinc-200 p-3 dark:border-zinc-800">
+    <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a task</summary>
       <form action={action} className="mt-3 grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="showId" value={showId} />
@@ -166,7 +166,7 @@ export function EditTaskForm({
 
   return (
     <details className="mt-2">
-      <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100">
+      <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
         Edit
       </summary>
       <form action={action} className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -220,11 +220,11 @@ export function EditTaskForm({
         <input type="hidden" name="taskId" value={task.id} />
         <QuietSubmit
           pending={deleting}
-          className="text-rose-700 underline hover:no-underline dark:text-rose-400"
+          className="text-bad underline hover:no-underline"
         >
           Delete this task
         </QuietSubmit>
-        <span className="ml-2 text-xs text-zinc-500">
+        <span className="ml-2 text-xs text-text-muted">
           Deleting removes it from the score entirely, and leaves no record that it existed.
           Skipping keeps the decision. Prefer skipping.
         </span>
@@ -263,11 +263,11 @@ export function TemplateForm({
           >
             Apply
           </Button>
-          <p className="w-full text-xs text-zinc-500">{t.blurb}</p>
+          <p className="w-full text-xs text-text-muted">{t.blurb}</p>
         </div>
       ))}
       {hasTasks && (
-        <p className="text-xs text-zinc-500">
+        <p className="text-xs text-text-muted">
           This show already has a checklist. Applying a template adds only what is missing —
           it never edits or re-dates a task you have already started.
         </p>
@@ -280,7 +280,7 @@ export function TemplateForm({
 /* --------------------------------- bits ------------------------------------ */
 
 const INPUT =
-  'mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-950';
+  'mt-1 w-full rounded-md border border-border-strong bg-panel px-2 py-1.5 text-sm';
 
 function Field({
   label,
@@ -295,9 +295,9 @@ function Field({
 }) {
   return (
     <label className={`block ${className}`}>
-      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-400">{label}</span>
+      <span className="text-xs font-medium text-text-muted">{label}</span>
       {children}
-      {hint && <span className="mt-0.5 block text-xs text-zinc-500">{hint}</span>}
+      {hint && <span className="mt-0.5 block text-xs text-text-muted">{hint}</span>}
     </label>
   );
 }

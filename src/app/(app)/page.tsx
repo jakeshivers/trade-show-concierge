@@ -8,6 +8,7 @@ import { getDb } from '@/db';
 import {
   Badge,
   Card,
+  PageHeader,
   Row,
   dateRange,
   daysUntil,
@@ -56,21 +57,21 @@ export default async function OverviewPage() {
 
   return (
     <div className="space-y-10">
-      <section>
-        <h1 className="text-2xl font-semibold tracking-tight">
-          Welcome, {actor.fullName.split(' ')[0]}
-        </h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          Signed in through{' '}
-          {authMode() === 'clerk' ? 'a Clerk session' : (
-            <>
-              the dev seam (<code>DEV_ACTOR_EMAIL</code>)
-            </>
-          )}
-          . Your role and cost center come from this workspace&rsquo;s records, never from
-          the identity provider.
-        </p>
-      </section>
+      <PageHeader
+        title={`Welcome, ${actor.fullName.split(' ')[0]}`}
+        blurb={
+          <>
+            Signed in through{' '}
+            {authMode() === 'clerk' ? 'a Clerk session' : (
+              <>
+                the dev seam (<code>DEV_ACTOR_EMAIL</code>)
+              </>
+            )}
+            . Your role and cost center come from this workspace&rsquo;s records, never from
+            the identity provider.
+          </>
+        }
+      />
 
       {prospects.length > 0 && (
         <Card title="Awaiting a decision">
@@ -80,13 +81,13 @@ export default async function OverviewPage() {
                 <Link href={`/shows/${s.id}`} className="font-medium hover:underline">
                   {s.name}
                 </Link>{' '}
-                <span className="text-zinc-500">
+                <span className="text-text-muted">
                   {dateRange(s.startsOn, s.endsOn, s.timezone)} · {place(s)}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="mt-2 text-xs text-zinc-500">
+          <p className="mt-2 text-xs text-text-muted">
             {isAdmin(actor)
               ? 'You can commit or decline these, with a written reason.'
               : 'An admin commits or declines these.'}
@@ -96,7 +97,7 @@ export default async function OverviewPage() {
 
       <Card title="Next up">
         {upcoming.length === 0 ? (
-          <p className="text-zinc-500">Nothing on the calendar. </p>
+          <p className="text-text-muted">Nothing on the calendar. </p>
         ) : (
           <ul className="space-y-1.5">
             {upcoming.map((s) => (
@@ -104,13 +105,13 @@ export default async function OverviewPage() {
                 <Link href={`/shows/${s.id}`} className="font-medium hover:underline">
                   {s.name}
                 </Link>
-                <span className="text-zinc-500">
+                <span className="text-text-muted">
                   {dateRange(s.startsOn, s.endsOn, s.timezone)} · {place(s)}
                 </span>
                 <Badge tone={readinessTone(s.readiness.score)}>
                   {readinessLabel(s.readiness.score)}
                 </Badge>
-                <span className="ml-auto text-xs text-zinc-500">in {daysUntil(s.startsOn)} days</span>
+                <span className="ml-auto text-xs text-text-muted">in {daysUntil(s.startsOn)} days</span>
               </li>
             ))}
           </ul>
@@ -124,7 +125,7 @@ export default async function OverviewPage() {
 
       <Card title="Where you're going">
         {myNext.length === 0 ? (
-          <p className="text-zinc-500">
+          <p className="text-text-muted">
             You are not staffed on an upcoming show.{' '}
             <Link className="underline" href="/itinerary">
               My itinerary
@@ -137,7 +138,7 @@ export default async function OverviewPage() {
                 <Link href={`/shows/${t.show.id}`} className="font-medium hover:underline">
                   {t.show.name}
                 </Link>
-                <span className="text-zinc-500">
+                <span className="text-text-muted">
                   {t.flights.length
                     ? `${t.flights.length} flights booked`
                     : 'no flights booked yet'}

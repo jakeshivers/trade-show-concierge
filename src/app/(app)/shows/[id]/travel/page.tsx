@@ -19,7 +19,7 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
   return (
     <div className="space-y-6">
       {travelNarrowed && (
-        <p className="rounded-md bg-zinc-100 px-3 py-2 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+        <p className="rounded-md bg-muted px-3 py-2 text-xs text-text-muted">
           Showing your travel only. Seeing everyone&rsquo;s is a travel manager capability.
         </p>
       )}
@@ -32,7 +32,7 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
             {flights.map(({ flight, traveler }) => (
               <li
                 key={flight.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
               >
                 <span className="font-medium">
                   {flight.airlineCode} {flight.flightNumber}
@@ -40,12 +40,12 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
                 <span>
                   {flight.originAirport} → {flight.destinationAirport}
                 </span>
-                <span className="text-zinc-500">
+                <span className="text-text-muted">
                   {showDateTime(flight.scheduledDeparture, show.timezone)}
                 </span>
                 <Badge tone={FLIGHT_TONE[flight.status] ?? 'neutral'}>{flight.status}</Badge>
                 {!flight.bookingProvider && <Badge>manually entered</Badge>}
-                <span className="ml-auto text-xs text-zinc-500">
+                <span className="ml-auto text-xs text-text-muted">
                   {traveler.fullName} · {money(flight.priceCents)}
                   {flight.seat && ` · seat ${flight.seat}`}
                 </span>
@@ -53,7 +53,7 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
             ))}
           </ul>
         )}
-        <p className="mt-3 text-xs text-zinc-500">
+        <p className="mt-3 text-xs text-text-muted">
           Live status and delay alerts against move-in are step 13.
         </p>
       </Card>
@@ -73,16 +73,16 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
             {requests.map(({ request, traveler }) => (
               <li
                 key={request.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800"
+                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
               >
                 <Badge>{request.status}</Badge>
                 <Link href={`/travel/${request.id}`} className="hover:underline">
                   {request.originAirport} → {request.destinationAirport}
                 </Link>
-                <span className="text-zinc-500">
+                <span className="text-text-muted">
                   {showDateTime(request.earliestDeparture, show.timezone)}
                 </span>
-                <span className="ml-auto text-xs text-zinc-500">{traveler.fullName}</span>
+                <span className="ml-auto text-xs text-text-muted">{traveler.fullName}</span>
               </li>
             ))}
           </ul>
@@ -95,17 +95,17 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
         ) : (
           <ul className="space-y-3">
             {lodgings.map(({ lodging, guests }) => (
-              <li key={lodging.id} className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800">
+              <li key={lodging.id} className="border-b border-border pb-3 last:border-0">
                 <div className="flex flex-wrap items-baseline gap-x-3">
                   <span className="font-medium">{lodging.hotelName}</span>
                   {lodging.confirmationCode && (
-                    <span className="text-xs text-zinc-500">#{lodging.confirmationCode}</span>
+                    <span className="text-xs text-text-muted">#{lodging.confirmationCode}</span>
                   )}
-                  <span className="ml-auto text-xs text-zinc-500">
+                  <span className="ml-auto text-xs text-text-muted">
                     {money(lodging.nightlyRateCents)}/night
                   </span>
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
+                <div className="mt-1 text-xs text-text-muted">
                   {showDateTime(lodging.checkIn, show.timezone)} →{' '}
                   {showDateTime(lodging.checkOut, show.timezone)}
                   {lodging.roomBlockCutoff && (

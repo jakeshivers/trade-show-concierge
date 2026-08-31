@@ -39,7 +39,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
               return (
                 <li
                   key={a.id}
-                  className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-3 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-medium">{entry.user.fullName}</span>
@@ -49,8 +49,8 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                     {a.status === 'confirmed' && !a.respondedAt && (
                       <Badge tone="warn">not answered by them</Badge>
                     )}
-                    <span className="text-zinc-500">{a.role}</span>
-                    <span className="ml-auto text-xs text-zinc-500">
+                    <span className="text-text-muted">{a.role}</span>
+                    <span className="ml-auto text-xs text-text-muted">
                       {a.arrivesOn
                         ? `${showDateTime(a.arrivesOn, show.timezone)} → ${showDateTime(a.departsOn, show.timezone)}`
                         : 'Travel window not set'}
@@ -62,12 +62,12 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                       key={`${c.a.attendeeId}-${c.b.attendeeId}`}
                       className={
                         c.severity === 'critical'
-                          ? 'mt-1 text-xs text-rose-700 dark:text-rose-400'
-                          : 'mt-1 text-xs text-amber-800 dark:text-amber-300'
+                          ? 'mt-1 text-xs text-bad'
+                          : 'mt-1 text-xs text-warn'
                       }
                     >
                       <span className="font-medium">
-                        {c.certainty === 'certain' ? 'Double-booked:' : 'Possibly double-booked:'}
+                        {c.certainty === 'certain' ? 'Double-booked:':'Possibly double-booked:'}
                       </span>{' '}
                       {c.summary}
                     </p>
@@ -86,11 +86,11 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         )}
 
         {may.staff ? (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <InviteForm showId={id} timezone={show.timezone} people={people} />
           </div>
         ) : (
-          <p className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
             Whoever runs the show staffs it. Answering your own invitation and setting your own
             travel window is yours — coverage counts confirmations, and one somebody else typed for
             you is a number standing in for a conversation nobody had.
@@ -108,7 +108,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
           <>
             <p className="mb-3 text-sm">
               {coverage.short === 0 ? (
-                <span className="text-emerald-700 dark:text-emerald-400">
+                <span className="text-good">
                   Every shift is covered by people who have confirmed and are in town.
                 </span>
               ) : (
@@ -118,7 +118,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                   </span>
                   , {coverage.missingSlots} slot{coverage.missingSlots === 1 ? '' : 's'} to fill.
                   {coverage.overstated > 0 && (
-                    <span className="text-rose-700 dark:text-rose-400">
+                    <span className="text-bad">
                       {' '}
                       {coverage.overstated} of those {coverage.overstated === 1 ? 'is' : 'are'}{' '}
                       fully assigned and still short — the roster says covered and the people on it
@@ -129,7 +129,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
               )}
             </p>
             {coverage.rosteredVersusPresent && (
-              <p className="mb-3 text-xs text-zinc-500">
+              <p className="mb-3 text-xs text-text-muted">
                 On shifts that have already run: {coverage.rosteredVersusPresent.rostered} rostered,{' '}
                 {coverage.rosteredVersusPresent.present} actually checked in. Rostered is not
                 present, and the gap is the staffing insight.
@@ -140,7 +140,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
               {shifts.map((entry) => (
                 <li
                   key={entry.shiftId}
-                  className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-3 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-medium">
@@ -153,11 +153,11 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                       {entry.effectiveCount} of {entry.targetStaff}
                     </Badge>
                     {entry.assignedCount !== entry.effectiveCount && (
-                      <span className="text-xs text-zinc-500">
+                      <span className="text-xs text-text-muted">
                         {entry.assignedCount} assigned
                       </span>
                     )}
-                    {entry.notes && <span className="text-xs text-zinc-500">{entry.notes}</span>}
+                    {entry.notes && <span className="text-xs text-text-muted">{entry.notes}</span>}
                   </div>
 
                   <ul className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs">
@@ -165,7 +165,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                       <li
                         key={st.userId}
                         className={
-                          st.counts ? 'text-zinc-600 dark:text-zinc-400' : 'text-amber-800 dark:text-amber-300'
+                          st.counts ? 'text-text-muted' : 'text-warn'
                         }
                       >
                         {st.fullName}
@@ -192,7 +192,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                       </li>
                     ))}
                     {entry.standings.length === 0 && (
-                      <li className="text-amber-800 dark:text-amber-300">Nobody assigned.</li>
+                      <li className="text-warn">Nobody assigned.</li>
                     )}
                   </ul>
 
@@ -212,11 +212,11 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         )}
 
         {clashes.length > 0 && (
-          <div className="mt-4 border-t border-zinc-100 pt-3 dark:border-zinc-800">
-            <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+          <div className="mt-4 border-t border-border pt-3">
+            <p className="text-xs font-medium text-warn">
               One person, two places, same hour
             </p>
-            <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
+            <ul className="mt-1 space-y-0.5 text-xs text-warn">
               {clashes.map((c) => (
                 <li key={`${c.a.id}-${c.b.id}-${c.userId}`}>{c.summary}</li>
               ))}
@@ -225,7 +225,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         )}
 
         {may.staff && (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <AddShiftForm showId={id} timezone={show.timezone} />
           </div>
         )}
@@ -243,19 +243,19 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
               return (
                 <li
                   key={e.id}
-                  className="border-b border-zinc-100 pb-4 last:border-0 dark:border-zinc-800"
+                  className="border-b border-border pb-4 last:border-0"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className="font-medium">{e.name}</span>
                     <Badge>{e.kind}</Badge>
-                    <span className="text-zinc-500">
+                    <span className="text-text-muted">
                       {showDateTime(e.startsAt, show.timezone)}
                     </span>
-                    {e.location && <span className="text-xs text-zinc-500">{e.location}</span>}
+                    {e.location && <span className="text-xs text-text-muted">{e.location}</span>}
                     {e.budgetCents != null && (
-                      <span className="text-xs text-zinc-500">{money(e.budgetCents)} budget</span>
+                      <span className="text-xs text-text-muted">{money(e.budgetCents)} budget</span>
                     )}
-                    <span className="ml-auto text-xs text-zinc-500">
+                    <span className="ml-auto text-xs text-text-muted">
                       {entry.host ? `Host: ${entry.host.fullName}` : 'No host'}
                       {' · '}
                       {entry.accepted} accepted
@@ -270,7 +270,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
                           <span>
                             {user ? user.fullName : rsvp.guestName}
                             {!user && rsvp.guestCompany && (
-                              <span className="text-zinc-500"> · {rsvp.guestCompany}</span>
+                              <span className="text-text-muted"> · {rsvp.guestCompany}</span>
                             )}
                           </span>
                           <Badge tone={RSVP_TONE[rsvp.status] ?? 'neutral'}>{rsvp.status}</Badge>
@@ -301,7 +301,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         )}
 
         {may.staff && (
-          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+          <div className="mt-4 border-t border-border pt-4">
             <AddSideEventForm
               showId={id}
               timezone={show.timezone}
@@ -312,7 +312,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         )}
       </Card>
 
-      <p className="text-xs text-zinc-500">
+      <p className="text-xs text-text-muted">
         Hotels, room assignments and the room block cutoff are on the{' '}
         <Link href={`/shows/${id}/lodging`} className="underline">
           Lodging tab

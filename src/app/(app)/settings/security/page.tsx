@@ -2,6 +2,7 @@ import { getActor, isAdmin, authMode } from '@/lib/auth/actor';
 import { UNRESTRICTED, formatStrategies } from '@/lib/auth/login-methods';
 import { readLoginPolicy, loginPolicyHistory } from '@/lib/auth/login-policy-store';
 import { getDb } from '@/db';
+import { PageHeader } from '../../_components/ui';
 import { LoginPolicyForm } from './form';
 
 /**
@@ -18,7 +19,7 @@ export default async function SecurityPage() {
   const actor = await getActor();
   if (!isAdmin(actor)) {
     return (
-      <p className="text-sm text-zinc-600 dark:text-zinc-400">
+      <p className="text-sm text-text-muted">
         Only an admin can view or change login-method restrictions.
       </p>
     );
@@ -33,32 +34,34 @@ export default async function SecurityPage() {
 
   return (
     <div className="space-y-10">
-      <header>
-        <h1 className="text-2xl font-semibold tracking-tight">Sign-in methods</h1>
-        <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
-          In force:{' '}
-          <strong>
-            {current.mode === 'allowlist'
-              ? formatStrategies(current.allowedStrategies)
-              : 'no restriction'}
-          </strong>
-          {live && (
-            <>
-              {' '}
-              &mdash; version {live.version}, set {live.since.toLocaleDateString()}. &ldquo;
-              {live.reason}&rdquo;
-            </>
-          )}
-        </p>
-      </header>
+      <PageHeader
+        title="Sign-in methods"
+        blurb={
+          <>
+            In force:{' '}
+            <strong>
+              {current.mode === 'allowlist'
+                ? formatStrategies(current.allowedStrategies)
+                : 'no restriction'}
+            </strong>
+            {live && (
+              <>
+                {' '}
+                &mdash; version {live.version}, set {live.since.toLocaleDateString()}. &ldquo;
+                {live.reason}&rdquo;
+              </>
+            )}
+          </>
+        }
+      />
 
-      <section className="rounded-lg border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-900">
+      <section className="rounded-lg border border-border bg-panel p-5">
         <LoginPolicyForm current={current} />
       </section>
 
-      <section className="rounded-lg border border-amber-300 bg-amber-50 p-5 text-sm dark:border-amber-900 dark:bg-amber-950/40">
+      <section className="rounded-lg border border-warn bg-warn-soft p-5 text-sm">
         <h2 className="font-semibold">What this setting does, exactly</h2>
-        <ul className="mt-2 list-disc space-y-2 pl-5 text-zinc-700 dark:text-zinc-300">
+        <ul className="mt-2 list-disc space-y-2 pl-5 text-text">
           <li>
             It does <strong>not</strong> disable a sign-in method in Clerk. Turning
             passwords off for the whole instance is a Clerk setting, and that is the gate
@@ -85,11 +88,11 @@ export default async function SecurityPage() {
       </section>
 
       <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-text-muted">
           History
         </h2>
         {history.length === 0 ? (
-          <p className="mt-3 text-sm text-zinc-600 dark:text-zinc-400">
+          <p className="mt-3 text-sm text-text-muted">
             No restriction has ever been set for this organization.
           </p>
         ) : (
@@ -97,7 +100,7 @@ export default async function SecurityPage() {
             {history.map((row) => (
               <li
                 key={row.id}
-                className="rounded border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900"
+                className="rounded border border-border bg-panel p-3"
               >
                 <div className="font-medium">
                   v{row.version} &mdash;{' '}
@@ -105,12 +108,12 @@ export default async function SecurityPage() {
                     ? formatStrategies(row.allowedStrategies)
                     : 'no restriction'}
                   {row.supersededAt === null && (
-                    <span className="ml-2 rounded bg-emerald-100 px-1.5 py-0.5 text-xs text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200">
+                    <span className="ml-2 rounded bg-good-soft px-1.5 py-0.5 text-xs text-good">
                       live
                     </span>
                   )}
                 </div>
-                <div className="text-zinc-500">
+                <div className="text-text-muted">
                   {row.createdAt.toLocaleString()} &middot; &ldquo;{row.reason}&rdquo;
                 </div>
               </li>
