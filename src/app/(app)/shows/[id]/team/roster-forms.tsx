@@ -49,7 +49,11 @@ export function AttendeeControls({
 }) {
   return (
     <div className="mt-2 flex flex-wrap items-start gap-2">
-      {entry.mayRespond && <AnswerForm showId={showId} timezone={timezone} entry={entry} />}
+      {entry.isSelf ? (
+        <AnswerForm showId={showId} timezone={timezone} entry={entry} />
+      ) : (
+        entry.mayRespond && <RecordAnswerForm showId={showId} timezone={timezone} entry={entry} />
+      )}
       {mayStaff && <EditAttendee showId={showId} timezone={timezone} entry={entry} />}
       {mayStaff && <UnstaffForm showId={showId} entry={entry} />}
     </div>
@@ -83,6 +87,9 @@ function WindowFields({
   );
 }
 
+/**
+ * Your own row. First person, because it is you answering.
+ */
 function AnswerForm({
   showId,
   timezone,
@@ -116,6 +123,56 @@ function AnswerForm({
       </Submit>
       <Message state={state} />
     </form>
+  );
+}
+
+/**
+ * Somebody else's row, when you may answer for them.
+ *
+ * The permission is right and stays: people go on leave, and a roster only its
+ * subject can correct fills up with stale rows. The *framing* was the defect —
+ * an admin opening this tab was shown "I'm going" on all five colleagues' rows,
+ * because the control was written once for the actor's own row and then rendered
+ * wherever the permission happened to allow.
+ *
+ * So it is a different control with a different name. Recording what somebody
+ * told you is a legitimate act; it is just not the same act, and it says on the
+ * row that the store will not stamp `responded_at` for it — because a
+ * confirmation is only a confirmation when its subject made it, and booth
+ * coverage counts confirmations.
+ */
+function RecordAnswerForm({
+  showId,
+  timezone,
+  entry,
+}: {
+  showId: string;
+  timezone: string;
+  entry: RosterEntry;
+}) {
+  const [state, action, pending] = useActionState<FormState, FormData>(answerInvitation, {});
+  const first = entry.user.fullName.split(' ')[0];
+
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer text-zinc-500">Record {first}&rsquo;s answer</summary>
+      <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+        <input type="hidden" name="showId" value={showId} />
+        <input type="hidden" name="attendeeId" value={entry.attendee.id} />
+        <select name="status" defaultValue={entry.attendee.status} className={inputClass}>
+          <option value="invited">Not answered</option>
+          <option value="confirmed">Said they are going</option>
+          <option value="declined">Said they cannot make it</option>
+          <option value="waitlist">Waitlist</option>
+        </select>
+        <WindowFields timezone={timezone} attendee={entry.attendee} />
+        <Submit pending={pending}>Record</Submit>
+        <Message state={state} />
+        <p className="w-full text-zinc-500">
+          Secondhand: the row is only marked answered when {first} answers it.
+        </p>
+      </form>
+    </details>
   );
 }
 

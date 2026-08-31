@@ -90,6 +90,16 @@ export type RosterEntry = {
   user: { id: string; fullName: string; email: string };
   /** What this actor may do to this row — computed once, server-side. */
   mayRespond: boolean;
+  /**
+   * Whether this row *is* the acting user's.
+   *
+   * `mayRespond` is own-row **or** an approver, and both halves are right — a
+   * roster nobody but its subject can correct accumulates permanently stale rows
+   * when people go on leave. But answering for yourself and answering on
+   * somebody's behalf are different acts, and a screen given only `mayRespond`
+   * cannot tell them apart, so it renders the first-person form on everybody.
+   */
+  isSelf: boolean;
   /** Cross-show double-booking touching this person. */
   conflicts: Conflict[];
 };
@@ -261,6 +271,7 @@ export async function getTeamBoard(
       attendee,
       user: { id: user.id, fullName: user.fullName, email: user.email },
       mayRespond: canRespondForAttendee(actor, attendee),
+      isSelf: attendee.userId === actor.userId,
       conflicts: conflicts.filter((c) => c.userId === user.id),
     })),
     shifts: coverages.map((c) => {
