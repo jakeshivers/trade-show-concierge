@@ -254,8 +254,13 @@ Modeling choices worth calling out:
   the gap between them is drayage, which this app does not integrate with and must not
   pretend to see. `owner_id` is nullable, and unownedness escalates rather than mutes.
   §5g.
-- **`asset_reservation` is a log, not a flag.** Who took the booth, when it came back, what
-  condition — chain of custody, because capital assets get lost between shows.
+- **`asset_reservation` is a log, not a flag** — and step 16 is where it stopped being one
+  in name only. Who took the booth, when it came back, and in what condition; the condition
+  is recorded at **both** ends, because `assets.condition` is mutable and a single value
+  cannot say when the damage started. The window it carries is when the asset is
+  *unavailable*, which is longer than the show at both ends and must never be prefilled
+  from it — the same refusal §5g makes about an advance-warehouse cutoff, in both
+  directions at once. §5h.
 - **Every financial row carries `cost_center_id`.** Set at creation, never inferred later.
 
 ---
@@ -272,7 +277,7 @@ Modeling choices worth calling out:
 | **Service deadlines** ⭐ | Exhibitor-manual deadlines with dollar penalties and escalating alerts. The highest-hard-dollar feature in the product. §5a. |
 | **Team & shifts** | Attendees per show, roles, confirm/decline, arrival windows. **Booth shift coverage by hour**, plus actual presence vs. roster. Double-booking detection across overlapping shows. |
 | **Side events** | Dinners, demos, seminars around the show, with RSVPs and guest lists. Often where the pipeline actually gets made. |
-| **Assets & collateral** | Capital assets (booth, displays, furniture) with reservations and chain of custody; collateral inventory with low-stock alerts. Shares a model with shipping — "what's in the crate" is the same question. |
+| **Assets & collateral** ⭐ | Capital assets with reservations and chain of custody — and *reserved* never means available, because a promised asset may be committed elsewhere or unfit to go. Collateral inventory whose on-hand figure is a projection of an append-only ledger, and whose low-stock alert is judged on what is *free*. Shares a model with shipping — "what's in the crate" is the same question. §5h. |
 | **My itinerary** | Per-user view: my shows, my flights, my hotel, my requests. The Member's home screen. |
 | **Lodging** | Hotel, confirmation, check-in/out, rate, room assignments, room-block cutoff warnings. Manually entered. |
 | **Flight tracking** | Live status per flight. Delays, gate changes, cancellations surfaced against the show's move-in time. |
@@ -730,6 +735,97 @@ not trust an estimate on a shipment with no tracking number.** Whatever is in th
 came from a voided label or somebody's typing, and returning it made the engine report
 *"will miss the receiving deadline"* — a confident claim about a truck, sourced from
 nothing — on precisely the rows whose real problem is that no truck exists.
+
+### 5h. Assets & collateral — what "reserved" and "on hand" have to refuse to mean (step 16)
+
+The schema comment on `asset_reservation` has said "a log, not a flag" since step 1, and
+for fifteen steps it was a flag with extra columns: a row with a window, and nothing ever
+written into `checked_out_at` or `returned_at`. Six things had to be got right, and four of
+them are rules this document already settled elsewhere, arriving from a new direction.
+
+**Reserved is not available, and available is not serviceable.** §5e found that an assigned
+booth shift is not a covered one, because the person may not be able to stand there. An
+asset has the same gap and one more beyond it. A reservation is a claim on a thing that may
+already be committed to another show; and a thing committed to nobody may still be a
+touchscreen with a cracked panel. `assets.condition` is a fact recorded on the *last*
+return, every screen renders it as a label, and **nothing joins it to the reservation three
+weeks out that it invalidates**. That is the same failure shape as `overstated` coverage: a
+filled slot is the one thing nobody looks at again. So availability is a verdict with three
+refusals in it — `unserviceable`, `committed`, `tight_turnaround` — each carrying its
+reason, and a reservation that is promised while unfit gets an alert of its own.
+
+**The reservation window is not the show window, and it is longer at both ends — which
+inverts §5e exactly.** Freight leaves for an advance warehouse one to three weeks before
+move-in (§5g) and comes home weeks after move-out. §5e's correction was that comparing
+*show dates* **over**-reports a person's double-booking, because Monday–Tuesday in Detroit
+and Thursday–Friday in Chicago is an ordinary week. For an asset the same comparison
+**under**-reports, because the booth is physically gone for a month around a three-day
+show. Whichever way it errs, the fix is the same: compare the window that describes the
+thing. And there is a second finding with no counterpart on the people side — **adjacent is
+not clear.** Two reservations that do not overlap can still be impossible: `reserved_to` on
+the 8th and `reserved_from` on the 10th gives the crate 48 hours to cross the country, be
+opened, be inspected and be re-crated. That is `possible`, not `certain` — two shows really
+can share a floor — which is §5e's certainty distinction reached from the opposite
+direction: there the doubt was about the *data*, here it is about the *world*.
+
+**"In what condition" is only answerable as a delta, so the reservation records both ends.**
+`assets.condition` is mutable. By the time anybody asks whether Automate cracked the panel,
+the column reads `needs_repair` and cannot say when it started. `condition_on_checkout` is
+snapshotted when the asset is signed out and `condition_on_return` when it comes back, so
+the log reads on its own — and a return *worse* than the checkout needs a written note, the
+same rule §5d put on `skipped` and §5a on `not_applicable`, because that is the moment the
+record stops being routine. A check-in is also the **only** place `assets.condition` moves:
+a form that could type it would be a second way to set the same fact, and the two would
+disagree.
+
+**Signing an asset out and checking it back in is available to anybody** — §5g's
+`canConfirmReceipt`, one layer up. The person who wheels the crate onto the truck is
+whoever is in the warehouse at 6am, and the person who finds it back on the dock is whoever
+unloads it. A `returned_at` only a Travel Manager can set is a `returned_at` that stays
+null, after which every reservation is flagged overdue and the flag stops meaning anything.
+Recording a physical count of a shelf is the same act, for §5d's reason: inventory only a
+manager may touch is inventory maintained by asking around, which is the spreadsheet this
+product replaces. What needs authority is everything that changes what is *promised*.
+
+**On hand is not available, and this is the collateral half of the first correction.** 640
+datasheets on the shelf with 400 promised to a show next week is 240 available, and a
+low-stock threshold checked against `quantity_on_hand` reports "fine" every day until
+somebody opens the cupboard to pack the crate. Availability is `on hand − committed`, low
+stock is judged on it, and promising more than we hold — `oversubscribed` — is its own
+critical standing, because the show that finds out is whichever one packs *last* rather
+than whichever was promised last.
+
+**An uncounted return is not a zero return, and an allocation is not a movement.**
+`collateral_allocations.quantity_returned` is nullable and that nullability is load-bearing:
+"nobody counted" and "counted, none came back" are different facts, and 280 datasheets
+given away at a booth is an ordinary result while a box still sitting in Warehouse A is
+not. Reading null as zero writes off stock we own; reading it as full ships the next show
+short; so the app refuses to guess and says which two guesses it is refusing. Separately,
+*promising* stock is a claim and *picking it off the shelf* is a movement, so an allocation
+has three states — planned, issued, reconciled — and only the second touches
+`quantity_on_hand`. That column is a projection of the append-only `collateral_entries`,
+moved only by appending a signed delta: the credit ledger's ground rule from step 6,
+applied to things instead of money, which is what makes "what did Automate actually consume"
+a query rather than an argument.
+
+**Where assets meet freight.** A reservation window is a claim about when the thing cannot
+be promised elsewhere; the shipment rows are the record of when it is actually gone. If the
+crate must be at the dock on the 3rd and the reservation opens on the 9th, the asset left
+six days before anybody had it booked — and those six days are invisible to the
+availability check. `freightCoverage` compares the two, and returns `unverified` rather
+than `covers` when a show has no freight recorded, for §5f's reason about an unchecked
+flight: not knowing is not the same as fine.
+
+**Alerts.** Both dedupe-key shapes appear here, as they did in §5g, because assets have
+both kinds of moving part: a reservation alert is keyed to the reservation *and its window*
+(§5a — move the dates and every claim about them is void), while a stock alert is keyed to
+the item and a *bucket* (§5b — a quantity moves every time somebody picks a box). Audience
+is §5a's third correction for the fifth time, and sharper here: on `never_collected` and
+`unserviceable_reservation` there is *never* a holder by construction, so an
+addressed-to-the-holder engine would be silent on exactly the two alerts nothing else in
+the product reports. And §5a's tense rule reappears at the end of the chain: past the point
+where a $84,000 booth can plausibly turn up, "return it" is the wrong sentence — the alert
+switches from chasing to an insurance and replacement conversation, and stops nagging.
 
 ---
 
@@ -1365,7 +1461,40 @@ invert phases A and C.
       transcripts by **running the real loop against the real tools** — one as a member and
       one as an admin, asking questions whose *results* differ while nothing about the
       prompt does. Five corrections folded into §6f above. 591 tests.
-- [ ] **16.** Assets & collateral inventory, reservations, chain of custody
+- [x] **16.** **Assets & collateral — inventory, reservations, chain of custody** (§5h).
+      `src/lib/assets/`, split the way everything since step 8 has been.
+      `custody.ts` is pure and holds three of the six arguments: the seven-state custody
+      chain (`planned` → `due_out` → `out` → `overdue` → `missing`, with `never_collected`
+      and `returned` as the two ways it closes), `serviceabilityOf` and the three-refusal
+      `availabilityFor` — reserved is not available and available is not serviceable — and
+      `freightCoverage`, which is where assets meet §5g and returns `unverified` rather
+      than a pass when there is no freight to check against. `conflicts.ts` compares
+      *reservation windows* rather than show dates, which inverts §5e's correction, and
+      adds `turnaround` as a `possible` finding because adjacent is not clear.
+      `inventory.ts` is the collateral half: on hand minus committed, low stock judged on
+      what is free, an allocation's three states, and the projection over the ledger.
+      `alerts.ts` carries both dedupe-key shapes at once and escalates the two alerts that
+      by construction have no holder. `board.ts` orders by what is wrong and counts
+      capital outside the building. `edit.ts` requires a condition on return and a written
+      note when it comes back worse. `access.ts` puts sign-out, check-in and counting a
+      shelf in *anybody's* hands — §5g's receipt rule, one layer up. `store.ts` is the only
+      file touching rows, scoped through the asset's own org (a third posture beside
+      shipping's show and flights' traveler, and it falls out of the domain: a booth
+      belongs to the company between shows, which is most of its life).
+      Schema: `assets.cost_center_id` (§4's rule, which assets had been violating) +
+      timestamps + a unique asset tag; `asset_reservations.condition_on_checkout`,
+      `returned_by_id`, timestamps, unique on `(asset, show)`;
+      `collateral_items.cost_center_id` + timestamps + unique SKU; a new append-only
+      `collateral_entries` with signed deltas and a `(allocation, kind)` rail;
+      `collateral_allocations.issued_at` / `issued_by_id` / `returned_at` / `returned_by_id`.
+      Screens: `/assets` in the nav, and the Logistics tab now renders three models on one
+      page — the crate, what is inside it, and the collateral — with the joins between
+      them visible. `pnpm assets` / `pnpm assets --sweep` is the engine without a screen.
+      The assistant gained `asset_register` and `collateral_stock`, both existing
+      org-scoped store calls, so the §6f posture is unchanged. The seed builds all of it
+      **through the real stores** — including a booth signed out to last spring's Detroit
+      show and never checked in, which is the sentence the schema comment has carried since
+      step 1. Six corrections folded into §5h above. 656 tests.
 - [ ] **17.** Alerts feed · **true-cost rollup** (nearly free once 12, 14 land)
 - [ ] **18.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture
 - [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators

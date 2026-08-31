@@ -64,7 +64,10 @@ and a receiving *window* with two edges, because freight that arrives before a s
 dock opens is refused rather than early; and the conversational assistant — a chat agent
 whose access model is its tool list rather than its prompt, which reads through the same
 org-scoped stores a screen reads through and drafts requests a person still has to
-confirm. 591 tests, no keys required.
+confirm; and assets & collateral — a chain of custody that is finally a log rather than a
+flag, an availability verdict that refuses a booth three different ways, and an inventory
+whose on-hand figure is a projection of a ledger rather than a number somebody typed.
+656 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -384,6 +387,79 @@ themes now. `UI-REWORK.md` §10 and §11 are the long version.
    which the app stops tracking a laptop that switches at sunset with nothing on screen
    saying so.
 
+**What step 16 added, and where:** `src/lib/assets/` — the chain of custody, split the way
+everything since step 8 has been. `custody.ts` is pure and holds three of the six
+arguments: the seven-state custody chain, `availabilityFor` (three refusals, each with its
+reason — **reserved is not available and available is not serviceable**), and
+`freightCoverage`, which is where assets meet step 14's shipping rows. `conflicts.ts`
+compares **reservation windows rather than show dates**, which is §5e's correction
+inverted, and adds `turnaround` as a `possible` finding because adjacent is not clear.
+`inventory.ts` is the collateral half — on hand minus committed, low stock judged on what
+is *free*, an allocation's three states, and the projection over the ledger. `alerts.ts`
+carries both dedupe-key shapes at once (§5a's date for a reservation, §5b's bucket for a
+quantity) and escalates the two alerts that by construction have no holder. `board.ts`
+orders by what is wrong and counts capital outside the building. `edit.ts` requires a
+condition on return and a written note when it comes back worse. `access.ts` puts sign-out,
+check-in and counting a shelf in **anybody's** hands. `store.ts` is the only file touching
+rows, scoped through the **asset's own org** — a third posture beside shipping's show and
+flights' traveler, and it falls out of the domain rather than being chosen: a booth belongs
+to the company between shows, which is most of its life and all of the time it goes missing.
+
+Schema: `assets.cost_center_id` (§4's rule, which assets had been violating) + timestamps +
+a unique asset tag; `asset_reservations.condition_on_checkout`, `returned_by_id`,
+timestamps, unique on `(asset, show)`; `collateral_items.cost_center_id` + timestamps +
+unique SKU; a new append-only **`collateral_entries`** with signed deltas and a
+`(allocation, kind)` rail; `collateral_allocations.issued_at` / `issued_by_id` /
+`returned_at` / `returned_by_id`. Screens: `/assets` in the nav, and the **Logistics tab
+now renders three models on one page** — the crate, what is inside it, and the collateral —
+with the joins between them visible, which is the whole reason step 16 came after step 14.
+`pnpm assets` / `pnpm assets --sweep` is the engine without a screen. The assistant gained
+`asset_register` and `collateral_stock`, both existing org-scoped store calls, so the §6f
+posture is unchanged. The seed builds all of it **through the real stores** — including a
+booth signed out to last spring's Detroit show and never checked in, which is the sentence
+the schema comment has carried since step 1.
+
+**The six corrections step 16 turned up:**
+
+1. **Reserved is not available, and available is not serviceable.** §5e found that an
+   assigned booth shift is not a covered one. An asset has that gap and one more beyond it:
+   a reservation is a claim on a thing that may already be promised elsewhere, and a thing
+   promised to nobody may still be a touchscreen with a cracked panel. `assets.condition`
+   is a fact recorded on the *last* return, every screen renders it as a label, and nothing
+   joined it to the reservation three weeks out that it invalidates. Same failure shape as
+   `overstated` coverage — a filled slot is the one thing nobody looks at again.
+   `SCOPE.md` §5h.
+2. **The reservation window is not the show window, and §5e inverts.** Comparing show dates
+   *over*-reported a person's double-booking (Monday–Tuesday in Detroit, Thursday–Friday in
+   Chicago is an ordinary week); it **under**-reports an asset's, because the booth is gone
+   for a month around a three-day show. And there is a finding with no counterpart on the
+   people side: **adjacent is not clear.** Back on the 8th and out again on the 10th gives
+   the crate 48 hours to cross the country, be opened, be inspected and be re-crated. That
+   is `possible`, not `certain` — two shows really can share a floor — which is §5e's
+   certainty distinction reached from the opposite direction: there the doubt was about the
+   *data*, here it is about the *world*.
+3. **"In what condition" is only answerable as a delta.** `assets.condition` is mutable, so
+   by the time anybody asks whether Automate cracked the panel the column reads
+   `needs_repair` and cannot say when it started. The reservation snapshots both ends, a
+   return worse than the checkout needs a written note (§5d's rule on `skipped`, from a
+   third direction), and a check-in is the **only** place `assets.condition` moves — a form
+   that could type it would be a second way to set the same fact.
+4. **Signing out and checking in belong to anybody** — §5g's `canConfirmReceipt`, one layer
+   up. The person who wheels the crate onto the truck is whoever is in the warehouse at
+   6am. A `returned_at` only a manager can set is one that stays null, after which every
+   reservation is flagged overdue and the flag stops meaning anything.
+5. **On hand is not available, and an uncounted return is not a zero return.** 640
+   datasheets with 400 promised is 240 available, and a threshold checked against on-hand
+   reads fine until somebody opens the cupboard. Separately, `quantity_returned` is
+   nullable and that nullability is load-bearing: reading null as zero writes off stock we
+   own, reading it as full ships the next show short, so the app refuses to guess and names
+   both guesses. And *promising* stock is not *picking it off the shelf*, so an allocation
+   has three states and only the middle one moves the quantity — which is a projection of
+   the append-only ledger, the credit rule from step 6 applied to things.
+6. **Past a point, "return it" is the wrong sentence.** §5a's tense rule at the end of the
+   chain: a $84,000 booth nobody has seen in six weeks is an insurance and replacement
+   conversation, not a nightly reminder, and the alert stops chasing and says so.
+
 **What step 15 added, and where:** `src/lib/integrations/llm/` — the fourth integration
 behind an interface, and the first one where a vendor SDK exists. `types.ts` performs **one
 exchange and runs no loop**: running a tool means choosing an actor to run it as, and that
@@ -618,11 +694,15 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 16 — **assets & collateral inventory, reservations, chain of custody**
-(`SCOPE.md` §10). Logistics is writable as of step 14 and what it still lacks is chain of
-custody on the asset reservations; the tab says so where those controls would be rather
-than showing a dead button. Assets and shipping share a model — "what is in the crate" is
-the same question — so the interesting part is probably where the two meet.
+**Next:** step 17 — **alerts feed · true-cost rollup** (`SCOPE.md` §10). Five engines now
+write to the `alerts` table — deadlines, flights, shipping, assets, and the credit sweep —
+and there is still no screen that reads it, so `pnpm deadlines` / `pnpm flights` /
+`pnpm shipping` / `pnpm assets` / `pnpm credits` are how a person hears any of them. The
+true-cost half is the one the whole architecture has been paying into: flights, lodging,
+shipping and now collateral consumption all carry a cost center at creation, so the rollup
+is a query rather than an assembly. The interesting part is probably the coverage
+indicator — a cost figure that does not say what it is missing is the same fabricated bill
+§5a refuses to quote.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -631,14 +711,13 @@ filed unconfirmed, and reading the parse and confirming it happens on `/travel/[
 the person whose trip it is. The assistant does not stream (a server action returns the
 whole answer, which keeps every tool call inside the request as the actor `getActor()`
 resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
-logistics are all writable as of steps 10–14 — **there is no read-only tab left.** What
-Logistics still lacks is chain of custody on the asset reservations (step 16), and it says
-so where those controls would be rather than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
+logistics are all writable as of steps 10–14, and Logistics grew chain of custody and
+collateral at step 16 — **there is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Deadline, flight and shipment alerts land in the `alerts` table and nowhere else** — there
-is no feed screen (step 17) and no transport (step 21), so `pnpm deadlines`, `pnpm flights`
-and `pnpm shipping` are how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
+**Deadline, flight, shipment and asset alerts land in the `alerts` table and nowhere
+else** — there is no feed screen (step 17) and no transport (step 21), so `pnpm deadlines`,
+`pnpm flights`, `pnpm shipping` and `pnpm assets` are how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
 rather than implying otherwise: the agent buys against a travel request and the ticket is
 already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
 later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
@@ -924,9 +1003,52 @@ silently. One key is now `AuthConfigError`.
   moved since.
 - **A conversation is scoped to a user, not an org** — the only table here that is —
   because every result inside it was fetched under that person's scope.
+- **Reserved is not available, and available is not serviceable.** A reservation is a claim
+  on a thing that may already be promised elsewhere, and a thing promised to nobody may
+  still be a booth with a cracked panel. `availabilityFor` returns three different refusals
+  with a reason on each, and an unserviceable asset promised to an upcoming show gets its
+  own alert — because the condition is a label on one screen and the reservation is a row
+  on another, and nothing else in the product joins them. `src/lib/assets/custody.ts`.
+- **An asset clash is between reservation windows, and show dates *under*-report it.** The
+  exact inverse of §5e: comparing show dates over-flags a person's double-booking and
+  under-flags an asset's, because the booth is gone for a month around a three-day show.
+  And adjacent is not clear — under 120 hours between two reservations is a `possible`
+  finding, because the crate has to get home, be opened and be re-crated.
+  `src/lib/assets/conflicts.ts`.
+- **A reservation window is never prefilled from the show.** Same refusal as an
+  advance-warehouse cutoff, in both directions at once. It is typed, and then checked
+  against the show's actual freight by `freightCoverage` — which returns `unverified`, not
+  a pass, when there is no freight to check it against.
+- **Condition is recorded at both ends, and a check-in is the only place it moves.**
+  `assets.condition` is mutable, so a single value cannot say when the damage started;
+  `condition_on_checkout` makes the delta a fact. A return worse than the checkout needs a
+  written note — §5d's rule on `skipped`, from a third direction — and there is deliberately
+  no condition field on the asset edit form, because that would be a second way to set the
+  same fact.
+- **Signing an asset out and checking it in is available to anybody**, like confirming a
+  crate at the booth. The person in the warehouse at 6am is not a Travel Manager, and a
+  `returned_at` only a manager can set is one that stays null — after which every
+  reservation reads overdue and the flag stops meaning anything. Counting a shelf is the
+  same act. `src/lib/assets/access.ts`.
+- **On hand is not available.** Stock promised to a show that has not packed yet is not
+  stock, so low stock is judged on `on hand − committed` and promising more than we hold is
+  its own critical standing. The on-hand figure is the one on every screen and it reads
+  fine right up to the morning of the pack. `src/lib/assets/inventory.ts`.
+- **An uncounted return is not a zero return, and an allocation is not a movement.**
+  `quantity_returned` is nullable on purpose: reading null as zero writes off stock we own,
+  reading it as full ships the next show short, so the app refuses to guess and names both
+  guesses in the alert. And promising stock is a claim while picking it off the shelf is a
+  movement — only the second touches `quantity_on_hand`, which is a projection of the
+  append-only `collateral_entries`, moved only by appending a signed delta with a stated
+  reason. The credit ledger's rule, applied to things.
+- **Past the point where an asset can turn up, "return it" is the wrong sentence.** A booth
+  nobody has seen in six weeks is an insurance and replacement conversation. §5a's tense
+  rule, at the end of the chain of custody. `src/lib/assets/alerts.ts`.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
-  lodging, expenses, and the booth number do not come at all. Dates shift on the local
+  lodging, expenses, and the booth number do not come at all. A cloned asset *reservation*
+  carries its window and never its custody log: "signed out by Marcus on 9 July, returned
+  damaged" copied onto next year's show is a chain of custody for a trip nobody took. Dates shift on the local
   calendar, not by elapsed milliseconds. `SCOPE.md` §5c.
 - **A declined show is kept.** Intake decisions are append-only rows with a written
   reason; `shows.status` is the projection. The declines are the half that argues with
@@ -969,6 +1091,9 @@ pnpm flights --sync   # ask the status provider, write the changes and the alert
 pnpm shipping         # every crate, worst first, and what the engine would say
 pnpm shipping <show id>  # one show's freight
 pnpm shipping --sync  # ask the tracking provider, write the scans and the alerts
+pnpm assets           # the register worst-first, the clashes, the shelf vs. what is free
+pnpm assets <show id> # one show's reservations and allocations
+pnpm assets --sweep   # write tonight's asset alerts; run twice, nothing is written again
 pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
 pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
 pnpm assistant --tools  # the tool surface per role — the access model as a table
@@ -997,11 +1122,15 @@ src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
                               vocabulary both it and the Logistics tab render through
+src/app/(app)/assets/        the asset register and the collateral shelf, plus the forms
+                              and `_present.tsx` the Logistics tab renders through too
 src/app/(app)/assistant/     the concierge and one conversation, with each tool step
                               rendered beside the answer rather than behind it
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
-src/app/(app)/shows/[id]/logistics/  writable freight, its event timeline, and receipt
+src/app/(app)/shows/[id]/logistics/  three models on one page: writable freight and its
+                              timeline, the assets it carries with their custody chain,
+                              and the collateral allocated to the show
 src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatting),
                               form.ts (one FormState + FormData helpers, dependency-free),
                               form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts
@@ -1027,6 +1156,14 @@ src/lib/flights/              tracking — status.ts (pure: freshness, the §7 a
                               standing not the estimate), board.ts, access.ts, provider.ts
                               (env → status provider, no fallback), store.ts (rows, the
                               sweep, and materializing a booking into an itinerary)
+src/lib/assets/               capital and collateral — custody.ts (pure: the custody
+                              chain, the three-refusal availability verdict, and where a
+                              reservation window meets the freight), conflicts.ts (windows
+                              not show dates; certain vs. possible), inventory.ts (on hand
+                              vs. free, the three allocation states, the ledger
+                              projection), alerts.ts (both dedupe-key shapes at once),
+                              board.ts, access.ts, edit.ts, store.ts (rows, scoped through
+                              the asset's own org, and the sweep)
 src/lib/shipping/             freight — status.ts (pure: the two-edged receiving window,
                               the stall model, delivered-vs-received, the reconciler),
                               alerts.ts (pure, and the one alert with no row behind it),

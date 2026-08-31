@@ -5,7 +5,7 @@ import { getShipmentBoard, getShipmentTimeline } from '@/lib/shipping/store';
 import { canManageShipments } from '@/lib/shipping/access';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
 import type { ShipmentRow } from '@/lib/shipping/board';
-import { Badge, Card, Empty, money, showDateTime } from '../../../_components/ui';
+import { Badge, Card, Empty, money } from '../../../_components/ui';
 import {
   CONSIGNMENT_LABEL,
   ScanCell,
@@ -14,6 +14,31 @@ import {
   WindowCell,
   local,
 } from '../../../shipping/_present';
+import {
+  getAssetRegister,
+  availableAssetsFor,
+  getCollateral,
+  getShowCollateral,
+} from '@/lib/assets/store';
+import { canReserveAssets } from '@/lib/assets/access';
+import {
+  ConditionBadge,
+  CustodyBadge,
+  SEVERITY_TONE as ASSET_SEVERITY_TONE,
+  StockCell,
+  local as assetLocal,
+} from '../../../assets/_present';
+import {
+  AllocateForm,
+  CountBackForm,
+  PackForm,
+  ReleaseForm,
+  ReserveForm,
+  RewindowForm,
+  SignInForm,
+  SignOutForm,
+  UnallocateForm,
+} from '../../../assets/forms';
 import { loadShow } from '../detail';
 import {
   DeleteShipmentForm,
@@ -24,10 +49,14 @@ import {
 } from './forms';
 
 /**
- * Logistics — the crate, its timeline, and the capital assets it carries.
+ * Logistics — the crate, its timeline, and what is inside it.
  *
- * The last read-only tab is writable as of step 14. Chain of custody on the
- * reservations below is still step 16, and says so where the controls would be.
+ * Three models on one page, deliberately: freight, the capital assets it carries,
+ * and the collateral. They are the same question asked at three scales — where is
+ * it, and can it be there — and the joins between them are the point. A
+ * reservation window that does not cover the freight is a booth on a truck while
+ * the register says it is on a shelf; a crate delivered to a dock is not a booth
+ * at the stand; a shelf full of datasheets is not 400 datasheets you can pack.
  *
  * The page leads with the receiving window rather than with the delivery date,
  * because the date on its own is not an answer: the same Tuesday means "held for
@@ -37,7 +66,7 @@ import {
 export default async function LogisticsTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const { actor, detail } = await loadShow(id);
-  const { show, reservations } = detail;
+  const { show } = detail;
   const asOf = new Date();
 
   const board = await getShipmentBoard(actor, { showId: id, asOf });
@@ -60,6 +89,30 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
       .where(eq(s.costCenters.orgId, actor.orgId))
       .orderBy(asc(s.costCenters.code)),
   ]);
+
+  // The reservation window is what an asset is offered against, so the picker
+  // needs one before it can honestly say what is free. The show's own dates are
+  // the wrong answer and are deliberately not used: a booth is gone for a
+  // fortnight around a three-day show, so offering against show dates would
+  // report a crate as available on exactly the days it is on a truck. Bracketing
+  // move-in and move-out by a week is the closest honest guess for the *picker*
+  // — and the window itself is still typed, then checked against the freight.
+  const [assets, allocations, collateral] = await Promise.all([
+    getAssetRegister(actor, { showId: id, asOf }),
+    getShowCollateral(actor, id),
+    getCollateral(actor),
+  ]);
+  const mayReserve = canReserveAssets(actor);
+  const options = mayReserve
+    ? await availableAssetsFor(
+        actor,
+        {
+          from: new Date((show.moveInAt ?? show.startsOn).getTime() - 7 * 86_400_000),
+          to: new Date((show.moveOutAt ?? show.endsOn).getTime() + 7 * 86_400_000),
+        },
+        id,
+      )
+    : [];
 
   const timelines = new Map(
     await Promise.all(
@@ -124,32 +177,165 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
 
       <Card
         title="Reserved assets"
-        subtitle="Chain of custody — who took the booth, when it came back, in what condition — is step 16. What is here is the reservation."
+        subtitle="Chain of custody: who took it, when it came back, and in what condition. The window is when the asset is unavailable — which is longer than the show at both ends, because the crate leaves before move-in and comes home after move-out."
       >
-        {reservations.length === 0 ? (
+        {assets.rows.length === 0 ? (
           <Empty>Nothing reserved for this show.</Empty>
         ) : (
-          <ul className="space-y-1.5">
-            {reservations.map(({ reservation, asset }) => (
-              <li
-                key={reservation.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
-              >
-                <span className="font-medium">{asset.name}</span>
-                {asset.assetTag && <span className="font-mono text-xs">{asset.assetTag}</span>}
-                <Badge tone={asset.condition === 'needs_repair' ? 'warn' : 'neutral'}>
-                  {asset.condition.replace('_', ' ')}
-                </Badge>
-                <span className="text-xs text-text-muted">
-                  {money(asset.purchaseValueCents)} · {asset.storageLocation ?? 'location unknown'}
-                </span>
-                <span className="ml-auto text-xs text-text-muted">
-                  {showDateTime(reservation.reservedFrom, show.timezone)} →{' '}
-                  {showDateTime(reservation.reservedTo, show.timezone)}
-                </span>
+          <ul className="space-y-3">
+            {assets.rows.map((row) => (
+              <li key={row.reservation!.id} className="rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-medium">{row.asset.name}</span>
+                  {row.asset.assetTag && (
+                    <span className="font-mono text-xs">{row.asset.assetTag}</span>
+                  )}
+                  <ConditionBadge
+                    serviceability={row.serviceability}
+                    condition={row.asset.condition}
+                  />
+                  <CustodyBadge row={row} />
+                  <span className="text-xs text-text-muted">
+                    {money(row.asset.purchaseValueCents)}
+                  </span>
+                  <span className="ml-auto flex items-center gap-3 text-xs">
+                    {mayReserve && (
+                      <RewindowForm showId={id} timezone={show.timezone} row={row} />
+                    )}
+                    {mayReserve && (
+                      <ReleaseForm showId={id} reservationId={row.reservation!.id} />
+                    )}
+                  </span>
+                </div>
+
+                <div className="mt-2 grid gap-3 text-xs sm:grid-cols-3">
+                  <div>
+                    <div className="uppercase tracking-wider text-text-muted">Unavailable</div>
+                    <div className="mt-0.5">
+                      {assetLocal(row.reservation!.reservedFrom, show.timezone)} →{' '}
+                      {assetLocal(row.reservation!.reservedTo, show.timezone)}
+                    </div>
+                    {/* Where assets meet freight, and the only place either knows. */}
+                    {row.coverage?.kind === 'short' && (
+                      <div className="mt-0.5 text-warn">
+                        shorter than the freight booked for this show
+                      </div>
+                    )}
+                    {row.coverage?.kind === 'unverified' && (
+                      <div className="mt-0.5 text-text-muted">
+                        no freight recorded, so nothing checks this window
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <div className="uppercase tracking-wider text-text-muted">Signed out</div>
+                    <div className="mt-0.5">
+                      {row.reservation!.checkedOutAt
+                        ? `${assetLocal(row.reservation!.checkedOutAt, show.timezone)}${
+                            row.holderName ? ` · ${row.holderName}` : ''
+                          }`
+                        : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="uppercase tracking-wider text-text-muted">Back</div>
+                    <div className="mt-0.5">
+                      {row.reservation!.returnedAt ? (
+                        <>
+                          {assetLocal(row.reservation!.returnedAt, show.timezone)}
+                          {row.reservation!.conditionOnReturn && (
+                            <> · {row.reservation!.conditionOnReturn.replace('_', ' ')}</>
+                          )}
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {row.alert && (
+                  <p className="mt-2 text-xs text-text-muted">
+                    <Badge tone={ASSET_SEVERITY_TONE[row.alert.severity]}>
+                      {row.alert.severity}
+                    </Badge>{' '}
+                    {row.alert.body}
+                  </p>
+                )}
+
+                <div className="mt-2">
+                  {/* Anybody, both of them. See `assets/access.ts`. */}
+                  {(row.custody?.standing === 'planned' || row.custody?.standing === 'due_out') && (
+                    <SignOutForm showId={id} reservationId={row.reservation!.id} />
+                  )}
+                  {(row.custody?.standing === 'out' ||
+                    row.custody?.standing === 'overdue' ||
+                    row.custody?.standing === 'missing') && <SignInForm showId={id} row={row} />}
+                </div>
               </li>
             ))}
           </ul>
+        )}
+
+        {mayReserve && (
+          <div className="mt-5 border-t border-border pt-4">
+            <ReserveForm showId={id} timezone={show.timezone} options={options} />
+          </div>
+        )}
+      </Card>
+
+      <Card
+        title="Collateral"
+        subtitle="Promised, packed, counted back. An allocation is a claim on stock; the movement happens when somebody picks it off the shelf. A blank return count is not a zero — it means nobody looked."
+      >
+        {allocations.length === 0 ? (
+          <Empty>Nothing allocated to this show.</Empty>
+        ) : (
+          <ul className="space-y-2">
+            {allocations.map((a) => (
+              <li key={a.allocation.id} className="border-b border-border pb-2 last:border-0">
+                <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                  <span className="font-medium">{a.itemName}</span>
+                  <span className="tabular text-sm">{a.allocation.quantityAllocated}</span>
+                  <Badge
+                    tone={
+                      a.standing === 'reconciled'
+                        ? 'good'
+                        : a.standing === 'issued'
+                          ? 'info'
+                          : 'neutral'
+                    }
+                  >
+                    {a.standing === 'planned'
+                      ? 'promised, still on the shelf'
+                      : a.standing === 'issued'
+                        ? 'in a crate, not counted back'
+                        : `counted back · ${a.allocation.quantityReturned} returned, ${
+                            a.allocation.quantityAllocated - (a.allocation.quantityReturned ?? 0)
+                          } consumed`}
+                  </Badge>
+                  <StockCell standing={a.itemStanding} />
+                  <span className="ml-auto flex items-center gap-3 text-xs">
+                    {a.standing === 'planned' && <PackForm showId={id} allocationId={a.allocation.id} />}
+                    {mayReserve && a.standing !== 'issued' && (
+                      <UnallocateForm showId={id} allocationId={a.allocation.id} />
+                    )}
+                  </span>
+                </div>
+                {a.standing === 'issued' && (
+                  <div className="mt-1">
+                    <CountBackForm showId={id} row={a} />
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {mayReserve && collateral.length > 0 && (
+          <div className="mt-5 border-t border-border pt-4">
+            <AllocateForm showId={id} items={collateral} />
+          </div>
         )}
       </Card>
     </div>

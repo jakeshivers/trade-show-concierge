@@ -29,6 +29,17 @@ import { addLodging, assignRoom } from '../src/lib/lodging/store';
 import { addShipment, syncShipmentTracking } from '../src/lib/shipping/store';
 import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
 import { ask } from '../src/lib/assistant/store';
+import {
+  allocateCollateral,
+  checkInAsset,
+  checkOutAsset,
+  createAsset,
+  createCollateralItem,
+  issueAllocation,
+  recordMovement,
+  reserveAsset,
+  sweepAssetAlerts,
+} from '../src/lib/assets/store';
 import { ScriptedAssistantModel } from '../src/lib/integrations/llm/scripted/provider';
 
 const day = 24 * 60 * 60 * 1000;
@@ -883,26 +894,196 @@ async function main() {
   });
   await addRsvp(admin, demoId, { userId: tomas.id, status: 'accepted' });
 
-  console.log('· assets & collateral');
-  const assetRows = await db
-    .insert(s.assets)
-    .values([
-      { orgId: org.id, name: '20x20 island booth', kind: 'booth', assetTag: 'NWR-BOOTH-01', condition: 'good', storageLocation: 'Warehouse A, Bay 3', purchaseValueCents: 8_400_000, weightLb: '1240.00', dimensions: "20' x 20' x 12'" },
-      { orgId: org.id, name: '10x20 inline booth', kind: 'booth', assetTag: 'NWR-BOOTH-02', condition: 'good', storageLocation: 'Warehouse A, Bay 4', purchaseValueCents: 3_100_000, weightLb: '620.00' },
-      { orgId: org.id, name: 'Demo robot arm (RX-7)', kind: 'display', assetTag: 'NWR-DEMO-11', condition: 'good', storageLocation: 'Lab 2', purchaseValueCents: 4_200_000, weightLb: '180.00' },
-      { orgId: org.id, name: '85" touchscreen + stand', kind: 'av_equipment', assetTag: 'NWR-AV-04', condition: 'needs_repair', storageLocation: 'Warehouse A, Bay 1', purchaseValueCents: 620_000, weightLb: '210.00' },
-    ])
-    .returning();
-  await db.insert(s.assetReservations).values([
-    { assetId: assetRows[0].id, showId: automate.id, reservedFrom: at(40), reservedTo: at(60) },
-    { assetId: assetRows[2].id, showId: automate.id, reservedFrom: at(40), reservedTo: at(60) },
-    { assetId: assetRows[1].id, showId: medtech.id, reservedFrom: at(108), reservedTo: at(125) },
-  ]);
-  await db.insert(s.collateralItems).values([
-    { orgId: org.id, name: 'Platform overview datasheet', sku: 'DS-PLAT-01', quantityOnHand: 640, lowStockThreshold: 250, unitCostCents: 85 },
-    { orgId: org.id, name: 'Case study booklet', sku: 'CS-BOOK-02', quantityOnHand: 180, lowStockThreshold: 200, unitCostCents: 310 },
-    { orgId: org.id, name: 'Branded water bottle', sku: 'SWAG-BTL-01', quantityOnHand: 95, lowStockThreshold: 150, unitCostCents: 640 },
-  ]);
+  console.log('· assets & collateral (through the real stores — nothing typed)');
+  // Everything below runs through `src/lib/assets/store.ts`, the rule step 9 set
+  // for travel requests and step 12 for the roster. Two properties come out of
+  // that rather than being arranged: the ledger under `quantity_on_hand` is
+  // written by the same `recordMovement` a form calls, and the condition on
+  // `85" touchscreen` is the *return* condition from a real check-in rather than
+  // a column somebody typed `needs_repair` into.
+  const asset = async (draft: Parameters<typeof createAsset>[1]) => createAsset(admin, draft);
+
+  const islandBooth = await asset({
+    name: '20x20 island booth',
+    kind: 'booth',
+    assetTag: 'NWR-BOOTH-01',
+    condition: 'good',
+    storageLocation: 'Warehouse A, Bay 3',
+    purchaseValue: '84000',
+    costCenterId: mkt.id,
+    weightLb: '1240.00',
+    dimensions: "20' x 20' x 12'",
+  });
+  const inlineBooth = await asset({
+    name: '10x20 inline booth',
+    kind: 'booth',
+    assetTag: 'NWR-BOOTH-02',
+    condition: 'good',
+    storageLocation: 'Warehouse A, Bay 4',
+    purchaseValue: '31000',
+    costCenterId: mkt.id,
+    weightLb: '620.00',
+  });
+  const demoArm = await asset({
+    name: 'Demo robot arm (RX-7)',
+    kind: 'display',
+    assetTag: 'NWR-DEMO-11',
+    condition: 'good',
+    storageLocation: 'Lab 2',
+    purchaseValue: '42000',
+    costCenterId: se.id,
+    weightLb: '180.00',
+  });
+  const touchscreen = await asset({
+    name: '85" touchscreen + stand',
+    kind: 'av_equipment',
+    assetTag: 'NWR-AV-04',
+    condition: 'good',
+    storageLocation: 'Warehouse A, Bay 1',
+    purchaseValue: '6200',
+    costCenterId: se.id,
+    weightLb: '210.00',
+  });
+  const truss = await asset({
+    name: 'Rigging & lighting truss',
+    kind: 'other',
+    assetTag: 'NWR-TRUSS-02',
+    condition: 'good',
+    storageLocation: 'Warehouse A, Bay 6',
+    purchaseValue: '18000',
+    costCenterId: mkt.id,
+    weightLb: '480.00',
+  });
+
+  const reserve = async (
+    show: typeof automate,
+    assetId: string,
+    fromDay: number,
+    toDay: number,
+  ) => {
+    const tz = show.timezone ?? 'UTC';
+    return reserveAsset(admin, show.id, {
+      assetId,
+      reservedFromDate: localOn(at(fromDay, 8), tz),
+      reservedFromTime: '08:00',
+      reservedToDate: localOn(at(toDay, 17), tz),
+      reservedToTime: '17:00',
+    });
+  };
+
+  // 1. The one the schema comment has been about since step 1. The island booth
+  //    went to Detroit last spring, was signed out, and nothing was ever checked
+  //    back in — $84,000 of capital that no screen in the product could see was
+  //    gone, and that is reserved again for Automate in seven weeks.
+  const lostBooth = await reserve(automate2025, islandBooth.id, -53, -42);
+  await checkOutAsset(actorFor(marcus), lostBooth.id, at(-53, 7));
+  await reserve(automate, islandBooth.id, 30, 62);
+
+  // 2. A certain clash. Automate and Sensors Converge overlap — the pair step 12
+  //    added so the *people* conflict case would be live — and one robot arm
+  //    cannot be in Detroit and San Jose in the same fortnight.
+  await reserve(automate, demoArm.id, 30, 60);
+  await reserve(sensors, demoArm.id, 34, 62);
+
+  // 3. A possible one. The truss comes home from Anaheim on the 6th and is due
+  //    out again on the 8th: 48 hours to cross the country, be opened, be looked
+  //    at and be re-crated. Fine if both shows share a floor; not otherwise.
+  const trussWest = await reserve(dmwest, truss.id, -18, 6);
+  await reserve(sensors, truss.id, 8, 60);
+  void trussWest;
+
+  // 4. A future claim invalidated by a past fact. The touchscreen goes to
+  //    Automate in seven weeks, and it comes back from Detroit with a cracked
+  //    panel — recorded by a real check-in, so `condition_on_checkout` and
+  //    `condition_on_return` disagree and the delta is a fact rather than a guess.
+  const screenLastYear = await reserve(automate2025, touchscreen.id, -53, -44);
+  await checkOutAsset(actorFor(reese), screenLastYear.id, at(-53, 7));
+  await checkInAsset(
+    actorFor(reese),
+    screenLastYear.id,
+    {
+      conditionOnReturn: 'needs_repair',
+      conditionOnCheckout: 'good',
+      note: 'Panel cracked in the top-left corner — happened somewhere between the booth and the crate; nobody saw it.',
+    },
+    at(-41, 15),
+  );
+  await reserve(automate, touchscreen.id, 30, 62);
+
+  // 5. Reserved for a show that came and went, and never signed out. Either the
+  //    inline booth stayed in the warehouse while Detroit ran, or somebody took
+  //    it and did not say. The row looks identical either way.
+  await reserve(automate2025, inlineBooth.id, -53, -44);
+  // 6. And the one where assets meet freight. MedTech's booth crate has to be at
+  //    the advance warehouse on the 104th day; the reservation opens on the
+  //    110th. For six days the booth is on a truck and the register says it is
+  //    on a shelf — which is exactly the window another show could claim it in.
+  await reserve(medtech, inlineBooth.id, 110, 128);
+
+  const item = async (draft: Parameters<typeof createCollateralItem>[1], received: number) => {
+    const row = await createCollateralItem(admin, draft);
+    await recordMovement(
+      admin,
+      row.id,
+      { kind: 'received', quantity: String(received), reason: 'Opening stock count' },
+      { now: at(-70) },
+    );
+    return row;
+  };
+
+  const datasheet = await item(
+    {
+      name: 'Platform overview datasheet',
+      sku: 'DS-PLAT-01',
+      lowStockThreshold: '250',
+      unitCost: '0.85',
+      costCenterId: mkt.id,
+      storageLocation: 'Warehouse A, Rack 1',
+    },
+    900,
+  );
+  const booklet = await item(
+    {
+      name: 'Case study booklet',
+      sku: 'CS-BOOK-02',
+      lowStockThreshold: '200',
+      unitCost: '3.10',
+      costCenterId: mkt.id,
+      storageLocation: 'Warehouse A, Rack 1',
+    },
+    180,
+  );
+  const bottle = await item(
+    {
+      name: 'Branded water bottle',
+      sku: 'SWAG-BTL-01',
+      lowStockThreshold: '150',
+      unitCost: '6.40',
+      costCenterId: mkt.id,
+      storageLocation: 'Warehouse A, Rack 4',
+    },
+    95,
+  );
+
+  // The correction, live: 650 datasheets on the shelf reads fine on every screen
+  // in every product of this kind, and 250 of them are actually free.
+  await allocateCollateral(admin, automate.id, { itemId: datasheet.id, quantity: '400' });
+  const westDatasheets = await allocateCollateral(admin, dmwest.id, {
+    itemId: datasheet.id,
+    quantity: '250',
+  });
+  await issueAllocation(actorFor(reese), westDatasheets.id, at(-6, 9));
+
+  // Promised more than we hold. Nothing about `quantity_on_hand` says so.
+  await allocateCollateral(admin, automate.id, { itemId: booklet.id, quantity: '220' });
+
+  // Went to Detroit last spring in a crate and nobody has counted it back. Not
+  // the same as "none came back", which for swag would be the ordinary result.
+  const detroitBottles = await allocateCollateral(admin, automate2025.id, {
+    itemId: bottle.id,
+    quantity: '60',
+  });
+  await issueAllocation(actorFor(marcus), detroitBottles.id, at(-53, 9));
 
   console.log('· flights (manually entered — nothing here came from a provider)');
   // My Itinerary needs something to show, and a manually recorded flight is a real
@@ -1483,6 +1664,13 @@ async function main() {
   // a member and Shelley an admin, they ask the *same* question, and the tool
   // results differ. Nothing about the prompt differs. That difference is the
   // access model, and it is in the queries.
+  // After the shipments, deliberately: `freightCoverage` reads the freight rows
+  // to decide whether a reservation window covers the trip, and a sweep that ran
+  // before them would return `unverified` on every row and quietly prove nothing.
+  console.log('· asset alerts (produced by running the real sweep)');
+  const assetSweep = await sweepAssetAlerts(org.id, now);
+  console.log(`  ${assetSweep.planned.length} planned · ${assetSweep.alertsWritten} written`);
+
   console.log('· assistant conversations (real loop, scripted model, real tools)');
   const scriptedModel = new ScriptedAssistantModel();
   await ask({
@@ -1510,7 +1698,7 @@ async function main() {
     shows: 7,
     costCenters: costCenters.length,
     policyLayers: 3,
-    assets: assetRows.length,
+    assets: 5,
     shifts: shifts.length,
     ticketCredits: creditRows.length,
     travelRequests: 3,

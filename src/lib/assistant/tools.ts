@@ -10,6 +10,7 @@ import { getTeamBoard, getConflicts } from '@/lib/team/store';
 import { getLodgingBoard } from '@/lib/lodging/store';
 import { getFlightBoard } from '@/lib/flights/store';
 import { getShipmentBoard } from '@/lib/shipping/store';
+import { getAssetRegister, getCollateral } from '@/lib/assets/store';
 import { listRequests, loadRequest, travelersFor, costCentersFor } from '@/lib/travel/queue';
 import { draftLodgingRecord, draftTravelRequest } from './draft';
 
@@ -181,6 +182,28 @@ export const TOOLS: AssistantTool[] = [
     }),
     kind: 'read',
     run: (c, i) => getShipmentBoard(c.actor, { showId: i.showId, asOf: c.now }, c.db),
+  }),
+  tool({
+    name: 'asset_register',
+    description:
+      'Capital assets and where they actually are. A reservation is a claim on a thing, ' +
+      'not a label on a row: an asset can be reserved and unfit to go, signed out and ' +
+      'overdue, or reserved and never collected — and "reserved" never means available.',
+    schema: z.object({
+      showId: z.string().optional().describe('Narrow to one show. Omit for everything.'),
+    }),
+    kind: 'read',
+    run: (c, i) => getAssetRegister(c.actor, { showId: i.showId, asOf: c.now }, c.db),
+  }),
+  tool({
+    name: 'collateral_stock',
+    description:
+      'Print and swag, with what is on the shelf beside what is actually free. Stock ' +
+      'promised to a show that has not packed yet is not available, so the on-hand figure ' +
+      'is never the answer to "have we got enough".',
+    schema: z.object({}),
+    kind: 'read',
+    run: (c) => getCollateral(c.actor, c.db),
   }),
   tool({
     name: 'travel_requests',

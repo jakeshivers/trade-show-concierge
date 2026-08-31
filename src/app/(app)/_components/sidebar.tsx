@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
+  Boxes,
   CalendarDays,
   ClipboardCheck,
   Inbox,
@@ -63,6 +64,7 @@ const GROUPS: Group[] = [
       { href: '/travel', label: 'Travel', Icon: Plane },
       { href: '/flights', label: 'Flight board', Icon: Radar },
       { href: '/shipping', label: 'Shipping', Icon: PackageSearch },
+      { href: '/assets', label: 'Assets', Icon: Boxes },
       // Everyone has an approvals page; for a Member it is their own requests
       // waiting on somebody else, which is worth an entry — "where has my
       // request got to" is the question the queue exists to answer.

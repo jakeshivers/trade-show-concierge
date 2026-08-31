@@ -218,6 +218,15 @@ export const assetConditionEnum = pgEnum('asset_condition', [
   'retired',
 ]);
 
+export const collateralEntryKindEnum = pgEnum('collateral_entry_kind', [
+  'received',
+  'issued',
+  'returned',
+  'written_off',
+  /** A physical count that disagreed with the ledger. Always needs a reason. */
+  'counted',
+]);
+
 export const creditStatusEnum = pgEnum('credit_status', [
   'available',
   'partially_used',
@@ -1409,19 +1418,44 @@ export const assets = pgTable(
     name: text('name').notNull(),
     kind: assetKindEnum('kind').notNull().default('display'),
     assetTag: text('asset_tag'),
+    /**
+     * The *current* condition, and therefore a fact about the past that a
+     * future reservation has to be judged against. §5h: a booth that came back
+     * `needs_repair` is still reservable, and the reservation still renders as
+     * a filled slot — which is why `custody.ts` treats condition as a gate on
+     * serviceability rather than as a label on a row.
+     */
     condition: assetConditionEnum('condition').notNull().default('good'),
     storageLocation: text('storage_location'),
     purchaseValueCents: integer('purchase_value_cents'),
+    /** §4's rule, which assets had been violating: capital is somebody's budget. */
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
     weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
     dimensions: text('dimensions'),
     notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('assets_org_idx').on(t.orgId)],
+  (t) => [
+    index('assets_org_idx').on(t.orgId),
+    // An asset tag is a barcode somebody sticks on a crate; two assets carrying
+    // the same one makes the whole chain of custody ambiguous at the one moment
+    // it is being read off a scanner.
+    uniqueIndex('assets_tag_unique').on(t.orgId, t.assetTag),
+  ],
 );
 
 /**
  * A log, not a flag. Capital assets get lost between shows; chain of custody is
  * who took it, when it came back, and in what condition.
+ *
+ * `condition_on_checkout` is the half that was missing. "In what condition" is
+ * only an answerable question as a *delta*, and `assets.condition` is mutable —
+ * by the time anybody asks whether Automate damaged the touchscreen, the column
+ * says `needs_repair` and cannot say when it started. So the reservation
+ * records both ends and the log reads on its own.
  */
 export const assetReservations = pgTable(
   'asset_reservations',
@@ -1433,19 +1467,32 @@ export const assetReservations = pgTable(
     showId: uuid('show_id')
       .notNull()
       .references(() => shows.id, { onDelete: 'cascade' }),
+    /**
+     * The window the asset is *unavailable*, which is not the show's window and
+     * is longer than it at both ends: freight leaves days before move-in and
+     * comes back weeks after move-out. §5h — comparing show dates under-reports
+     * an asset clash exactly as comparing them over-reported a person's.
+     */
     reservedFrom: timestamp('reserved_from', { withTimezone: true }).notNull(),
     reservedTo: timestamp('reserved_to', { withTimezone: true }).notNull(),
     checkedOutAt: timestamp('checked_out_at', { withTimezone: true }),
     checkedOutById: uuid('checked_out_by_id').references(() => users.id, {
       onDelete: 'set null',
     }),
+    conditionOnCheckout: assetConditionEnum('condition_on_checkout'),
     returnedAt: timestamp('returned_at', { withTimezone: true }),
+    returnedById: uuid('returned_by_id').references(() => users.id, { onDelete: 'set null' }),
     conditionOnReturn: assetConditionEnum('condition_on_return'),
     notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('asset_reservations_asset_idx').on(t.assetId, t.reservedFrom),
     index('asset_reservations_show_idx').on(t.showId),
+    // One reservation of one asset for one show. A second is a duplicate, and a
+    // duplicate reads on screen as the asset being needed twice.
+    uniqueIndex('asset_reservations_unique').on(t.assetId, t.showId),
   ],
 );
 
@@ -1458,14 +1505,86 @@ export const collateralItems = pgTable(
       .references(() => organizations.id, { onDelete: 'cascade' }),
     name: text('name').notNull(),
     sku: text('sku'),
+    /**
+     * A projection of the append-only entries in `collateral_entries`, exactly
+     * as `ticket_credits.remaining_value_cents` is a projection of its ledger.
+     * Only `recordMovement()` moves it, by appending a signed delta — so "how
+     * many datasheets did Automate actually consume" stays answerable, which is
+     * a §8 cost question and not an inventory nicety.
+     */
     quantityOnHand: integer('quantity_on_hand').notNull().default(0),
+    /**
+     * Judged against *available* stock, never against on-hand. Stock promised
+     * to a show next week is not stock. §5h.
+     */
     lowStockThreshold: integer('low_stock_threshold').notNull().default(0),
     unitCostCents: integer('unit_cost_cents'),
+    /** §4's rule again: print and swag are somebody's line item. */
+    costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
+      onDelete: 'set null',
+    }),
     storageLocation: text('storage_location'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('collateral_items_org_idx').on(t.orgId)],
+  (t) => [
+    index('collateral_items_org_idx').on(t.orgId),
+    uniqueIndex('collateral_items_sku_unique').on(t.orgId, t.sku),
+  ],
 );
 
+/**
+ * Every way a quantity can move, signed, append-only — the credit ledger's shape
+ * applied to things instead of money.
+ *
+ * An *allocation* is deliberately not one of these. Promising 400 datasheets to
+ * a show is a claim on stock, not a movement of it; the movement happens when
+ * somebody picks them off the shelf and puts them in the crate. Conflating the
+ * two is how a warehouse shows empty for a month before anybody packs anything.
+ */
+export const collateralEntries = pgTable(
+  'collateral_entries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => collateralItems.id, { onDelete: 'cascade' }),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    kind: collateralEntryKindEnum('kind').notNull(),
+    /** Signed: `received` and `returned` positive, `issued` and `written_off` negative. */
+    delta: integer('delta').notNull(),
+    /** The quantity this entry produced, so the trail reads without re-summing it. */
+    quantityAfter: integer('quantity_after').notNull(),
+    allocationId: uuid('allocation_id').references(() => collateralAllocations.id, {
+      onDelete: 'set null',
+    }),
+    showId: uuid('show_id').references(() => shows.id, { onDelete: 'set null' }),
+    actorId: uuid('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    /** Always required: a quantity that moved without a stated reason is not auditable. */
+    reason: text('reason').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('collateral_entries_item_idx').on(t.itemId, t.occurredAt),
+    // Rail: one issue and one return per allocation, ever. A retried "pack the
+    // crate" must not empty the shelf twice.
+    uniqueIndex('collateral_entries_allocation_idx').on(t.allocationId, t.kind),
+  ],
+);
+
+/**
+ * A claim on stock, with three states and no boolean between them: planned
+ * (promised, still on the shelf), issued (in the crate, off the shelf), and
+ * reconciled (counted back).
+ *
+ * `quantity_returned` is nullable and that nullability is load-bearing.
+ * **Nobody counted** and **counted, none came back** are different facts: the
+ * first is an open allocation, the second is 280 datasheets legitimately given
+ * away. Reading null as zero writes off stock that is sitting in a crate in
+ * Warehouse A. Same shape as an unknown travel window in §5e.
+ */
 export const collateralAllocations = pgTable(
   'collateral_allocations',
   {
@@ -1477,9 +1596,19 @@ export const collateralAllocations = pgTable(
       .notNull()
       .references(() => shows.id, { onDelete: 'cascade' }),
     quantityAllocated: integer('quantity_allocated').notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }),
+    issuedById: uuid('issued_by_id').references(() => users.id, { onDelete: 'set null' }),
     quantityReturned: integer('quantity_returned'),
+    returnedAt: timestamp('returned_at', { withTimezone: true }),
+    returnedById: uuid('returned_by_id').references(() => users.id, { onDelete: 'set null' }),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('collateral_allocations_show_idx').on(t.showId)],
+  (t) => [
+    index('collateral_allocations_show_idx').on(t.showId),
+    uniqueIndex('collateral_allocations_unique').on(t.collateralItemId, t.showId),
+  ],
 );
 
 /* ----------------------------- ticket credits ------------------------------ */
@@ -1915,15 +2044,22 @@ export const sideEventRsvpsRelations = relations(sideEventRsvps, ({ one }) => ({
 
 export const assetsRelations = relations(assets, ({ one, many }) => ({
   org: one(organizations, { fields: [assets.orgId], references: [organizations.id] }),
+  costCenter: one(costCenters, { fields: [assets.costCenterId], references: [costCenters.id] }),
   reservations: many(assetReservations),
 }));
 
 export const assetReservationsRelations = relations(assetReservations, ({ one }) => ({
   asset: one(assets, { fields: [assetReservations.assetId], references: [assets.id] }),
   show: one(shows, { fields: [assetReservations.showId], references: [shows.id] }),
+  returnedBy: one(users, {
+    fields: [assetReservations.returnedById],
+    references: [users.id],
+    relationName: 'reservationReturnedBy',
+  }),
   checkedOutBy: one(users, {
     fields: [assetReservations.checkedOutById],
     references: [users.id],
+    relationName: 'reservationCheckedOutBy',
   }),
 }));
 
@@ -1932,12 +2068,31 @@ export const collateralItemsRelations = relations(collateralItems, ({ one, many 
     fields: [collateralItems.orgId],
     references: [organizations.id],
   }),
+  costCenter: one(costCenters, {
+    fields: [collateralItems.costCenterId],
+    references: [costCenters.id],
+  }),
   allocations: many(collateralAllocations),
+  entries: many(collateralEntries),
+}));
+
+export const collateralEntriesRelations = relations(collateralEntries, ({ one }) => ({
+  item: one(collateralItems, {
+    fields: [collateralEntries.itemId],
+    references: [collateralItems.id],
+  }),
+  allocation: one(collateralAllocations, {
+    fields: [collateralEntries.allocationId],
+    references: [collateralAllocations.id],
+  }),
+  show: one(shows, { fields: [collateralEntries.showId], references: [shows.id] }),
+  actor: one(users, { fields: [collateralEntries.actorId], references: [users.id] }),
 }));
 
 export const collateralAllocationsRelations = relations(
   collateralAllocations,
-  ({ one }) => ({
+  ({ one, many }) => ({
+    entries: many(collateralEntries),
     item: one(collateralItems, {
       fields: [collateralAllocations.collateralItemId],
       references: [collateralItems.id],

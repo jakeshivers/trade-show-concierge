@@ -60,6 +60,7 @@ async function routes(): Promise<Check[]> {
     { path: '/travel/approvals', expect: 'pproval' },
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
+    { path: '/assets', expect: 'lost between shows' },
     { path: '/assistant', expect: 'never books' },
     // Admin-only: with DEV_ACTOR_EMAIL set to a member this legitimately 404s,
     // which is the shell working rather than a smoke failure.

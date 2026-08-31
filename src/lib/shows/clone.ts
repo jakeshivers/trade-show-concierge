@@ -135,6 +135,13 @@ const NEVER_CLONED = [
   'Shipments and tracking numbers — a copy would be a shipment that never shipped',
   'Expenses, leads, meetings, and outcomes — these are the record of what happened',
   'Booth shifts — they hang off show hours that are not set yet',
+  // Step 16. A reservation's window carries over; its custody log never does.
+  // "Signed out by Marcus on 9 July, returned damaged" copied onto next year's
+  // show is a chain of custody for a journey that has not happened — the same
+  // fabrication as a copied tracking number, and harder to spot because the
+  // reservation it hangs off is legitimately cloned.
+  'Chain of custody — a copied sign-out records a trip nobody took',
+  'Collateral allocations — how many datasheets went last year is not a plan for this year',
 ];
 
 export function planClone(source: CloneSource, options: CloneOptions): ClonePlan {
@@ -193,7 +200,8 @@ export function planClone(source: CloneSource, options: CloneOptions): ClonePlan
   if (deadlines.length)
     carried.push(`${deadlines.length} service-manual deadlines, dates predicted and unconfirmed`);
   if (attendees.length) carried.push(`${attendees.length} team members, all re-invited`);
-  if (reservations.length) carried.push(`${reservations.length} asset reservations`);
+  if (reservations.length)
+    carried.push(`${reservations.length} asset reservations, unsigned-out and unreturned`);
   if (source.show.budgetCents !== null) carried.push('Budget, booth size, venue, and goals');
 
   const dropped = [...NEVER_CLONED];
