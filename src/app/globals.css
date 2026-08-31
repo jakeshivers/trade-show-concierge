@@ -1,26 +1,148 @@
 @import "tailwindcss";
 
+/**
+ * Design tokens.
+ *
+ * Three rules govern this file, and the first two were expensive enough to
+ * discover that they are written here rather than remembered:
+ *
+ * 1. **`@theme` is not `@theme inline`.** `inline` bakes the value at build
+ *    time, which breaks every token whose value is supposed to change at
+ *    runtime — i.e. all of them, the moment there is a dark mode. This file
+ *    used `@theme inline`, and it only worked because it had two tokens neither
+ *    screen used. The working shape is two-stage: raw channels on `:root`,
+ *    the same names redefined for dark, and `@theme` mapping name → colour.
+ * 2. **Tailwind v4 is CSS-first and there is no `tailwind.config.*`.** There
+ *    should not be one. Theming lives here.
+ * 3. **OKLCH, not hex.** It is perceptually uniform, so a ramp is visually even
+ *    instead of bunching in the mid-tones — which is what makes "bright" survive
+ *    being rendered at 12px on a dense register.
+ *
+ * Tokens are **semantic, not chromatic**: `--color-border`, not `--color-zinc-200`.
+ * A screen that says `border-border` keeps meaning the right thing after the
+ * palette moves; one that says `border-zinc-200` has to be found and edited.
+ */
+
+/**
+ * Dark mode is a class, not only a media query.
+ *
+ * The app shipped with `prefers-color-scheme` alone and therefore no way to
+ * choose. This variant reads `.dark` on `<html>`, and a small script in the root
+ * layout sets that class from a stored choice, falling back to the system
+ * preference — so system dark keeps working untouched and an explicit choice can
+ * override it in both directions.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Raw OKLCH channels: "L C H". Never used directly by a screen. */
+  --surface: 99% 0.004 265;      /* the page */
+  --panel: 100% 0 0;             /* cards, sheets, anything raised off the page */
+  --muted: 96.5% 0.006 265;      /* table stripes, inert chips, disabled fills */
+  --border: 91% 0.008 265;
+  --border-strong: 84% 0.012 265;
+  --text: 22% 0.02 265;
+  --text-muted: 52% 0.014 265;
+
+  --brand: 54% 0.21 274;
+  --brand-hover: 47% 0.21 274;
+  --brand-fg: 99% 0.01 274;      /* text *on* brand */
+  --brand-soft: 95% 0.03 274;    /* brand-tinted fill behind brand text */
+
+  --accent: 65% 0.15 205;
+
+  /* The four tones the domain already speaks in — see ui.tsx's Tone. */
+  --good: 55% 0.14 155;
+  --good-soft: 95% 0.04 155;
+  --warn: 62% 0.15 75;
+  --warn-soft: 96% 0.05 85;
+  --bad: 55% 0.20 22;
+  --bad-soft: 96% 0.03 22;
+  --info: 55% 0.15 245;
+  --info-soft: 96% 0.03 245;
+
+  --ring: 60% 0.19 274;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
+/**
+ * Dark is not the light palette inverted. Surfaces get *lighter* as they come
+ * forward (a card is lighter than the page, where in light mode it is whiter
+ * than a tinted page), and the accent colours gain lightness and lose chroma —
+ * a saturated mid-tone that reads as "bright" on white reads as "glowing" on
+ * near-black and stops being legible at small sizes.
+ */
+:where(.dark) {
+  --surface: 17% 0.012 265;
+  --panel: 21% 0.014 265;
+  --muted: 26% 0.014 265;
+  --border: 29% 0.014 265;
+  --border-strong: 38% 0.016 265;
+  --text: 96% 0.008 265;
+  --text-muted: 71% 0.014 265;
+
+  --brand: 70% 0.17 274;
+  --brand-hover: 77% 0.15 274;
+  --brand-fg: 18% 0.04 274;
+  --brand-soft: 30% 0.06 274;
+
+  --accent: 74% 0.12 205;
+
+  --good: 74% 0.15 155;
+  --good-soft: 27% 0.05 155;
+  --warn: 80% 0.14 80;
+  --warn-soft: 30% 0.05 80;
+  --bad: 70% 0.16 22;
+  --bad-soft: 29% 0.06 22;
+  --info: 72% 0.13 245;
+  --info-soft: 28% 0.06 245;
+
+  --ring: 72% 0.16 274;
+}
+
+/* Not `inline` — see rule 1 above. */
+@theme {
+  --color-surface: oklch(var(--surface));
+  --color-panel: oklch(var(--panel));
+  --color-muted: oklch(var(--muted));
+  --color-border: oklch(var(--border));
+  --color-border-strong: oklch(var(--border-strong));
+  --color-text: oklch(var(--text));
+  --color-text-muted: oklch(var(--text-muted));
+
+  --color-brand: oklch(var(--brand));
+  --color-brand-hover: oklch(var(--brand-hover));
+  --color-brand-fg: oklch(var(--brand-fg));
+  --color-brand-soft: oklch(var(--brand-soft));
+
+  --color-accent: oklch(var(--accent));
+
+  --color-good: oklch(var(--good));
+  --color-good-soft: oklch(var(--good-soft));
+  --color-warn: oklch(var(--warn));
+  --color-warn-soft: oklch(var(--warn-soft));
+  --color-bad: oklch(var(--bad));
+  --color-bad-soft: oklch(var(--bad-soft));
+  --color-info: oklch(var(--info));
+  --color-info-soft: oklch(var(--info-soft));
+
+  --color-ring: oklch(var(--ring));
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/**
+ * No `font-family` here. The old file set Arial, which fought the Geist that
+ * `layout.tsx` loads through `next/font` — the app looked right only because
+ * Tailwind's `font-sans` on <body> won on specificity. Fonts belong to the
+ * `--font-sans` token above and the class on <body>, in one place.
+ */
+body {
+  background-color: var(--color-surface);
+  color: var(--color-text);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Numbers in a column should line up; money and dates are half this app. */
+.tabular {
+  font-variant-numeric: tabular-nums;
 }
