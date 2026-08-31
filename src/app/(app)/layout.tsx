@@ -1,6 +1,6 @@
-import Link from 'next/link';
 import { UserButton } from '@clerk/nextjs';
 import { redirect } from 'next/navigation';
+import { Sidebar } from './_components/sidebar';
 import {
   authMode,
   getActorOrNull,
@@ -14,16 +14,16 @@ import {
 /**
  * The app shell.
  *
- * The nav grows one entry per screen that actually exists — step 8 added Shows
- * and My itinerary; steps 9–12 add the rest. A nav that advertises unbuilt pages
- * reads as a broken product rather than an unfinished one.
+ * Navigation moved into `_components/sidebar.tsx` — it is stateful (collapsed,
+ * active route) and therefore a client component, while this layout must stay a
+ * server component because it is where `getActor()` runs.
  *
- * What the shell owns beyond that is the thing step 7 is for — showing, on every
- * page, *who the server thinks you are and how it decided that*. An auth seam you
- * cannot see is an auth seam you debug by print statement.
+ * What the shell owns is the thing step 7 is for — showing, on every page, *who
+ * the server thinks you are and how it decided that*. An auth seam you cannot
+ * see is an auth seam you debug by print statement. The dev-auth banner sits
+ * above the header rather than below it: it qualifies everything on the page,
+ * including the identity in the header, so it has to be read first.
  */
-
-type NavItem = { href: string; label: string; see: (actor: Actor) => boolean };
 
 /**
  * Every page under this shell is resolved per actor, so none of them may be
@@ -33,19 +33,6 @@ type NavItem = { href: string; label: string; see: (actor: Actor) => boolean };
  * says so once, here, rather than being re-remembered on every new page.
  */
 export const dynamic = 'force-dynamic';
-
-const NAV: NavItem[] = [
-  { href: '/', label: 'Overview', see: () => true },
-  { href: '/shows', label: 'Shows', see: () => true },
-  { href: '/readiness', label: 'Readiness', see: () => true },
-  { href: '/itinerary', label: 'My itinerary', see: () => true },
-  { href: '/travel', label: 'Travel', see: () => true },
-  // Everyone has an approvals page; for a Member it is their own requests
-  // waiting on somebody else, which is worth a nav entry — "where has my
-  // request got to" is the question the queue exists to answer.
-  { href: '/travel/approvals', label: 'Approvals', see: () => true },
-  { href: '/settings/security', label: 'Security', see: isAdmin },
-];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let actor: Actor | null;
@@ -70,37 +57,28 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const me = actor;
 
   return (
-    <div className="flex min-h-screen flex-col">
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-6 py-3">
-          <span className="font-semibold tracking-tight">Trade Show Concierge</span>
-          <nav className="flex gap-4 text-sm">
-            {NAV.filter((item) => item.see(me)).map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50"
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
-          <div className="ml-auto text-right text-sm">
-            <div className="font-medium">{me.fullName}</div>
-            <div className="text-xs text-zinc-500">
-              {me.email} · {roleLabel(me)}
-            </div>
-          </div>
-          {authMode() === 'clerk' && <UserButton />}
-        </div>
+    <div className="flex min-h-screen">
+      <Sidebar isAdmin={isAdmin(me)} />
+      <div className="flex min-w-0 flex-1 flex-col">
         {authMode() === 'dev' && (
-          <div className="bg-amber-100 px-6 py-1.5 text-center text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
-            Dev auth — this session is <code>DEV_ACTOR_EMAIL</code>, not a sign-in. Set
-            Clerk keys to use real sessions.
+          <div className="bg-warn-soft px-6 py-1.5 text-center text-xs text-text">
+            Dev auth — this session is <code>DEV_ACTOR_EMAIL</code>, not a sign-in. Set Clerk
+            keys to use real sessions.
           </div>
         )}
-      </header>
-      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-10">{children}</main>
+        <header className="sticky top-0 z-10 border-b border-border bg-panel/85 backdrop-blur">
+          <div className="mx-auto flex max-w-6xl items-center gap-4 px-6 py-3">
+            <div className="ml-auto text-right text-sm">
+              <div className="font-medium">{me.fullName}</div>
+              <div className="text-xs text-text-muted">
+                {me.email} · {roleLabel(me)}
+              </div>
+            </div>
+            {authMode() === 'clerk' && <UserButton />}
+          </div>
+        </header>
+        <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-8">{children}</main>
+      </div>
     </div>
   );
 }
