@@ -7,6 +7,7 @@ import {
   dateRange,
   money,
   place,
+  readinessLabel,
   readinessTone,
   showDateTime,
 } from '../../_components/ui';
@@ -64,9 +65,14 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
         <div className="space-y-6">
           <Card title="Where it stands">
             <Row label="Readiness">
-              <Badge tone={readinessTone(detail.readiness)}>{detail.readiness}%</Badge>{' '}
+              <Badge tone={readinessTone(detail.readiness.score)}>
+                {readinessLabel(detail.readiness.score)}
+              </Badge>{' '}
               <span className="text-zinc-500">
-                across {detail.tasks.length} {detail.tasks.length === 1 ? 'task' : 'tasks'}
+                across {detail.readiness.counted}{' '}
+                {detail.readiness.counted === 1 ? 'task' : 'tasks'}
+                {detail.readiness.overdue > 0 && `, ${detail.readiness.overdue} past due`}
+                {detail.readiness.blocked > 0 && `, ${detail.readiness.blocked} blocked`}
               </span>
             </Row>
             <Row label="Budget">{money(show.budgetCents)}</Row>

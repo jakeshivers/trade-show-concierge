@@ -37,6 +37,7 @@ export const dynamic = 'force-dynamic';
 const NAV: NavItem[] = [
   { href: '/', label: 'Overview', see: () => true },
   { href: '/shows', label: 'Shows', see: () => true },
+  { href: '/readiness', label: 'Readiness', see: () => true },
   { href: '/itinerary', label: 'My itinerary', see: () => true },
   { href: '/travel', label: 'Travel', see: () => true },
   // Everyone has an approvals page; for a Member it is their own requests

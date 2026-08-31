@@ -68,8 +68,9 @@ describe('listShows', () => {
     const shows = await listShows(dana);
     const automate = shows.find((sh) => sh.id === automateId)!;
     expect(automate.taskCount).toBeGreaterThan(0);
-    expect(automate.readiness).toBeGreaterThan(0);
-    expect(automate.readiness).toBeLessThan(100);
+    // A breakdown, not a bare number, as of step 10 — see lib/readiness/score.ts.
+    expect(automate.readiness.score).toBeGreaterThan(0);
+    expect(automate.readiness.score).toBeLessThan(100);
   });
 });
 

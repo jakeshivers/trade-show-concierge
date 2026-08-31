@@ -125,6 +125,17 @@ requests, narrowed to the actor unless they may approve travel. The narrowing ha
 the query (`travelerScope` in `src/lib/shows/store.ts`), not in the markup, so a Member's
 page never contains a colleague's fare in the first place.
 
+**What a checklist edit needs** — settled at step 10. The table above puts "Manage
+shows" behind Admin, which taken literally puts every tick of a checkbox behind an admin;
+that is not a security posture, it is an unused feature. The line that actually holds:
+**reporting progress is not a privilege, changing the plan is.** Anyone may move a task
+they are assigned to between not-started, in-progress, blocked and complete. Adding,
+deleting, re-weighting, re-assigning, and applying a template need travel-manager or admin
+— the same bar as cloning, because it is planning, not spending. **Skipping sits with the
+second group despite looking like the first**, because a skipped task leaves the readiness
+denominator, so letting a task's owner skip it lets anyone raise the show's score by
+declaring their own work unnecessary. `src/lib/readiness/access.ts`, and §5d.
+
 **Impersonation** (admin support tool) lands post-v1, and only with three rules: the
 session is banner-marked, every action logs *both* identities, and **impersonation can
 never authorize a purchase or approve a travel request**. The separation-of-duties rule
@@ -227,7 +238,7 @@ Modeling choices worth calling out:
 |---|---|
 | **Show calendar** | Create/edit shows; venue, booth, budget, goals, move-in/out windows. **Clone a prior show** with its tasks, deadlines, and asset reservations — calendars are ~80% the same events yearly. What a clone must *not* carry is the harder half; §5c. |
 | **Show intake** | "Should we do this show?" proposal → `prospect` status → commit or decline, each with a **written rationale kept permanently** in `show_decisions`. Closes the ROI loop: last year's numbers argue for next year's calendar, and the shows we declined argue hardest. §5c. |
-| **Readiness** | Weighted checklist with categories, owners, due dates. 0–100 score per show, rolled up to a portfolio view. Templates seed ~25 standard tasks. |
+| **Readiness** | Weighted checklist with categories, owners, due dates. 0–100 score per show — or *unplanned*, which is not the same as 0 — rolled up to a portfolio ranked by how far behind pace each show is. Templates seed ~25 standard tasks and merge on re-apply. §5d. |
 | **Service deadlines** ⭐ | Exhibitor-manual deadlines with dollar penalties and escalating alerts. The highest-hard-dollar feature in the product. §5a. |
 | **Team & shifts** | Attendees per show, roles, confirm/decline, arrival windows. **Booth shift coverage by hour**, plus actual presence vs. roster. Double-booking detection across overlapping shows. |
 | **Side events** | Dinners, demos, seminars around the show, with RSVPs and guest lists. Often where the pipeline actually gets made. |
@@ -376,6 +387,51 @@ only an admin commits or declines; the status change and its reason are written 
 transaction, because a status with no recorded reasoning is the thing the table exists to
 prevent. Only a `prospect` is decidable — cancelling committed work has contracts and
 refunds attached and is a different decision, not this one.
+
+### 5d. Readiness — what the score must refuse to say (step 10)
+
+The readiness percentage is the number a show lead glances at, so what it is allowed to
+claim matters more than how it is computed. Three things the naive version got wrong,
+each corrected in code:
+
+**A show with no checklist is not 100% ready.** The step-3 placeholder scored an empty
+task list as 100 — a rounding decision on one page and a lie on a portfolio, because the
+show nobody had touched then sorted above every show somebody was working on. So the
+score is `number | null`, `null` means **unplanned**, and it renders as "No checklist"
+rather than as 0% (which reads as behind) or 100% (which reads as done).
+`src/lib/readiness/score.ts`.
+
+**A percentage alone hides the shape of what is left.** Blocked and not-started both earn
+zero credit and are not the same problem; an overdue task does not move the number at all,
+because the score has no clock in it. Scoring therefore returns a breakdown — counts by
+status, overdue against an explicit `asOf`, and the share of remaining weight sitting in
+blocked tasks — and every screen leads with what is *wrong* rather than with the headline.
+
+**Skipping is a change to the plan wearing the costume of a status.** A skipped task
+leaves the denominator entirely, which makes "skip it" the fastest way to raise a
+readiness score without doing any work. So a skip needs a written reason, and it needs the
+same authority as deleting the task — while *reporting progress* needs none, because a
+checklist whose tasks only their manager can tick is a checklist maintained by asking
+around, which is the spreadsheet we are replacing. §3 records the split.
+
+**Templates are code, and applying one merges.** The ~25-task standard list lives in
+`src/lib/readiness/templates.ts`, in git, where changing it is a reviewed diff; an
+org-editable template builder is deferred until the standard list has been used and argued
+with. Applying a template to a show that already has a checklist is the *normal* case (a
+clone arrives with last year's list), so it adds only what is missing and never re-dates a
+task somebody has started — and the guarantee is a unique index on
+`(show_id, template_key)`, not the plan, because two people on one screen both compute
+their plan against an empty checklist. Due dates are offsets from the show's opening day
+resolved on the **local calendar**, the same correction §5c made for cloning. Items whose
+date has already passed are created and flagged, not hidden: a show seeded three weeks out
+genuinely *is* late on its advance order, and a checklist that quietly omits the deadline
+you already missed is how the miss stays invisible.
+
+**The portfolio ranks on pace, never on score.** A show 40% ready eight months out is on
+schedule; a show 70% ready in nine days is the emergency, and a list sorted by percentage
+puts the emergency underneath it. `src/lib/readiness/portfolio.ts` assumes planning runs
+linearly over the 120 days before open and ranks on the gap — a crude model, stated as one
+on the page, whose value is that it reads the same way week to week.
 
 ---
 
@@ -795,7 +851,21 @@ invert phases A and C.
       org-scoped, `travelerScope`-narrowed reads. The seed now produces its travel
       requests by **running the real agent against the `recorded` provider** rather
       than writing offer snapshots by hand. Three corrections below. 307 tests.
-- [ ] **10.** Readiness — checklist CRUD, templates, scoring, portfolio rollup
+- [x] **10.** **Readiness — checklist CRUD, templates, scoring, portfolio rollup.** The
+      first writable show detail tab. `src/lib/readiness/` replaces the nine-line
+      placeholder `lib/readiness.ts` and is split the way the spine and the planning core
+      are — `score.ts` (pure; a breakdown rather than a number, and `null` for
+      *unplanned*), `templates.ts` (the built-in library plus a pure, idempotent apply
+      planner), `edit.ts` (pure validation and the written-reason rule), `access.ts` (who
+      may report progress vs. who may change the plan), `portfolio.ts` (the pace model and
+      the ranking), and `store.ts` as the only file touching rows. `show_tasks` gained
+      `status_note`, `template_key` with a unique index per show, `completed_by_id` and
+      `updated_at`. Screens: the readiness tab is writable, and `/readiness` is the
+      portfolio. The seed now builds MedTech's checklist by **running the real template
+      applier and the real status gate**, the same rule step 9 set for travel requests.
+      Four corrections folded into §3 and §5d above: an empty checklist is unplanned, not
+      ready; a percentage alone hides blocked and overdue work; skipping is an edit wearing
+      a status; and a portfolio ranked by score buries the emergency. 342 tests.
 - [ ] **11.** **Service manual deadline engine** (§5a) — registry, penalties, escalating alerts
 - [ ] **12.** Team & lodging — attendees, booth shifts, conflicts, hotels, room blocks, side events
 

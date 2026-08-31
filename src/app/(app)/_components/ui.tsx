@@ -173,8 +173,18 @@ export function statusLabel(status: string): string {
   return status === 'cancelled' ? 'declined' : status;
 }
 
-export function readinessTone(score: number): Tone {
+/**
+ * `null` is *unplanned*, not 0% — see `src/lib/readiness/score.ts`. It gets a
+ * neutral tone and its own word, because colouring it red says "behind" and
+ * colouring it green says "done", and it is neither.
+ */
+export function readinessTone(score: number | null): Tone {
+  if (score === null) return 'neutral';
   if (score >= 80) return 'good';
   if (score >= 50) return 'warn';
   return 'bad';
+}
+
+export function readinessLabel(score: number | null): string {
+  return score === null ? 'No checklist' : `${score}% ready`;
 }

@@ -6,11 +6,13 @@
  * something to develop against without any API keys. Nothing here implies a live
  * flight status or a real fare.
  */
+import { eq } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
 import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
+import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -407,6 +409,11 @@ async function main() {
     dueDays: number,
     weight = 1,
     sortOrder = 0,
+    // Required by `lib/readiness/edit.ts` for blocked and skipped, and required
+    // here for the same reason: a blocked task with no obstacle named is one
+    // nobody can pick up, and a skip with no reason is a way to make the score
+    // go up by declaring the work unnecessary.
+    statusNote: string | null = null,
   ) => ({
     showId,
     title,
@@ -416,7 +423,9 @@ async function main() {
     dueOn: at(dueDays, 17),
     weight,
     sortOrder,
+    statusNote,
     completedAt: status === 'complete' ? at(-2, 12) : null,
+    completedById: status === 'complete' ? assigneeId : null,
   });
 
   await db.insert(s.showTasks).values([
@@ -430,18 +439,89 @@ async function main() {
     task(automate.id, 'Order branded swag', 'collateral', 'not_started', reese.id, 25, 1, 7),
     task(automate.id, 'Register booth staff badges', 'staffing', 'not_started', reese.id, 31, 2, 8),
     task(automate.id, 'Build booth shift schedule', 'staffing', 'not_started', marcus.id, 35, 2, 9),
-    task(automate.id, 'Schedule analyst briefings', 'marketing', 'blocked', ingrid.id, 30, 2, 10),
+    task(
+      automate.id,
+      'Schedule analyst briefings',
+      'marketing',
+      'blocked',
+      ingrid.id,
+      30,
+      2,
+      10,
+      'Waiting on the Q2 analyst calendar from the AR agency — chased twice, no dates yet.',
+    ),
     task(automate.id, 'Pre-show email campaign to target accounts', 'marketing', 'not_started', reese.id, 21, 2, 11),
     task(automate.id, 'Book customer dinner venue', 'marketing', 'in_progress', ingrid.id, 28, 1, 12),
     task(automate.id, 'Confirm lead capture app & licenses', 'follow_up', 'not_started', reese.id, 30, 3, 13),
     task(automate.id, 'Set post-show follow-up SLA with sales', 'follow_up', 'not_started', ingrid.id, 40, 2, 14),
     task(automate.id, 'Reconcile show budget', 'budget', 'not_started', dana.id, 60, 1, 15),
-    task(medtech.id, 'Sign booth space contract', 'legal', 'complete', dana.id, -6, 3, 0),
-    task(medtech.id, 'Confirm booth design & graphics', 'booth', 'not_started', reese.id, 80, 3, 1),
-    task(medtech.id, 'Reserve hotel room block', 'lodging', 'not_started', marcus.id, 76, 2, 2),
-    task(medtech.id, 'Order show services', 'booth', 'not_started', marcus.id, 92, 3, 3),
-    task(medtech.id, 'Book staff travel', 'travel', 'not_started', marcus.id, 95, 3, 4),
+    task(
+      automate.id,
+      'Order branded lanyards for the whole show',
+      'collateral',
+      'skipped',
+      reese.id,
+      25,
+      1,
+      16,
+      'Show organizer is providing sponsor lanyards this year; ours would not be worn.',
+    ),
   ]);
+
+  /**
+   * MedTech's checklist is seeded by *running the template applier*, not by
+   * typing tasks — the same rule the travel requests follow. A hand-written list
+   * that looked template-shaped would let the planner's dating, its idempotency,
+   * and its "already late" flag all be wrong without the seed ever noticing, and
+   * the seed is where those would be noticed first. The statuses that follow go
+   * through `setTaskStatus`, so the seed exercises the real gate too.
+   */
+  console.log('· medtech checklist (real template applier)');
+  const danaActor: Actor = {
+    userId: dana.id,
+    orgId: dana.orgId,
+    email: dana.email,
+    fullName: dana.fullName,
+    role: dana.role,
+    costCenterId: dana.costCenterId,
+  };
+  await applyTemplate(danaActor, medtech.id, 'standard-exhibitor', now, db);
+
+  const medtechTasks = await db
+    .select()
+    .from(s.showTasks)
+    .where(eq(s.showTasks.showId, medtech.id));
+  const byKey = (key: string) =>
+    medtechTasks.find((t) => t.templateKey === `standard-exhibitor:${key}`)!;
+
+  await setTaskStatus(danaActor, byKey('contract').id, 'complete', null, now, db);
+  await setTaskStatus(danaActor, byKey('budget-approved').id, 'complete', null, now, db);
+  await setTaskStatus(danaActor, byKey('goals').id, 'in_progress', null, now, db);
+  await setTaskStatus(
+    danaActor,
+    byKey('booth-design').id,
+    'blocked',
+    'New brand guidelines land in April; designing against the old ones would be thrown away.',
+    now,
+    db,
+  );
+  // A template deliberately assigns nobody, so most of these stay unassigned —
+  // which is the honest state of a show whose checklist was seeded last week and
+  // is what the screen should show. Only the ones somebody has actually picked up
+  // get an owner.
+  for (const [key, owner] of [
+    ['contract', dana],
+    ['budget-approved', dana],
+    ['goals', ingrid],
+    ['booth-design', reese],
+    ['room-block', marcus],
+    ['travel-requests', marcus],
+  ] as const) {
+    await db
+      .update(s.showTasks)
+      .set({ assigneeId: owner.id })
+      .where(eq(s.showTasks.id, byKey(key).id));
+  }
 
   console.log('· attendees');
   await db.insert(s.showAttendees).values([

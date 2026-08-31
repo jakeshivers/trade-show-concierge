@@ -11,6 +11,7 @@ import {
   daysUntil,
   money,
   place,
+  readinessLabel,
   readinessTone,
   statusLabel,
 } from '../_components/ui';
@@ -125,9 +126,17 @@ function ShowRow({ show, canClone }: { show: ShowListEntry; canClone: boolean })
         <span>
           {show.attendeeCount} {show.attendeeCount === 1 ? 'attendee' : 'attendees'}
         </span>
-        {decided && show.taskCount > 0 && (
+        {decided && (
           <span className="flex items-center gap-1.5">
-            <Badge tone={readinessTone(show.readiness)}>{show.readiness}% ready</Badge>
+            <Badge tone={readinessTone(show.readiness.score)}>
+              {readinessLabel(show.readiness.score)}
+            </Badge>
+            {show.readiness.overdue > 0 && (
+              <Badge tone="bad">{show.readiness.overdue} overdue</Badge>
+            )}
+            {show.readiness.blocked > 0 && (
+              <Badge tone="warn">{show.readiness.blocked} blocked</Badge>
+            )}
           </span>
         )}
         {canClone && (

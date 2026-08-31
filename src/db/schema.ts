@@ -400,12 +400,32 @@ export const showTasks = pgTable(
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),
     dueOn: timestamp('due_on', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedById: uuid('completed_by_id').references(() => users.id, { onDelete: 'set null' }),
     // Higher weight tasks move the readiness score more.
     weight: integer('weight').notNull().default(1),
     sortOrder: integer('sort_order').notNull().default(0),
+    /**
+     * Why this task is blocked or skipped. Required in both directions by
+     * `lib/readiness/edit.ts` — a skip silently leaves the denominator, so a skip
+     * with no stated reason is a way to raise the readiness score by deleting the
+     * work. Same posture as `show_decisions.rationale`.
+     */
+    statusNote: text('status_note'),
+    /**
+     * The built-in template item this task came from, if any. Applying a template
+     * twice must merge rather than produce twenty-five duplicates, and the unique
+     * index below is what makes that a database fact rather than a query the
+     * caller has to remember. NULL for hand-written tasks, and Postgres treats
+     * NULLs as distinct, so any number of those coexist.
+     */
+    templateKey: text('template_key'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('show_tasks_show_idx').on(t.showId, t.sortOrder)],
+  (t) => [
+    index('show_tasks_show_idx').on(t.showId, t.sortOrder),
+    uniqueIndex('show_tasks_template_unique').on(t.showId, t.templateKey),
+  ],
 );
 
 /* -------------------------------- attendees -------------------------------- */

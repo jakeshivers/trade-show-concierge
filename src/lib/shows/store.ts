@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
-import { readinessScore } from '@/lib/readiness';
+import { scoreChecklist, type Readiness } from '@/lib/readiness/score';
 import { zonedToInstant } from '@/lib/datetime/zoned';
 import {
   assertDecidable,
@@ -55,14 +55,18 @@ export type ShowListEntry = {
   endsOn: Date;
   boothNumber: string | null;
   budgetCents: number | null;
-  readiness: number;
+  readiness: Readiness;
   taskCount: number;
   attendeeCount: number;
   /** Whether the actor is staffed on it — the "mine" filter, not a permission. */
   mine: boolean;
 };
 
-export async function listShows(actor: Actor, db: Db = getDb()): Promise<ShowListEntry[]> {
+export async function listShows(
+  actor: Actor,
+  asOf: Date = new Date(),
+  db: Db = getDb(),
+): Promise<ShowListEntry[]> {
   const rows = await db
     .select()
     .from(s.shows)
@@ -73,7 +77,12 @@ export async function listShows(actor: Actor, db: Db = getDb()): Promise<ShowLis
   const ids = rows.map((r) => r.id);
   const [tasks, attendees] = await Promise.all([
     db
-      .select({ showId: s.showTasks.showId, status: s.showTasks.status, weight: s.showTasks.weight })
+      .select({
+        showId: s.showTasks.showId,
+        status: s.showTasks.status,
+        weight: s.showTasks.weight,
+        dueOn: s.showTasks.dueOn,
+      })
       .from(s.showTasks)
       .where(inArray(s.showTasks.showId, ids)),
     db
@@ -97,7 +106,7 @@ export async function listShows(actor: Actor, db: Db = getDb()): Promise<ShowLis
       endsOn: show.endsOn,
       boothNumber: show.boothNumber,
       budgetCents: show.budgetCents,
-      readiness: readinessScore(mine),
+      readiness: scoreChecklist(mine, asOf),
       taskCount: mine.length,
       attendeeCount: team.length,
       mine: team.some((a) => a.userId === actor.userId),
@@ -109,7 +118,12 @@ export async function listShows(actor: Actor, db: Db = getDb()): Promise<ShowLis
 
 export type ShowDetail = Awaited<ReturnType<typeof getShowDetail>>;
 
-export async function getShowDetail(actor: Actor, showId: string, db: Db = getDb()) {
+export async function getShowDetail(
+  actor: Actor,
+  showId: string,
+  asOf: Date = new Date(),
+  db: Db = getDb(),
+) {
   const show = await db.query.shows.findFirst({
     where: and(eq(s.shows.id, showId), eq(s.shows.orgId, actor.orgId)),
   });
@@ -207,7 +221,7 @@ export async function getShowDetail(actor: Actor, showId: string, db: Db = getDb
     sideEvents,
     decisions,
     expenses,
-    readiness: readinessScore(tasks.map((t) => t.task)),
+    readiness: scoreChecklist(tasks.map((t) => t.task), asOf),
     committedCents: expenses.reduce((sum, e) => sum + e.amountCents, 0),
     /** True when travel rows on this page were narrowed to the actor. */
     travelNarrowed: mineOnly,

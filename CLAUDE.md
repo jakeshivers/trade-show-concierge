@@ -37,13 +37,15 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
 
-**Done:** steps 1–9 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–10 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
 with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
 to the seam with per-org login-method control and a first app shell; the planning
-core — show list, show detail tabs, My Itinerary, cloning, and intake; and the travel
-request UI with the approvals queue. 307 tests, no keys required.
+core — show list, show detail tabs, My Itinerary, cloning, and intake; the travel
+request UI with the approvals queue; and readiness — a writable checklist, templates,
+scoring that refuses to call an unplanned show ready, and a portfolio ranked on pace.
+342 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -52,6 +54,47 @@ escalation, the credit expiry sweep, and the audit trail as a person reads it. R
 that output before reading the code; it is the fastest way to understand the spine.
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
 and `pnpm credits` prints the credit ledger.
+
+**What step 10 added, and where:** `src/lib/readiness/` — the first *writable* show
+detail tab, and the module that replaced the nine-line placeholder `lib/readiness.ts`.
+Split the way the spine and the planning core are, pure decisions apart from the rows:
+`score.ts` returns a **breakdown, not a number**, and `null` — *unplanned* — for a show
+with no checklist; `templates.ts` holds the built-in library (25-task standard, 8-task
+tabletop) and a pure apply planner that is idempotent and dates every task on the show's
+local calendar; `edit.ts` is pure validation plus the written-reason rule for blocked and
+skipped; `access.ts` is the one permission split worth arguing about (below); `portfolio.ts`
+is the pace model and the ranking; `store.ts` is the only file that touches the database,
+org-scoping at the source like `shows/store.ts`. `show_tasks` gained `status_note`,
+`template_key` (unique per show), `completed_by_id`, `updated_at`. Screens: the readiness
+tab at `/shows/[id]/readiness` is writable — status control per task, add/edit/delete for
+whoever runs the show, template apply — and `/readiness` is the portfolio rollup, in the
+nav. The seed builds MedTech's checklist by **running `applyTemplate` and `setTaskStatus`
+for real**, not by typing rows.
+
+**The four corrections step 10 turned up:**
+
+1. **`readinessScore([]) === 100` said an unplanned show was a finished one.** Harmless on
+   one page; on a portfolio ranked by score it means the show nobody has touched sorts
+   above every show somebody is working on — the one that most needs attention is the one
+   the screen most reassures you about. The score is `number | null` now, `null` renders
+   as "No checklist", and never as 0% (reads as behind) or 100% (reads as done).
+   `SCOPE.md` §5d.
+2. **A single percentage hides the shape of what is left.** Blocked and not-started both
+   earn zero and are different problems; overdue does not move the number at all, because
+   the score has no clock. Scoring returns counts by status, overdue against an explicit
+   `asOf`, and the share of remaining *weight* sitting in blocked tasks — and both screens
+   lead with what is wrong rather than with the headline. `SCOPE.md` §5d.
+3. **Skipping is a change to the plan wearing the costume of a status.** A skipped task
+   leaves the denominator, so "skip it" is the fastest way to raise a readiness score
+   without doing anything. It needs a written reason and the same authority as deleting the
+   task — while *reporting progress* needs none, because a checklist only a manager can
+   tick is maintained by asking around, which is the spreadsheet we are replacing.
+   `src/lib/readiness/access.ts`, `SCOPE.md` §3 and §5d.
+4. **A portfolio ranked by readiness buries the emergency.** 40% ready eight months out is
+   on schedule; 70% ready in nine days is not. Readiness only means anything against the
+   clock, so `portfolio.ts` ranks on the gap to a pace model — linear over the 120 days
+   before open — and the page says on it that the curve is a heuristic rather than letting
+   a number imply precision it does not have. `SCOPE.md` §5d.
 
 **What step 9 added, and where:** the first screens over the booking spine.
 `src/lib/travel/review.ts` is the design core and is pure — `offerStanding` answers *what
@@ -138,21 +181,25 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Next:** step 10 — readiness: checklist CRUD, templates, scoring, and the portfolio
-rollup (`SCOPE.md` §10, Phase B). It is the first step that makes a show detail tab
-writable.
+**Next:** step 11 — the service manual deadline engine (`SCOPE.md` §5a, §10 Phase B):
+the deadline register becomes writable, penalties and owners get edited, and the
+escalating T-30 / T-14 / T-3 / day-of alerts get built. The readiness tab already shows
+the register and marks past-due and unconfirmed rows; what is missing is editing it and
+alerting on it.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 (an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
 built — but its *seam* is, and is exercised: `raw_request_text` and
 `constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
 parse, and `availableActions` already surfaces the confirmation step. What is missing is
-only the parser. Every step-8 tab is still read-only apart from
-intake and cloning. Checklist editing is step 10, the deadline engine step 11, team and
-lodging step 12, shipment tracking step 14 — and each tab says so where the interaction
-would be, rather than showing a dead button. The nav still grows one entry per screen
-that exists. `lib/readiness.ts` is now used for real (the list and the readiness tab);
-the off-plan dev console it was written for was abandoned at step 3 and never built.
+only the parser. The readiness tab is writable as of step 10; the deadline register on it
+is not — that is step 11 — and team and lodging (step 12) and shipment tracking (step 14)
+are still read-only, each saying so where the interaction would be rather than showing a
+dead button. **Checklist templates are code, not rows**: the library in
+`src/lib/readiness/templates.ts` is versioned in git and an org-editable template builder
+is deliberately deferred until the standard list has been used and argued with, which the
+templates card says on the page. The nav still grows one entry per screen
+that exists.
 
 **Outstanding:** the Duffel adapter — search, hold, *and now purchase* — is verified
 against fixtures and mocked HTTP written to the published v2 schema, not a live
@@ -232,6 +279,17 @@ where `clerk.ts` reads it.
   that drifts from the airline's is worth nothing.
 - **A dry run never burns a credit.** The ticket it would have paid for does not exist,
   and the next real booking would find the money gone.
+- **An empty checklist is unplanned, not ready.** `scoreChecklist` returns `null`, never
+  100 and never 0, and every caller has to say what it renders for that. A show nobody
+  has planned must not outrank a show somebody is working on. `SCOPE.md` §5d.
+- **Skipping a task is an edit, not a status.** It leaves the readiness denominator, so it
+  needs a written reason and the authority to change the plan — while moving your own task
+  between not-started, in-progress, blocked and complete needs nothing.
+  `src/lib/readiness/access.ts`.
+- **Applying a template twice adds nothing, and the unique index is what says so.** The
+  plan makes it visible; `(show_id, template_key)` makes it true. A template never re-dates
+  or edits a task somebody has already started, and it creates already-late tasks rather
+  than hiding them.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -272,8 +330,12 @@ src/db/schema.ts              ~35 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
+src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
+src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
+                              built-in templates + idempotent apply planner, the edit
+                              rules, who may edit vs. report, the pace model, the store
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)

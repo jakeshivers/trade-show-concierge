@@ -5,7 +5,16 @@ import { formatStrategies } from '@/lib/auth/login-methods';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
 import { getItinerary, listShows } from '@/lib/shows/store';
 import { getDb } from '@/db';
-import { Badge, Card, Row, dateRange, daysUntil, place, readinessTone } from './_components/ui';
+import {
+  Badge,
+  Card,
+  Row,
+  dateRange,
+  daysUntil,
+  place,
+  readinessLabel,
+  readinessTone,
+} from './_components/ui';
 
 /**
  * The overview.
@@ -98,9 +107,9 @@ export default async function OverviewPage() {
                 <span className="text-zinc-500">
                   {dateRange(s.startsOn, s.endsOn, s.timezone)} · {place(s)}
                 </span>
-                {s.taskCount > 0 && (
-                  <Badge tone={readinessTone(s.readiness)}>{s.readiness}% ready</Badge>
-                )}
+                <Badge tone={readinessTone(s.readiness.score)}>
+                  {readinessLabel(s.readiness.score)}
+                </Badge>
                 <span className="ml-auto text-xs text-zinc-500">in {daysUntil(s.startsOn)} days</span>
               </li>
             ))}
