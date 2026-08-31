@@ -296,9 +296,9 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Open alongside the build order — `UI-REWORK.md`, tranches 1–4 done, 5–8 not started.**
-Option B was chosen (consolidation *plus* a full visual pass; brief "modern, bright colors,
-easy to navigate"). The plumbing half has shipped:
+**`UI-REWORK.md` is done — all eight tranches** (option B: consolidation *plus* a full
+visual pass; brief "modern, bright colors, easy to navigate"). It gated nothing and step 13
+is still next. The plumbing half:
 
 - **`_components/form.ts`** — one `FormState` (`{ error?, ok? }`) plus `formErrorFrom`,
   `optional`, `str`. It had been declared in five files and drifted into three shapes.
@@ -317,13 +317,29 @@ easy to navigate"). The plumbing half has shipped:
 - **`pnpm smoke`** fetches all 17 routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
-The §6 foundation survey (Tailwind v4 CSS-first, **no config file**, the `@theme inline`
-trap that breaks runtime dark mode, `lucide-react` installed and unused, `globals.css`
-still boilerplate with an Arial rule fighting Geist) is the part that would be expensive to
-re-derive, and tranche 5 depends on it. §10 is what tranches 1–4 found that the plan did
-not predict.
+And the visual half:
 
-**The four corrections tranches 1–4 turned up:**
+- **`globals.css` is the design system.** OKLCH semantic tokens — `surface`, `panel`,
+  `muted`, `border`, `border-strong`, `text`, `text-muted`, `brand`, and the four tones —
+  in the two-stage `:root` / `.dark` + **non-inline** `@theme` pattern. `@theme inline`
+  bakes values at build time and breaks runtime theming; there is **no `tailwind.config.*`**
+  and there must not be one (v4 is CSS-first). Tokens are semantic, never chromatic.
+- **Dark mode is a `.dark` class**, applied before first paint by an inline script in
+  `src/app/layout.tsx`, with a three-state control (light / system / dark) in the sidebar.
+  Absence of the stored key *is* system.
+- **`_components/sidebar.tsx`** — collapsible, 64px icon rail, grouped Plan / Travel /
+  Settings so steps 13–18 have somewhere to land. `_components/pref.ts` reads both browser
+  preferences through `useSyncExternalStore`.
+- **`ui.tsx` is a real vocabulary now** — `Table`/`Th`/`Td` (sticky headers, `numeric`
+  right-aligns *and* sets tabular figures), `PageHeader`, `Stat`, plus reworked `Card`,
+  `Badge`, `Button`, `LinkButton`.
+
+**The measurement worth keeping: `src/app` contains zero `dark:` variants.** Dark mode used
+to be a twin class on every line that had a colour, so adding a colour meant remembering its
+twin and forgetting was invisible to anybody working in light mode. One token carries both
+themes now. `UI-REWORK.md` §10 and §11 are the long version.
+
+**The five corrections the rework turned up:**
 
 1. **"Verbatim" duplication was not verbatim, twice.** `travel/actions.ts`'s `asFormError`
    carries an extra branch that renders any `Error` with a message — the booking agent
@@ -348,7 +364,13 @@ not predict.
    never reads `responded_at`, so a `confirmed` typed by an admin still counts toward booth
    coverage — the hearsay the ground rule forbids. Not fixed here: it adds a fifth
    `Standing` kind, moves coverage numbers on existing data, and is a domain call rather
-   than a refactor. `SCOPE.md` §11.12.
+   than a refactor. **`SCOPE.md` §11.12 — needs a decision.**
+5. **A media query is not a preference.** Dark mode was `prefers-color-scheme` only, which
+   cannot be overridden by a person, only obeyed — that is *why* there had been no toggle,
+   not an oversight beside it. And the control needs three states: "follow the system" is a
+   real answer that a two-way toggle silently destroys the first time it is pressed, after
+   which the app stops tracking a laptop that switches at sunset with nothing on screen
+   saying so.
 
 **Next:** step 13 — flight tracking (`SCOPE.md` §10 Phase C): a status provider behind the
 usual interface, a flight board, and delay alerts read against the show's move-in time. The
@@ -547,6 +569,19 @@ silently. One key is now `AuthConfigError`.
   `src/lib/money/decimal.ts`, never `parseFloat`.
 - **Flight times are local airport time.** Resolve with `src/lib/datetime/zoned.ts`
   against the airport's IANA zone, never `new Date()`.
+- **A form input's date and time come from `zonedDateInput` / `zonedTimeInput`, never
+  from `toISOString()`.** On a 5pm-Pacific due date `toISOString().slice(0, 10)` returns
+  *tomorrow*, so a round trip through the edit form moves the deadline a day. The view
+  layer had reimplemented this four times, untested, which is how it stayed wrong.
+  `<ZonedDateTime>` in `_components/form-ui.tsx` is the pair of inputs, labelled with the
+  zone read at the instant being edited.
+- **No screen names a palette colour.** `border-border`, never `border-zinc-200`, and no
+  `dark:` variant anywhere in `src/app` — one semantic token in `globals.css` carries both
+  themes. A `dark:` twin per coloured line is a thing to forget, and forgetting it is
+  invisible to anybody working in light mode.
+- **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
+  token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
+  lives in `src/app/globals.css`.
 
 ## Commands
 

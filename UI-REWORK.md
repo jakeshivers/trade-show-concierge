@@ -1,13 +1,13 @@
 # UI rework — the case, the plan, and the one decision it needs
 
-**Status:** tranches 1–4 shipped · **Written:** after step 12 (2026-08-30) ·
+**Status:** complete — tranches 1–8 shipped · **Written:** after step 12 (2026-08-30) ·
 **Updated:** 2026-08-31 with the foundation survey, the scope call, and the results of
 tranches 1–4 · **Gates:** nothing
 
-> **Where this stands.** Tranches 1–4 (the plumbing plus the §2a defect) are committed and
-> verified: `pnpm typecheck && lint && test` green at 441 tests, `pnpm smoke` 17/17.
-> Tranches 5–8 (tokens, the shell, the component vocabulary, the sweep) are the visual half
-> and have not started. §10 records what the work found that this plan did not predict.
+> **Where this stands: done.** All eight tranches are committed and verified —
+> `pnpm typecheck && lint && test` green at 441 tests, `pnpm smoke` 17/17. §10 records what
+> the work found that this plan did not predict, including one defect (§10 item 6) that is
+> **still open and needs a call**, tracked as `SCOPE.md` §11.12.
 
 > **Decision made (2026-08-31): option B — the plumbing tranches *and* a visual pass.**
 > Brief: "modern, bright colors, easy to navigate." §4 below argued for deferring the
@@ -431,3 +431,41 @@ It is left open deliberately, because it is a domain decision rather than a refa
 else, not confirmed by them"), changes coverage numbers on existing data, and touches
 `SCOPE.md` §5e and the seed. That belongs in its own step with its own argument, not inside
 a UI tranche whose one rule is that behaviour does not change.
+
+
+---
+
+## 11. What tranches 5–8 changed, and the one measurement that says it worked
+
+**Tranche 5 — tokens.** `globals.css` replaced wholesale: OKLCH semantic scales in the
+two-stage `:root` / `.dark` + non-inline `@theme` pattern §6c warned about, the Arial rule
+deleted, `cn()` added over the already-installed `clsx` + `tailwind-merge`. Dark mode became
+a **class** with a synchronous no-flash script in the root layout, because a media query
+cannot be overridden by a person — only obeyed — which is why there had been no toggle.
+
+**Tranche 6 — the shell.** A collapsible sidebar with a 64px icon rail, grouped Plan /
+Travel / Settings, lucide icons, and the three-state theme control ("follow the system" is a
+real answer that a two-way toggle destroys the first time it is pressed). Both preferences
+read through `useSyncExternalStore` rather than useState-plus-effect: React 19 flags the
+latter, and it paints one frame of the default before correcting, so somebody who collapsed
+the nav watches it open and shut on every navigation.
+
+**Tranche 7 — the vocabulary.** `Table`/`Th`/`Td` with sticky headers and a `numeric` flag
+that right-aligns *and* sets tabular figures; `PageHeader`; `Stat` whose `note` is not
+optional decoration; `Card`, `Badge`, `Button`, `LinkButton` reworked. There is deliberately
+**no `danger` button variant** — every destructive action here is either reversible in the
+app or irreversible *outside* it, and a red button implies the app can undo what it cannot.
+
+**Tranche 8 — the sweep.** All 17 routes, ~300 palette classes.
+
+### The measurement
+
+**`src/app` now contains zero `dark:` variants.** That is the number worth keeping, because
+it names the bug class the old approach carried: dark mode was a twin class on every line
+that had a colour, so adding a colour meant remembering to add its twin, and forgetting was
+invisible to anybody working in light mode. One token now carries both themes.
+
+Four page headings stayed hand-rolled on purpose. `/shows/[id]` and `/travel/[id]` are
+detail headers carrying badge rows and a tab bar; pushing that into `PageHeader` would put
+shape into a shared component exactly one caller wants — which is the thing this rework
+spent eight tranches unwinding.

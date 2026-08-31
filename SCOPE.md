@@ -1109,8 +1109,15 @@ the benefit of the model without the setup cost blocking the spine.
     (there were **four** hand-rolled copies, not the two this was scoped against);
     `team/forms.tsx` split along the three cards the page renders; and the §2a defect fixed
     — an admin no longer gets a first-person "I'm going" form on every colleague's row.
-    `pnpm smoke` is new and checks all 17 routes render. Tranches 5–8 (the visual half) are
-    not started. `UI-REWORK.md` §10 lists what the work found that the plan did not predict.
+    `pnpm smoke` is new and checks all 17 routes render.
+
+    **Complete 2026-08-31 — all eight tranches.** The visual half too: OKLCH semantic tokens
+    in the two-stage `:root`/`.dark` + non-inline `@theme` pattern, a collapsible sidebar
+    with an icon rail and a three-state theme control, an extended component vocabulary
+    (`Table` with sticky headers and right-aligned money, `PageHeader`, `Stat`), and a sweep
+    of all 17 routes. The measurement that says it worked: **`src/app` contains zero `dark:`
+    variants** — one token carries both themes, so there is no twin class left to forget.
+    `UI-REWORK.md` §10 and §11 are what the work found that the plan did not predict.
 
 12. **Should booth coverage count a confirmation the subject never made?** Found while
     fixing §11.11's roster defect, and **not fixed** because it is a domain call, not a
