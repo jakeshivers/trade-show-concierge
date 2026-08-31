@@ -9,6 +9,7 @@ import {
 } from '@/lib/auth/actor';
 import { credentialsHeld, evaluateLoginMethods } from '@/lib/auth/login-methods';
 import { effectiveLoginPolicy } from '@/lib/auth/login-policy-store';
+import { authMode } from '@/lib/auth/mode';
 
 /**
  * Clerk, behind the `getActor()` seam. SCOPE.md §10 step 7.
@@ -36,10 +37,14 @@ import { effectiveLoginPolicy } from '@/lib/auth/login-policy-store';
  * plain `tsx` process for no reason.
  */
 
+/**
+ * Delegates rather than re-deriving. This used to repeat `mode.ts`'s two-env-var
+ * check, which meant two places could disagree about whether Clerk was on — and
+ * the half-configured case (`mode.ts`, `AuthConfigError`) is exactly the kind of
+ * divergence a duplicated predicate hides.
+ */
 export function isClerkConfigured(): boolean {
-  return Boolean(
-    process.env.CLERK_SECRET_KEY && process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
-  );
+  return authMode() === 'clerk';
 }
 
 /** What we need from a verified session. Kept structural so tests need no Clerk. */

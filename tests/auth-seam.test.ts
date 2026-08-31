@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
+import { AuthConfigError } from '@/lib/auth/mode';
 import {
   authMode,
   getActor,
@@ -91,6 +92,36 @@ describe('which side of the seam is live', () => {
   it('is Clerk as soon as both keys are present', () => {
     useClerk();
     expect(authMode()).toBe('clerk');
+  });
+
+  // The half-configured case. Neither key is dev mode and both keys is Clerk
+  // mode; *one* key used to be dev mode too, silently — which meant a
+  // deployment that had the publishable key injected automatically and the
+  // secret key forgotten would read DEV_ACTOR_EMAIL and serve that seeded
+  // admin's session to everyone, with nothing on fire anywhere.
+  it('refuses to run on one key rather than falling back to the dev seam', () => {
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = 'pk_test_not_a_real_key';
+    expect(() => authMode()).toThrow(AuthConfigError);
+    expect(() => authMode()).toThrow(/CLERK_SECRET_KEY/);
+  });
+
+  it('refuses the other way round too', () => {
+    process.env.CLERK_SECRET_KEY = 'sk_test_not_a_real_key';
+    expect(() => authMode()).toThrow(/NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY/);
+  });
+
+  it('names the dev seam in the refusal, because that is what it is refusing to do', () => {
+    process.env.CLERK_SECRET_KEY = 'sk_test_not_a_real_key';
+    expect(() => authMode()).toThrow(/DEV_ACTOR_EMAIL/);
+  });
+
+  it('treats a blank key as absent, not as a key', () => {
+    // A dashboard field someone cleared, or an empty line in a .env. Reading
+    // whitespace as "configured" would trip the refusal above on a deployment
+    // that is honestly in dev mode.
+    process.env.CLERK_SECRET_KEY = '   ';
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY = '';
+    expect(authMode()).toBe('dev');
   });
 
   it('never falls back to the dev actor once Clerk is configured', async () => {
