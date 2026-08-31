@@ -25,6 +25,7 @@ import { offerStanding } from './review';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
 import { passengerForUser, type Passenger } from './passengers';
 import { notifyTicketed, notifyUnreachableCredit } from './notify';
+import { materializeFlights } from '@/lib/flights/store';
 import {
   applyCreditsToBooking,
   creditPool,
@@ -1163,6 +1164,54 @@ async function book(
     actor,
   });
   if (creditApplied > 0) booking = { ...booking, creditAppliedCents: creditApplied };
+
+  // The itinerary, as flight rows.
+  //
+  // Until step 13 this did not happen, and the gap was invisible because nothing
+  // read the table: the agent recorded an *order* — provider, reference, ticket
+  // numbers, cost — which is what an audit needs and is not what a person needs.
+  // My Itinerary, the show's Travel tab and the flight board all read `flights`,
+  // so every ticket this agent had ever bought was absent from all three. It
+  // runs for dry runs too: the segments are real segments from a real offer, the
+  // rows carry the booking's `live` flag through their booking, and a dry run
+  // that produces no itinerary cannot demonstrate the thing it exists to
+  // demonstrate.
+  const materialized = await materializeFlights(
+    {
+      bookingId: booking.id,
+      provider: deps.provider.name,
+      bookingReference: booking.bookingReference,
+      ticketNumbers: booking.ticketNumbers ?? [],
+      showId: request.showId,
+      userId: request.travelerId,
+      costCenterId: request.costCenterId,
+      priceCents: booking.chargedCents ?? best.offer.totalCents,
+      currency: booking.currency,
+      slices: best.offer.slices.map((slice) =>
+        slice.segments.map((seg) => ({
+          airlineCode: seg.airlineCode,
+          airlineName: seg.airlineName,
+          flightNumber: seg.flightNumber,
+          originAirport: seg.originAirport,
+          destinationAirport: seg.destinationAirport,
+          originTimeZone: seg.originTimeZone ?? null,
+          destinationTimeZone: seg.destinationTimeZone ?? null,
+          departsAt: seg.departsAt,
+          arrivesAt: seg.arrivesAt,
+          cabin: seg.cabin,
+        })),
+      ),
+    },
+    deps.now(),
+    deps.db,
+  );
+  await logRun(deps, {
+    travelRequestId: request.id,
+    step: 'itinerary_recorded',
+    summary:
+      `Recorded ${materialized} flight segment(s) against this booking, so the itinerary is ` +
+      'visible to the traveler and trackable against the show’s move-in time.',
+  });
 
   const ticketed = await transition(deps, moving, 'ticketed', {
     step: 'ticketed',

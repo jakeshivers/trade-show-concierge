@@ -65,6 +65,22 @@ export const attendeeStatusEnum = pgEnum('attendee_status', [
   'waitlist',
 ]);
 
+/**
+ * Which way a leg flies relative to the show.
+ *
+ * Only a leg *to* the show can miss move-in, and without this the tracker raises
+ * a critical alert every time somebody's Friday flight home slips — a feed that
+ * cries wolf on the way back is one nobody reads on the way there. Set for real
+ * when a flight is materialized from a booking (slice 0 is out, the rest are
+ * back); `unknown` is honest for a hand-entered row, and the store infers a
+ * direction for those and says on screen that it inferred one.
+ */
+export const flightLegDirectionEnum = pgEnum('flight_leg_direction', [
+  'to_show',
+  'from_show',
+  'unknown',
+]);
+
 export const flightStatusEnum = pgEnum('flight_status', [
   'scheduled',
   'active',
@@ -524,9 +540,19 @@ export const flights = pgTable(
   'flights',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    showId: uuid('show_id')
-      .notNull()
-      .references(() => shows.id, { onDelete: 'cascade' }),
+    /**
+     * Nullable as of step 13, and the nullability is the point.
+     *
+     * A travel request may have no show (`travel_requests.show_id` has always
+     * been nullable), so a ticket bought through the agent for a non-show trip
+     * had nowhere to land here — which meant either dropping the flight or
+     * inventing a show for it. It is still a flight the traveler is on and the
+     * board still tracks it; what it does not have is a move-in time to miss,
+     * which is exactly the verdict the policy engine's `arrival_buffer` rule
+     * already returns when `moveInAt` is absent. The tracker inherits that
+     * answer rather than inventing a second one. SCOPE.md 5f.
+     */
+    showId: uuid('show_id').references(() => shows.id, { onDelete: 'cascade' }),
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
@@ -538,11 +564,43 @@ export const flights = pgTable(
 
     originAirport: text('origin_airport').notNull(),
     destinationAirport: text('destination_airport').notNull(),
+    legDirection: flightLegDirectionEnum('leg_direction').notNull().default('unknown'),
+
+    /**
+     * The airports' IANA zones, when the provider told us.
+     *
+     * Instants are unambiguous and unreadable: nobody boards at
+     * `2026-03-30T14:05:00Z`. Every screen before step 13 got away with the
+     * show's zone because everything it rendered happened at the show. A
+     * departure does not — it happens at the origin airport, which is where the
+     * traveler is standing — and Duffel has been sending `airport.time_zone`
+     * all along, which `normalize.ts` read for the conversion and then dropped.
+     * Null means we genuinely do not know, and the board says which zone it fell
+     * back to rather than mislabelling one.
+     */
+    originTimeZone: text('origin_time_zone'),
+    destinationTimeZone: text('destination_time_zone'),
 
     scheduledDeparture: timestamp('scheduled_departure', { withTimezone: true }).notNull(),
     scheduledArrival: timestamp('scheduled_arrival', { withTimezone: true }).notNull(),
     estimatedDeparture: timestamp('estimated_departure', { withTimezone: true }),
     estimatedArrival: timestamp('estimated_arrival', { withTimezone: true }),
+
+    /**
+     * What the *carrier* now calls the schedule, when that disagrees with ours.
+     *
+     * "Scheduled times are immutable" is a ground rule and it stays one: the
+     * scheduled columns hold the plan the ticket was bought against, which is
+     * what the policy verdict was computed from and what an audit has to be able
+     * to read back. But airlines re-time flights weeks ahead, and that is a new
+     * plan rather than a delay — writing it into `estimated_*` would report a
+     * three-hour delay on a flight that is running exactly on time, and writing
+     * it into `scheduled_*` would erase the itinerary somebody approved. So it
+     * goes here, beside both, and raises its own alert. SCOPE.md 5f.
+     */
+    providerScheduledDeparture: timestamp('provider_scheduled_departure', { withTimezone: true }),
+    providerScheduledArrival: timestamp('provider_scheduled_arrival', { withTimezone: true }),
+    scheduleChangedAt: timestamp('schedule_changed_at', { withTimezone: true }),
 
     status: flightStatusEnum('status').notNull().default('scheduled'),
     delayMinutes: integer('delay_minutes').notNull().default(0),
@@ -550,11 +608,23 @@ export const flights = pgTable(
     departureGate: text('departure_gate'),
     arrivalTerminal: text('arrival_terminal'),
     arrivalGate: text('arrival_gate'),
+    /** `diverted` is in the status enum; where to was not recorded anywhere. */
+    divertedToAirport: text('diverted_to_airport'),
 
     // Booking linkage — set when purchased through the app.
     costCenterId: uuid('cost_center_id').references(() => costCenters.id, {
       onDelete: 'set null',
     }),
+    /**
+     * The booking this segment was materialized from, and its index within the
+     * itinerary. Before step 13 nothing wrote a flight row at all — the agent
+     * bought tickets and recorded an *order*, so the tracking layer could not
+     * see a single thing the product's own booking spine had purchased. These
+     * two columns are what makes materialization idempotent: re-running it after
+     * a retry updates the same rows instead of filing the itinerary twice.
+     */
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'set null' }),
+    segmentIndex: integer('segment_index'),
     bookingProvider: text('booking_provider'),
     bookingReference: text('booking_reference'),
     ticketNumber: text('ticket_number'),
@@ -563,13 +633,17 @@ export const flights = pgTable(
     seat: text('seat'),
     cabin: text('cabin'),
 
+    /** Which status provider last spoke, so a stale row says who went quiet. */
+    statusProvider: text('status_provider'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('flights_show_idx').on(t.showId),
     index('flights_user_idx').on(t.userId),
     index('flights_departure_idx').on(t.scheduledDeparture),
+    uniqueIndex('flights_booking_segment_idx').on(t.bookingId, t.segmentIndex),
   ],
 );
 
@@ -1584,6 +1658,7 @@ export const lodgingGuestsRelations = relations(lodgingGuests, ({ one }) => ({
 export const flightsRelations = relations(flights, ({ one }) => ({
   show: one(shows, { fields: [flights.showId], references: [shows.id] }),
   user: one(users, { fields: [flights.userId], references: [users.id] }),
+  booking: one(bookings, { fields: [flights.bookingId], references: [bookings.id] }),
 }));
 
 export const shipmentsRelations = relations(shipments, ({ one, many }) => ({

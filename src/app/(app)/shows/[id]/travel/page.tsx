@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getFlightBoard } from '@/lib/flights/store';
 import { Badge, Card, Empty, money, showDateTime, type Tone } from '../../../_components/ui';
 import { loadShow } from '../detail';
 
@@ -13,8 +14,13 @@ import { loadShow } from '../detail';
  */
 export default async function TravelTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { detail } = await loadShow(id);
-  const { show, flights, requests, lodgings, travelNarrowed } = detail;
+  const { actor, detail } = await loadShow(id);
+  const { show, requests, lodgings, travelNarrowed } = detail;
+  // The board's model rather than the detail loader's raw rows: what a flight is
+  // *doing* — late, re-timed, inside the buffer it was approved under — is one
+  // computation, and a second one written for a tab would be the copy that
+  // disagrees. Same rule as `offerStanding` being shared with the agent.
+  const board = await getFlightBoard(actor, { showId: id });
 
   return (
     <div className="space-y-6">
@@ -25,36 +31,52 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
       )}
 
       <Card title="Flights">
-        {flights.length === 0 ? (
+        {board.rows.length === 0 ? (
           <Empty>No flights recorded for this show.</Empty>
         ) : (
           <ul className="space-y-1.5">
-            {flights.map(({ flight, traveler }) => (
+            {board.rows.map((row) => (
               <li
-                key={flight.id}
+                key={row.flight.id}
                 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-border py-1.5 last:border-0"
               >
                 <span className="font-medium">
-                  {flight.airlineCode} {flight.flightNumber}
+                  {row.flight.airlineCode} {row.flight.flightNumber}
                 </span>
                 <span>
-                  {flight.originAirport} → {flight.destinationAirport}
+                  {row.flight.originAirport} → {row.flight.destinationAirport}
                 </span>
                 <span className="text-text-muted">
-                  {showDateTime(flight.scheduledDeparture, show.timezone)}
+                  {showDateTime(row.flight.scheduledDeparture, row.flight.originTimeZone ?? show.timezone)}
                 </span>
-                <Badge tone={FLIGHT_TONE[flight.status] ?? 'neutral'}>{flight.status}</Badge>
-                {!flight.bookingProvider && <Badge>manually entered</Badge>}
+                <Badge tone={FLIGHT_TONE[row.status] ?? 'neutral'}>{row.status}</Badge>
+                {/* The figure this tab exists to surface: not that a flight is
+                    late, but that it no longer lands in time to be useful. */}
+                {row.buffer.brokenSincePurchase && (
+                  <Badge tone="warn">
+                    lands {row.buffer.hoursBefore!.toFixed(1)}h before move-in — needs{' '}
+                    {row.buffer.requiredHours}h
+                  </Badge>
+                )}
+                {row.buffer.standing === 'after_move_in' && (
+                  <Badge tone="bad">lands after move-in</Badge>
+                )}
+                {row.freshness.kind === 'never_checked' && <Badge>status never checked</Badge>}
                 <span className="ml-auto text-xs text-text-muted">
-                  {traveler.fullName} · {money(flight.priceCents)}
-                  {flight.seat && ` · seat ${flight.seat}`}
+                  {row.travelerName} · {money(row.booked.priceCents)}
+                  {row.booked.seat && ` · seat ${row.booked.seat}`}
+                  {!row.booked.bookingProvider && ' · manually entered'}
                 </span>
               </li>
             ))}
           </ul>
         )}
         <p className="mt-3 text-xs text-text-muted">
-          Live status and delay alerts against move-in are step 13.
+          Live status, and the arrival buffer re-checked against it, on the{' '}
+          <Link href="/flights" className="underline">
+            flight board
+          </Link>
+          .
         </p>
       </Card>
 
@@ -128,8 +150,10 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
 
 const FLIGHT_TONE: Record<string, Tone> = {
   scheduled: 'neutral',
-  on_time: 'good',
+  active: 'info',
   delayed: 'warn',
+  diverted: 'bad',
   cancelled: 'bad',
   landed: 'good',
+  unknown: 'warn',
 };

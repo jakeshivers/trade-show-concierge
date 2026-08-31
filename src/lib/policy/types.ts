@@ -40,6 +40,18 @@ export type Segment = {
   originCountry: string;
   destinationAirport: string;
   destinationCountry: string;
+  /**
+   * The airports' IANA zones, when the provider carries them.
+   *
+   * Optional because policy never reads them — it compares instants, and a zone
+   * would be a distraction in a rule. They ride along because the *provider* is
+   * the only place they exist, and step 13 found that out the hard way: the
+   * normalizer read `airport.time_zone` to build the instant and then dropped
+   * it, so a flight board later had no way to say what time a departure is at
+   * the airport the traveler is standing in.
+   */
+  originTimeZone?: string;
+  destinationTimeZone?: string;
   departsAt: Date;
   arrivesAt: Date;
   cabin: Cabin;

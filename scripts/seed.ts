@@ -14,6 +14,8 @@ import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded
 import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
 import { sweepDeadlineAlerts } from '../src/lib/deadlines/store';
+import { syncFlightStatuses } from '../src/lib/flights/store';
+import { RecordedStatusProvider } from '../src/lib/integrations/flightstatus/recorded/provider';
 import { instantToZoned } from '../src/lib/datetime/zoned';
 import {
   addAttendee,
@@ -858,8 +860,11 @@ async function main() {
       flightNumber: '2218',
       originAirport: 'SFO',
       destinationAirport: 'DTW',
-      scheduledDeparture: at(51, 7),
-      scheduledArrival: at(51, 15),
+      originTimeZone: 'America/Los_Angeles',
+      destinationTimeZone: 'America/Detroit',
+      legDirection: 'to_show',
+      scheduledDeparture: at(49, 7),
+      scheduledArrival: at(49, 15),
       seat: '14A',
       cabin: 'economy',
       priceCents: 48_600,
@@ -874,6 +879,9 @@ async function main() {
       flightNumber: '1141',
       originAirport: 'DTW',
       destinationAirport: 'SFO',
+      originTimeZone: 'America/Detroit',
+      destinationTimeZone: 'America/Los_Angeles',
+      legDirection: 'from_show',
       scheduledDeparture: at(55, 18),
       scheduledArrival: at(55, 21),
       seat: '22A',
@@ -890,8 +898,14 @@ async function main() {
       flightNumber: '318',
       originAirport: 'SFO',
       destinationAirport: 'DTW',
-      scheduledDeparture: at(50, 6),
-      scheduledArrival: at(50, 14),
+      originTimeZone: 'America/Los_Angeles',
+      destinationTimeZone: 'America/Detroit',
+      legDirection: 'to_show',
+      // A red-eye landing six hours before move-in: legal under the 4h buffer,
+      // with two hours to spare. That two hours is what makes this the flight
+      // worth putting on the board — a delay of any size eats it.
+      scheduledDeparture: at(49, 20),
+      scheduledArrival: at(50, 2),
       seat: '8C',
       cabin: 'economy',
       priceCents: 52_100,
@@ -1137,9 +1151,35 @@ async function main() {
   console.log('· deadline alerts (real sweep over the register)');
   const swept = await sweepDeadlineAlerts(org.id, now, db);
 
+  // Flight status comes out of the real sweep against the `recorded` provider,
+  // for the same reason the travel requests come out of the real agent: a row
+  // reading `delayed` that nobody's status provider ever produced is a delay no
+  // carrier ever reported, filed as evidence in the table the board rests on.
+  // The recorded provider picks a scenario per flight number, deterministically,
+  // so the seeded board covers a clean leg, a re-timing and a disruption.
+  console.log('· flight status (real sweep against the recorded provider)');
+  // Which recorded payload each leg replays is pinned, so the board tells one
+  // story instead of whatever the hash spelled: the tight red-eye loses its
+  // buffer, the roomy morning flight is fine, and the flight *home* is late and
+  // deliberately silent — the case that proves the engine is not just reporting
+  // delays. Everything else on the board, including the leg the agent bought,
+  // draws from the provider's own cycle.
+  const flightSync = await syncFlightStatuses(
+    org.id,
+    new RecordedStatusProvider({
+      AA318: 'delayed_into_buffer',
+      DL2218: 'on_time',
+      DL1141: 'minor_delay',
+    }),
+    now,
+    db,
+  );
+
   const counts = {
     users: people.length,
     deadlineAlerts: swept.written,
+    flightsChecked: flightSync.checked,
+    flightAlerts: flightSync.alertsWritten,
     shows: 5,
     costCenters: costCenters.length,
     policyLayers: 3,

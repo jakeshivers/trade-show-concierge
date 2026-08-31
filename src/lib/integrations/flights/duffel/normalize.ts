@@ -89,6 +89,8 @@ function normalizeSegment(segment: DuffelSegment, offerId: string): Segment {
     originCountry: segment.origin.iata_country_code,
     destinationAirport: segment.destination.iata_code,
     destinationCountry: segment.destination.iata_country_code,
+    originTimeZone: segment.origin.time_zone,
+    destinationTimeZone: segment.destination.time_zone,
     departsAt: toAirportInstant(
       segment.departing_at,
       segment.origin.time_zone,

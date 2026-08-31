@@ -295,7 +295,11 @@ describe('getItinerary', () => {
 
     expect(automate).toBeDefined();
     expect(automate.attendee.role).toBe('Technical demos');
-    expect(automate.flights).toHaveLength(2);
+    // At least the two hand-entered legs. Not exactly two: as of step 13 a
+    // ticketed request materializes its itinerary into `flights`, so the count
+    // here depends on how many bookings the rest of the suite has put through
+    // the agent against this same seeded workspace.
+    expect(automate.flights.length).toBeGreaterThanOrEqual(2);
     expect(automate.flights.every((f) => f.userId === priya.userId)).toBe(true);
     expect(automate.lodging.length).toBeGreaterThan(0);
     expect(automate.shifts.length).toBeGreaterThan(0);

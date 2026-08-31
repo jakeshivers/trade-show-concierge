@@ -226,6 +226,11 @@ describe('within policy: the agent books without asking anyone', () => {
       'search',
       'offers_found',
       'booking_start',
+      // Step 13: the purchased itinerary becomes flight rows. Before it existed
+      // the agent bought tickets nothing downstream could see — the audit trail
+      // held an order, and My Itinerary, the show's Travel tab and the flight
+      // board all read `flights`, which nothing wrote.
+      'itinerary_recorded',
       'ticketed',
       // Rail 6: the traveler and a travel manager are told at ticketing, and
       // the notification is part of the trail rather than a side effect of it.

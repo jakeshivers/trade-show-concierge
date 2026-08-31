@@ -56,7 +56,9 @@ know the difference between money at risk and money already spent; and team & lo
 writable roster whose booth coverage refuses to count anybody who has not confirmed or is
 not in town, cross-show double-booking compared on travel windows, side events with guest
 lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
-clock. 445 tests, no keys required.
+clock; and flight tracking — a status provider behind the usual interface, a board ordered
+by what is wrong rather than by what leaves next, and delay alerts that only speak when a
+delay costs the arrival buffer the ticket was approved under. 489 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -68,7 +70,8 @@ that output before reading the code; it is the fastest way to understand the spi
 with the alerts the engine would send tonight, in the words it would send them.
 `pnpm roster` prints booth coverage across every show — every shift's target beside what it
 can *actually* field, the people it cannot count and why, and the shifts a naive roster
-count would have called full.
+count would have called full. `pnpm flights` prints the flight board and what the alert
+engine would say tonight — which, on most legs, is nothing.
 
 **What step 12 added, and where:** `src/lib/team/` and `src/lib/lodging/`, split the way
 everything since step 8 has been. `team/coverage.ts` is pure and holds the whole argument:
@@ -373,10 +376,85 @@ themes now. `UI-REWORK.md` §10 and §11 are the long version.
    which the app stops tracking a laptop that switches at sunset with nothing on screen
    saying so.
 
-**Next:** step 13 — flight tracking (`SCOPE.md` §10 Phase C): a status provider behind the
-usual interface, a flight board, and delay alerts read against the show's move-in time. The
-show detail Logistics tab is the last read-only one, and says so where the controls would
-be.
+**What step 13 added, and where:** `src/lib/integrations/flightstatus/` — the second
+integration behind an interface, in the shape the first one settled on. `types.ts` is the
+provider contract, and it decides nothing: it reports what a carrier says about one leg at
+one moment, and `NoRecord` is deliberately not `phase: 'unknown'` ("we have never heard of
+this flight" and "we know it and cannot say where it is" are different things to tell
+somebody). `aeroapi/` is FlightAware AeroAPI v4 — wire / normalize / client, written to the
+published schema and **never run against a live key**, which its header says in the same
+words the Duffel adapter's did before step 12.5. `recorded/` replays AeroAPI-shaped
+payloads through the *real* normalizer; what it records is a **shape** (departed on time,
+landed forty late) projected onto whichever leg it is asked about, so a canned block time
+never reports a transcontinental delay on a shuttle, and a leg that has not departed can
+never come back `landed`. `flights/provider.ts` selects between them with **no fallback**.
+
+`src/lib/flights/` is the model, split the way everything since step 8 has been.
+`status.ts` is pure and holds the argument: `freshnessOf` / `effectiveStatus` (an unchecked
+row is not an on-time row), `bufferVerdict` (the §7 arrival buffer re-run against live
+times, with the required hours read out of the *resolved travel policy* rather than written
+down again), and `reconcile`, which keeps a carrier's re-timing apart from a delay.
+`alerts.ts` is pure and mostly decides to say nothing. `board.ts` orders by what is wrong
+rather than by what leaves next, and counts a costless delay in its own quiet figure.
+`access.ts` splits refreshing (not a privilege — it is the carrier's answer to a public
+question) from correcting a flight record (it moves the times the buffer is judged
+against). `store.ts` is the only file touching rows: org-scoped through the *traveler*
+rather than through the nullable show, the sync sweep, and `materializeFlights`.
+
+Schema: `flights.show_id` nullable, `leg_direction`, `origin_time_zone` /
+`destination_time_zone`, `provider_scheduled_departure` / `_arrival`, `schedule_changed_at`,
+`diverted_to_airport`, `status_provider`, `booking_id` + `segment_index` (unique),
+`updated_at`. `Segment` in `policy/types.ts` gained the two optional zones, which
+`duffel/normalize.ts` had been reading and discarding. Screens: `/flights` in the nav, and
+live standing on the show's Travel tab and on My Itinerary — both through the board's model,
+never a second one. `pnpm flights` / `pnpm flights --sync` is the engine without a screen.
+The seed produces its flight status by **running the real sweep**, pinning which recorded
+payload each seeded leg replays so the board tells one coherent story: a red-eye landing six
+hours before move-in that loses its buffer, a roomy morning flight that is fine, and a
+flight *home* that is late and deliberately silent.
+
+**The five corrections step 13 turned up:**
+
+1. **The booking spine was buying tickets the tracking layer could not see.** Nothing in the
+   app had ever written a `flights` row. The agent recorded an *order* — provider, order id,
+   reference, ticket numbers, cost — which is exactly right for an audit and is not an
+   itinerary, and My Itinerary, the show's Travel tab and the flight board all read
+   `flights`. So every ticket the product's own agent had bought was absent from all three,
+   and a flight-tracking feature would have shipped tracking nothing but hand-typed rows.
+   Ticketing materializes the purchased slices now, idempotent on
+   `(booking_id, segment_index)`. Two things fell out: `flights.show_id` had to become
+   nullable, because `travel_requests.show_id` always was; and the airport zones had to be
+   carried through `Segment`, because Duffel sends them and the normalizer was dropping
+   them. `SCOPE.md` §5f.
+2. **A delay is not news; a delay that costs the arrival buffer is.** §7's buffer rule was
+   evaluated once, against an offer, at purchase, and never again — so a schedule that
+   slipped afterwards silently voided a policy verdict nobody re-read. The engine speaks on
+   `brokenSincePurchase` (cleared the buffer when bought, does not now), not on delay
+   minutes; a flight booked inside the buffer was an approval decision and is not reported
+   as a disruption every night; and a delayed flight *home* says nothing at all.
+3. **A re-timing is a third thing, beside the plan rather than over it.** Written into
+   `estimated_*` it reads as a three-hour delay on a flight running perfectly; written into
+   `scheduled_*` it erases what the policy verdict was computed from. So the carrier's
+   schedule gets its own columns, delay is then measured from *it* rather than from ours,
+   and the alert is written as a change of plan with weeks of room to act — which a day-of
+   delay does not have.
+4. **Not knowing is not on time, and it is the default.** An unchecked row reads
+   `scheduled`, so a board that has not refreshed in eight hours shows a full slate of
+   on-time flights. Staleness is judged against the flight's own timeline, an unchecked
+   flight past its departure is `unknown`, and a lookup that found no record patches
+   *nothing* — not even `last_checked_at`, because stamping a successful check on a failed
+   one is how a board goes stale while claiming to be fresh.
+5. **An alert is keyed to the fact that changed, not to the number.** §5a keys a deadline
+   alert on the deadline *and its date*, which is right because a date moves rarely and
+   deliberately. An arrival estimate moves every time anybody asks, so the same key shape
+   would send "your flight is late" all night. The key carries the **standing** —
+   `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
+   never for jitter.
+
+**Next:** step 14 — shipping (`SCOPE.md` §10 Phase C): an EasyPost adapter behind the usual
+interface, tracking, an event timeline, and the "will this land before move-in?" check that
+is the crate's version of the arrival buffer. The show detail Logistics tab is the last
+read-only one, and says so where the controls would be.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 (an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
@@ -389,9 +467,11 @@ writable as of steps 10–12; Logistics — shipment tracking (step 14) and chai
 than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Deadline alerts land in the `alerts` table and nowhere else** — there is no feed screen
-(step 16) and no transport (step 20), so `pnpm deadlines` is how a person reads them
-today. The row is the durable record that the notification was owed; a transport added
+**Deadline and flight alerts land in the `alerts` table and nowhere else** — there is no
+feed screen (step 16) and no transport (step 20), so `pnpm deadlines` and `pnpm flights` are
+how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
+rather than implying otherwise: the agent buys against a travel request and the ticket is
+already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
 later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
 step — but the columns it writes (`extracted_from_document`, `confirmed_at`) and the rule
 it must obey (nothing extracted is quoted in dollars until a human confirms it) are both
@@ -562,6 +642,38 @@ silently. One key is now `AuthConfigError`.
   `show_deadlines.lodging_id` is the link, the date is editable only on the lodging record,
   and moving it withdraws the deadline's confirmation. Two editable copies of one date is
   how the date gets missed. `src/lib/lodging/store.ts`, `SCOPE.md` §5e.
+- **A delay is not news; a delay that costs the arrival buffer is.** §7's rule was checked
+  once, against an offer, at purchase. The tracker re-checks it against live times, reads
+  the required hours out of the **resolved travel policy** rather than writing "4 hours"
+  down a second time, and only speaks when a flight that cleared the buffer stops clearing
+  it. A flight booked inside the buffer was an approval decision, not a disruption. A
+  delayed flight *home* says nothing at all. `src/lib/flights/status.ts`.
+- **A carrier re-timing a flight is not a delay, and never touches the scheduled columns.**
+  `provider_scheduled_departure` / `_arrival` and `schedule_changed_at` sit beside the plan
+  the ticket was bought and approved against; delay is then measured from the carrier's new
+  schedule, or every re-timed flight reads as permanently late by however much it moved.
+- **An unchecked flight is not an on-time flight.** `scheduled` is the default and renders
+  as the calm one, so a board nobody has refreshed shows a full slate of on-time flights.
+  Staleness is judged against the flight's own timeline; a flight past its departure that
+  nobody could check is `unknown`; and a lookup that found **no record patches nothing** —
+  not even `last_checked_at`, because a successful-looking stamp on a failed lookup is how
+  a board goes stale while claiming to be fresh.
+- **A flight alert is keyed to the standing it reports, not to the estimate.** A deadline's
+  date moves rarely and deliberately, so §5a keys on the date. An arrival estimate moves
+  every time anybody asks, so the same key would send "your flight is late" all night. The
+  key carries `inside_buffer` / `after_move_in` / `cancelled` and the leg's scheduled
+  instant. `src/lib/flights/alerts.ts`.
+- **Ticketing writes the itinerary, not just the order.** A booking row is what an audit
+  needs; `flights` is what a person needs, and for twelve steps nothing wrote it, so every
+  ticket the agent bought was invisible on My Itinerary, the show's Travel tab and the
+  board. Materialization is idempotent on `(booking_id, segment_index)` and slice 0 is what
+  makes `leg_direction` a fact rather than a guess.
+- **Nothing in this app rebooks a cancelled flight, and the alert says so.** Same shape as
+  cancelling a ticketed request: the airline has the ticket. `SCOPE.md` §5f.
+- **The status provider is never chosen by falling back either.** AeroAPI with a key,
+  `recorded` only when `FLIGHT_STATUS_PROVIDER=recorded` says so, otherwise an error naming
+  the variable. The temptation is stronger here than for fares — nobody spends money on a
+  delay reading — but the sentence it produces is "your colleague will make move-in".
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -602,6 +714,8 @@ pnpm deadlines        # the deadline register, its exposure, and tonight's alert
 pnpm deadlines --sweep # write those alerts; run twice, nothing is written the second time
 pnpm roster           # booth coverage everywhere: target, assigned, who can actually work it
 pnpm roster <show id> # one show, shift by shift
+pnpm flights          # every tracked leg, worst first, and what the engine would say
+pnpm flights --sync   # ask the status provider, write the changes and the alerts
 pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/ (needs a test key)
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
@@ -624,6 +738,7 @@ src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
+src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
 src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatting),
@@ -645,6 +760,13 @@ src/lib/team/                 the roster — coverage.ts (pure: assigned vs. abl
                               edit.ts, access.ts, store.ts
 src/lib/lodging/              hotels, room assignments, and the cutoff that derives a
                               deadline register row rather than a second clock
+src/lib/flights/              tracking — status.ts (pure: freshness, the §7 arrival buffer
+                              re-run against live times, a re-timing kept apart from a
+                              delay), alerts.ts (pure: what is worth saying, keyed to the
+                              standing not the estimate), board.ts, access.ts, provider.ts
+                              (env → status provider, no fallback), store.ts (rows, the
+                              sweep, and materializing a booking into an itinerary)
+src/lib/integrations/flightstatus/  provider interface + AeroAPI adapter + `recorded` replay
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)
