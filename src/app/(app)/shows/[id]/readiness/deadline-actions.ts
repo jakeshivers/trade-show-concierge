@@ -12,7 +12,7 @@ import {
 } from '@/lib/deadlines/store';
 import { NotFoundError } from '@/lib/shows/store';
 import { ZonedTimeError } from '@/lib/datetime/zoned';
-import type { FormState } from './actions';
+import { type FormState, formErrorFrom, optional } from '../../../_components/form';
 
 /**
  * The register's writes. Same posture as `actions.ts` beside it: the actor is
@@ -22,20 +22,12 @@ import type { FormState } from './actions';
 
 const EXPECTED = [DeadlineError, ForbiddenError, NotFoundError, ZonedTimeError];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  throw err;
-}
+const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
   revalidatePath(`/shows/${showId}/readiness`);
   revalidatePath(`/shows/${showId}`);
   revalidatePath('/readiness');
-}
-
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
 function draftFrom(form: FormData) {

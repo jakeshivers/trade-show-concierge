@@ -8,11 +8,11 @@ import {
   removeLodging,
   setCutoffOwner,
   updateLodging,
-  type FormState,
 } from './actions';
 import { Button } from '../../../_components/ui';
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from '@/lib/lodging/edit';
 import type { LodgingEntry } from '@/lib/lodging/store';
+import type { FormState } from '../../../_components/form';
 
 /**
  * The lodging tab's controls.

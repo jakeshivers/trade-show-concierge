@@ -2,7 +2,8 @@
 
 import { useActionState, useState } from 'react';
 import { STRATEGY_KINDS, describeStrategy, type LoginPolicy } from '@/lib/auth/login-methods';
-import { updateLoginPolicy, type FormState } from './actions';
+import { updateLoginPolicy } from './actions';
+import type { FormState } from '../../_components/form';
 
 export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
   const [state, action, pending] = useActionState<FormState, FormData>(updateLoginPolicy, {});
@@ -64,7 +65,7 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
       </label>
 
       {state.error && <p className="text-red-600 dark:text-red-400">{state.error}</p>}
-      {state.saved && <p className="text-emerald-700 dark:text-emerald-400">{state.saved}</p>}
+      {state.ok && <p className="text-emerald-700 dark:text-emerald-400">{state.ok}</p>}
 
       <button
         type="submit"

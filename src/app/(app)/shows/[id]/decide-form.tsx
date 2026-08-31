@@ -1,8 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { decide, type FormState } from '../actions';
+import { decide } from '../actions';
 import { Button } from '../../_components/ui';
+import type { FormState } from '../../_components/form';
 
 /**
  * Commit or decline a prospect.

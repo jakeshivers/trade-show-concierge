@@ -12,8 +12,7 @@ import {
 } from '@/lib/readiness/store';
 import { NotFoundError } from '@/lib/shows/store';
 import { ZonedTimeError } from '@/lib/datetime/zoned';
-
-export type FormState = { error?: string; ok?: string };
+import { type FormState, formErrorFrom, optional } from '../../../_components/form';
 
 /**
  * Same posture as `shows/actions.ts`: the actor is re-resolved server-side on
@@ -23,21 +22,13 @@ export type FormState = { error?: string; ok?: string };
 
 const EXPECTED = [ChecklistError, ForbiddenError, NotFoundError, ZonedTimeError];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  throw err;
-}
+const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
   revalidatePath(`/shows/${showId}/readiness`);
   revalidatePath(`/shows/${showId}`);
   revalidatePath('/shows');
   revalidatePath('/readiness');
-}
-
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
 function draftFrom(form: FormData) {

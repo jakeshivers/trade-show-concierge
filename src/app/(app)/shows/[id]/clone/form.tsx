@@ -1,8 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { clone, type FormState } from '../../actions';
+import { clone } from '../../actions';
 import { Button } from '../../../_components/ui';
+import type { FormState } from '../../../_components/form';
 
 const field =
   'mt-1 w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950';

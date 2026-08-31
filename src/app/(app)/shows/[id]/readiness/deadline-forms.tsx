@@ -8,10 +8,10 @@ import {
   removeDeadline,
   updateDeadline,
 } from './deadline-actions';
-import type { FormState } from './actions';
 import { Button } from '../../../_components/ui';
 import { DEADLINE_KINDS, MIN_REASON } from '@/lib/deadlines/edit';
 import type { RegisterEntry } from '@/lib/deadlines/store';
+import type { FormState } from '../../../_components/form';
 
 /**
  * The writable register.

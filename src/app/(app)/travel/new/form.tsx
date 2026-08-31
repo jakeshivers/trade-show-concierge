@@ -1,8 +1,9 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { openRequest, type FormState } from '../actions';
+import { openRequest } from '../actions';
 import { Button } from '../../_components/ui';
+import type { FormState } from '../../_components/form';
 
 /**
  * The request form.

@@ -1,8 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { approve, cancel, confirm, reject, search, type FormState } from '../actions';
+import { approve, cancel, confirm, reject, search } from '../actions';
 import { Button, money } from '../../_components/ui';
+import type { FormState } from '../../_components/form';
 
 /**
  * The action controls on a request.

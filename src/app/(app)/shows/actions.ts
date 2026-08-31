@@ -7,8 +7,7 @@ import { IntakeError } from '@/lib/shows/intake';
 import { CloneError } from '@/lib/shows/clone';
 import { ZonedTimeError } from '@/lib/datetime/zoned';
 import { cloneShow, createProspect, decideShow, NotFoundError } from '@/lib/shows/store';
-
-export type FormState = { error?: string };
+import { type FormState, formErrorFrom, optional } from '../_components/form';
 
 /**
  * Every action re-resolves the actor server-side and lets the store enforce the
@@ -18,15 +17,7 @@ export type FormState = { error?: string };
 
 const EXPECTED = [IntakeError, CloneError, ForbiddenError, NotFoundError, ZonedTimeError];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  throw err;
-}
-
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
-}
+const asFormError = formErrorFrom(EXPECTED);
 
 export async function proposeShow(_prev: FormState, form: FormData): Promise<FormState> {
   const actor = await getActor();

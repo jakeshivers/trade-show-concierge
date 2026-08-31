@@ -4,8 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { getActor, ForbiddenError } from '@/lib/auth/actor';
 import { STRATEGY_KINDS } from '@/lib/auth/login-methods';
 import { setLoginPolicy, UnusablePolicyError } from '@/lib/auth/login-policy-store';
-
-export type FormState = { error?: string; saved?: string };
+import { type FormState } from '../../_components/form';
 
 /**
  * Record a new login policy version.
@@ -31,7 +30,7 @@ export async function updateLoginPolicy(
       reason,
     );
     revalidatePath('/settings/security');
-    return { saved: `Saved as version ${saved.version}.` };
+    return { ok: `Saved as version ${saved.version}.` };
   } catch (err) {
     if (err instanceof UnusablePolicyError || err instanceof ForbiddenError) {
       return { error: err.message };

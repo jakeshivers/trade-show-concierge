@@ -7,12 +7,12 @@ import {
   removeTask,
   seedFromTemplate,
   updateTask,
-  type FormState,
 } from './actions';
 import { Badge, Button } from '../../../_components/ui';
 import { MAX_WEIGHT, MIN_NOTE, TASK_CATEGORIES } from '@/lib/readiness/edit';
 import type { ChecklistEntry } from '@/lib/readiness/store';
 import type { ChecklistTemplate } from '@/lib/readiness/templates';
+import type { FormState } from '../../../_components/form';
 
 /**
  * The writable half of the readiness tab.

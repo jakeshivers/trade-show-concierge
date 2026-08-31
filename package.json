@@ -16,6 +16,7 @@
     "credits": "tsx scripts/credits.ts",
     "deadlines": "tsx scripts/deadlines.ts",
     "roster": "tsx scripts/team.ts",
+    "smoke": "tsx scripts/smoke.ts",
     "duffel:capture": "tsx scripts/duffel-capture.ts",
     "clerk:verify": "tsx scripts/clerk-verify.ts",
     "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",

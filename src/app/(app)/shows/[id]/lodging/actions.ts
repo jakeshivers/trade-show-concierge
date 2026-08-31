@@ -9,7 +9,7 @@ import { TeamError } from '@/lib/team/edit';
 import { addLodging, assignRoom, deleteLodging, editLodging, unassignRoom } from '@/lib/lodging/store';
 import { editDerivedDeadline } from '@/lib/deadlines/store';
 import { DeadlineError } from '@/lib/deadlines/edit';
-import type { FormState } from '../team/actions';
+import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
 
 /**
  * Lodging's writes.
@@ -21,8 +21,6 @@ import type { FormState } from '../team/actions';
  * register legitimately holds for a derived row.
  */
 
-export type { FormState };
-
 const EXPECTED = [
   TeamError,
   DeadlineError,
@@ -32,10 +30,7 @@ const EXPECTED = [
   MoneyParseError,
 ];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  throw err;
-}
+const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
   revalidatePath(`/shows/${showId}/lodging`);
@@ -44,13 +39,6 @@ function refresh(showId: string) {
   revalidatePath('/itinerary');
   revalidatePath('/readiness');
 }
-
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
-}
-
-const str = (form: FormData, key: string) => String(form.get(key) ?? '');
 
 function draftFrom(form: FormData) {
   return {

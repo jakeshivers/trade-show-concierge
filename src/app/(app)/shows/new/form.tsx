@@ -1,8 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { proposeShow, type FormState } from '../actions';
+import { proposeShow } from '../actions';
 import { Button } from '../../_components/ui';
+import type { FormState } from '../../_components/form';
 
 /**
  * The intake form.

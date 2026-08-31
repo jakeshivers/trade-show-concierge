@@ -18,11 +18,11 @@ import {
   updateAttendee,
   updateShift,
   updateSideEvent,
-  type FormState,
 } from './actions';
 import { Button } from '../../../_components/ui';
 import { ATTENDEE_STATUSES, SIDE_EVENT_KINDS } from '@/lib/team/edit';
 import type { RosterEntry, ShiftEntry, SideEventEntry } from '@/lib/team/store';
+import type { FormState } from '../../../_components/form';
 
 /**
  * The writable team tab.

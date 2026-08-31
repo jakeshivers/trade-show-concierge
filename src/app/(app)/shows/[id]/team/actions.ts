@@ -25,6 +25,7 @@ import {
   setRsvpStatus,
   unassignFromShift,
 } from '@/lib/team/store';
+import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
 
 /**
  * The team tab's writes. Same posture as the readiness and register actions: the
@@ -32,14 +33,9 @@ import {
  * control — the buttons a screen declines to render are a courtesy.
  */
 
-export type FormState = { error?: string; ok?: string };
-
 const EXPECTED = [TeamError, ForbiddenError, NotFoundError, ZonedTimeError, MoneyParseError];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  throw err;
-}
+const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
   revalidatePath(`/shows/${showId}/team`);
@@ -47,13 +43,6 @@ function refresh(showId: string) {
   revalidatePath(`/shows/${showId}`);
   revalidatePath('/itinerary');
 }
-
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
-}
-
-const str = (form: FormData, key: string) => String(form.get(key) ?? '');
 
 /* -------------------------------- attendees -------------------------------- */
 

@@ -22,8 +22,7 @@ import {
   type AgentDeps,
 } from '@/lib/travel/agent';
 import { zonedToInstant } from '@/lib/datetime/zoned';
-
-export type FormState = { error?: string; ok?: string };
+import { type FormState, formErrorFrom, optional } from '../_components/form';
 
 /**
  * The travel screens' writes.
@@ -51,15 +50,7 @@ const EXPECTED = [
   ProviderNotConfiguredError,
 ];
 
-function asFormError(err: unknown): FormState {
-  if (EXPECTED.some((E) => err instanceof E)) return { error: (err as Error).message };
-  // The agent throws plain Errors for a good number of real, explainable
-  // conditions — an unconfirmed parse, a traveler with no date of birth, a
-  // request that is not awaiting approval. Those are answers for the user, not
-  // crashes; anything without a message is still a crash.
-  if (err instanceof Error && err.message) return { error: err.message };
-  throw err;
-}
+const asFormError = formErrorFrom(EXPECTED, { messagedErrorsAreAnswers: true });
 
 /** Built per call: never at module scope, and never captured across requests. */
 function deps(): AgentDeps {
@@ -86,11 +77,12 @@ function depsWithoutProvider(): AgentDeps {
   };
 }
 
-function optional(form: FormData, key: string): string | null {
-  const v = form.get(key);
-  return typeof v === 'string' && v.trim() ? v.trim() : null;
-}
-
+/**
+ * Deliberately not the shared `str`: this one trims, because an airport code
+ * with a trailing space is a failed search and a padded `datetime-local` string
+ * does not parse. The shared helper is left verbatim rather than quietly given a
+ * trim that four other screens never had.
+ */
 function str(form: FormData, key: string): string {
   return String(form.get(key) ?? '').trim();
 }
