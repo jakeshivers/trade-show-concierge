@@ -20,6 +20,11 @@
  *
  * The show-scoped routes need a real id, so it reads one from the database
  * rather than hard-coding a seed uuid that `pnpm db:reset` invalidates.
+ *
+ * **If this reports 404s on every show route, restart `pnpm dev`.** PGlite is a
+ * directory, `pnpm db:reset` deletes it, and a dev server started beforehand is
+ * still holding the old one — so the app 404s on ids that are certainly there.
+ * The failure looks exactly like a broken page and is not one.
  */
 import { asc } from 'drizzle-orm';
 import { getDb } from '../src/db';

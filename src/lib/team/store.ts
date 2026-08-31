@@ -216,6 +216,7 @@ export async function getTeamBoard(
           userId: a.user.id,
           fullName: a.user.fullName,
           attendeeStatus: on ? on.attendee.status : null,
+          respondedAt: on?.attendee.respondedAt ?? null,
           arrivesOn: on?.attendee.arrivesOn ?? null,
           departsOn: on?.attendee.departsOn ?? null,
         };

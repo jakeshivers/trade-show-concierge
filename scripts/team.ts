@@ -129,6 +129,7 @@ async function main() {
               userId: a.user.id,
               fullName: a.user.fullName,
               attendeeStatus: on ? on.attendee.status : null,
+              respondedAt: on?.attendee.respondedAt ?? null,
               arrivesOn: on?.attendee.arrivesOn ?? null,
               departsOn: on?.attendee.departsOn ?? null,
             };
@@ -141,9 +142,19 @@ async function main() {
     console.log(`  ${show.name}  (${show.status}, ${show.timezone})`);
     console.log(
       `    roster: ${[...roster.values()]
-        .map((r) => `${r.user.fullName} [${r.attendee.status}]`)
+        // `confirmed*` is confirmed by somebody other than its subject — the
+        // distinction booth coverage counts, so it belongs on the roster line
+        // and not only in the shift breakdown.
+        .map(
+          (r) =>
+            `${r.user.fullName} [${r.attendee.status}` +
+            `${r.attendee.status === 'confirmed' && !r.attendee.respondedAt ? '*' : ''}]`,
+        )
         .join(', ') || '—'}`,
     );
+    if ([...roster.values()].some((r) => r.attendee.status === 'confirmed' && !r.attendee.respondedAt)) {
+      console.log('            * marked as going by somebody else; not counted as confirmed');
+    }
 
     const coverages = shifts.map((sh) => coverageFor(sh, now));
     const summary = summarizeCoverage(coverages);

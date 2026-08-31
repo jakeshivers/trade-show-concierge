@@ -677,6 +677,23 @@ async function main() {
   // Ingrid never answers. She stays `invited` — pencilled in, and counted by
   // nothing, which is why she is also on a shift below.
   await invite(automate, ingrid, 'Executive', { from: at(52, 8), to: at(53, 19) });
+  // Marcus is the *secondhand* case: he told Shelley in a corridor that he is
+  // coming, and Shelley recorded it. The row reads `confirmed` and
+  // `responded_at` is null, because only the subject's own answer stamps it —
+  // so coverage does not count him and says why. Recorded through the admin
+  // actor deliberately: this is what the "Record Marcus's answer" control on
+  // the team tab writes, and seeding it by hand would file an answer the
+  // pipeline never produced.
+  const aMarcus = await invite(automate, marcus, 'Booth staff', {
+    from: at(51, 9),
+    to: at(55, 17),
+  });
+  await respondToInvitation(admin, aMarcus, 'confirmed', {
+    arrivesOn: localOn(at(51, 9), DTW),
+    arrivesAt: localAt(at(51, 9), DTW),
+    departsOn: localOn(at(55, 17), DTW),
+    departsAt: localAt(at(55, 17), DTW),
+  });
 
   const mShelley = await invite(medtech, shelley, 'Show lead');
   await accept(mShelley, shelley, medtech, { from: at(117, 12), to: at(120, 18) });
@@ -718,6 +735,10 @@ async function main() {
     [shifts[0], ingrid.id],
     [shifts[1], tomas.id],
     [shifts[1], shelley.id],
+    // Three against a target of three, and the third is Marcus — `confirmed`,
+    // but by Shelley rather than by Marcus. A roster count calls this shift
+    // full; coverage calls it overstated and names him.
+    [shifts[1], marcus.id],
     [shifts[2], priya.id],
     // Tomas flies to Santa Clara on the morning of day 53; this assignment is a
     // hole the roster hides.

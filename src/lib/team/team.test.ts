@@ -37,6 +37,9 @@ const staff = (over: Partial<AssignedStaff> = {}): AssignedStaff => ({
   userId: 'u1',
   fullName: 'Priya Raman',
   attendeeStatus: 'confirmed',
+  // An ordinary confirmed attendee answered for themselves. The cases where
+  // somebody else did are spelled out, because that is the interesting one.
+  respondedAt: days(-1),
   arrivesOn: null,
   departsOn: null,
   ...over,
@@ -87,6 +90,52 @@ describe('coverage — rostered is not staffed', () => {
   it('does not count an unanswered invitation — pencilled in is not staffed', () => {
     expect(standingFor(shift(), staff({ attendeeStatus: 'invited' })).kind).toBe('unconfirmed');
     expect(standingFor(shift(), staff({ attendeeStatus: 'waitlist' })).counts).toBe(false);
+  });
+
+  it('does not count a confirmation the subject never made', () => {
+    // `confirmed` with no `responded_at` was typed by somebody else — the roster
+    // editor, or an admin recording what they were told. It is a note of a
+    // conversation, and counting it puts hearsay inside a staffing number.
+    const secondhand = staff({ attendeeStatus: 'confirmed', respondedAt: null });
+    const st = standingFor(shift(), secondhand);
+    expect(st.kind).toBe('secondhand');
+    expect(st.counts).toBe(false);
+  });
+
+  it('keeps secondhand distinct from unanswered, because they are different work', () => {
+    // "Priya said she's coming, chase her to confirm" and "Priya has not
+    // answered" get the same person doing different things. Collapsing them into
+    // `unconfirmed` would lose the half that is nearly done.
+    expect(standingFor(shift(), staff({ respondedAt: null })).kind).toBe('secondhand');
+    expect(
+      standingFor(shift(), staff({ attendeeStatus: 'invited', respondedAt: null })).kind,
+    ).toBe('unconfirmed');
+  });
+
+  it('overstates a shift filled with confirmations nobody made', () => {
+    // The failure this is really about: every slot assigned, every row reading
+    // "confirmed", and not one person has said yes.
+    const c = coverageFor(
+      shift({
+        assigned: [
+          staff({ respondedAt: null }),
+          staff({ userId: 'u2', fullName: 'Tomas Alvarez', respondedAt: null }),
+        ],
+      }),
+      NOW,
+    );
+    expect(c.assignedCount).toBe(2);
+    expect(c.effectiveCount).toBe(0);
+    expect(c.overstated).toBe(true);
+  });
+
+  it('does not re-open a settled answer: a declined row stays declined', () => {
+    // `responded_at` gates *confirmed*, not every status. Somebody who declined
+    // is out whether or not the decline was recorded on their behalf, because
+    // the wrong direction to be wrong in is counting them.
+    const st = standingFor(shift(), staff({ attendeeStatus: 'declined', respondedAt: null }));
+    expect(st.kind).toBe('declined');
+    expect(st.counts).toBe(false);
   });
 
   it('does not count somebody whose flight lands after the shift starts', () => {

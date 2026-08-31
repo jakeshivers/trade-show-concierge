@@ -33,6 +33,16 @@ export type AssignedStaff = {
   fullName: string;
   /** `null` means they are assigned to a shift on a show they are not staffed on. */
   attendeeStatus: AttendeeStatus | null;
+  /**
+   * When the *subject* answered — `show_attendees.responded_at`.
+   *
+   * `null` beside a `confirmed` status is not a missing timestamp, it is a
+   * different fact: somebody else set that status. `respondToInvitation` stamps
+   * this only when `attendee.userId === actor.userId`, and staffing a show only
+   * ever invites, so the two columns together say *what* the answer is and
+   * *who made it*. Coverage needs both. See `secondhand` below.
+   */
+  respondedAt: Date | null;
   arrivesOn: Date | null;
   departsOn: Date | null;
 };
@@ -42,6 +52,7 @@ export type StandingKind =
   | 'not_on_roster'
   | 'declined'
   | 'unconfirmed'
+  | 'secondhand'
   | 'arrives_late'
   | 'departs_early';
 
@@ -132,6 +143,22 @@ export function standingFor(shift: Shift, staff: AssignedStaff): Standing {
         staff.attendeeStatus === 'waitlist'
           ? 'On the waitlist for this show — not yet a person who is going.'
           : 'Invited but has not accepted. Pencilled in is not staffed.',
+    };
+  }
+  // Confirmed — but by whom? A status of `confirmed` with no `responded_at` was
+  // typed by somebody other than its subject, which is a note of a conversation
+  // rather than an answer. It is *better* evidence than `invited` and it is not
+  // the thing coverage counts: the whole point of counting confirmations is that
+  // the person said yes, and secondhand yeses are exactly how a shift ends up
+  // fully assigned with nobody in it. Kept visible rather than silently demoted
+  // to `unconfirmed`, because "Priya said she's coming, chase her to confirm" and
+  // "Priya has not answered" are different work items.
+  if (staff.respondedAt === null) {
+    return {
+      ...base,
+      kind: 'secondhand',
+      counts: false,
+      note: 'Marked as going by somebody else — they have not answered for themselves yet.',
     };
   }
   // Confirmed, so the only question left is whether they are physically there.
