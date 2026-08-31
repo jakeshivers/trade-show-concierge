@@ -36,7 +36,6 @@ async function routes(): Promise<Check[]> {
   if (!show) throw new Error('No shows in the database. Run `pnpm db:reset` first.');
 
   const id = show.id;
-  const request = (await db.select().from(s.travelRequests).limit(1))[0];
 
   const checks: Check[] = [
     { path: '/', expect: 'Overview' },
@@ -58,8 +57,30 @@ async function routes(): Promise<Check[]> {
     // which is the shell working rather than a smoke failure.
     { path: '/settings/security', expect: 'Sign-in methods' },
   ];
-  if (request) checks.push({ path: `/travel/${request.id}`, expect: 'equest' });
+  const request = await firstTravelRequest();
+  if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
   return checks;
+}
+
+/**
+ * A request id taken from what /travel actually links to, rather than the first
+ * row in the table.
+ *
+ * Those are not the same set and picking the wrong one made this script flaky:
+ * `travelerScope` narrows the queue to the acting user unless they can approve,
+ * so an arbitrary row is a legitimate 404 for whoever DEV_ACTOR_EMAIL names.
+ * A smoke check that fails on correct authorization is a check people learn to
+ * ignore.
+ */
+async function firstTravelRequest(): Promise<string | null> {
+  // Approvals first: /travel is "requests you opened or are flying on", and an
+  // admin who books nobody's travel but their own legitimately has none.
+  for (const from of ['/travel/approvals', '/travel']) {
+    const res = await fetch(`${base}${from}`);
+    const m = /\/travel\/([0-9a-f-]{36})/.exec(await res.text());
+    if (m) return m[1];
+  }
+  return null;
 }
 
 /** Tags out, entities in, whitespace collapsed — enough to grep prose. */
