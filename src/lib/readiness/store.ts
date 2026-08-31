@@ -9,6 +9,7 @@ import { ChecklistError, planStatusChange, validateDraft, type TaskDraft } from 
 import { scoreChecklist, type Readiness } from './score';
 import { findTemplate, planTemplate, type TemplatePlan } from './templates';
 import { rollUpPortfolio, type PortfolioRow } from './portfolio';
+import { summarizeExposure } from '@/lib/deadlines/alerts';
 
 export type { PortfolioRow };
 
@@ -320,21 +321,20 @@ export async function getPortfolio(
       .from(s.showTasks)
       .where(inArray(s.showTasks.showId, ids)),
     db
-      .select({
-        showId: s.showDeadlines.showId,
-        dueAt: s.showDeadlines.dueAt,
-        completedAt: s.showDeadlines.completedAt,
-        confirmedAt: s.showDeadlines.confirmedAt,
-        penaltyEstimateCents: s.showDeadlines.penaltyEstimateCents,
-      })
+      .select()
       .from(s.showDeadlines)
       .where(inArray(s.showDeadlines.showId, ids)),
   ]);
 
   return rollUpPortfolio(
     shows.map((show) => {
-      const open = deadlines.filter((d) => d.showId === show.id && !d.completedAt);
-      const past = open.filter((d) => d.dueAt.getTime() < asOf.getTime());
+      // One exposure model, shared with the register screen and the alert engine
+      // — the portfolio computing its own "past due" would be a second place for
+      // "at risk" and "incurred" to drift apart. `deadlines/alerts.ts`.
+      const exposure = summarizeExposure(
+        deadlines.filter((d) => d.showId === show.id),
+        asOf,
+      );
       return {
         id: show.id,
         name: show.name,
@@ -345,9 +345,11 @@ export async function getPortfolio(
           tasks.filter((t) => t.showId === show.id),
           asOf,
         ),
-        overdueDeadlineCents: past.reduce((sum, d) => sum + (d.penaltyEstimateCents ?? 0), 0),
-        openDeadlines: open.length - past.length,
-        unconfirmedDeadlines: open.filter((d) => !d.confirmedAt).length,
+        missedDeadlineCents: exposure.incurredCents,
+        missedDeadlines: exposure.missed,
+        openDeadlines: exposure.open,
+        unconfirmedDeadlines: exposure.unconfirmed,
+        unownedDeadlines: exposure.unowned,
       };
     }),
     asOf,

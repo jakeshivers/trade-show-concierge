@@ -33,12 +33,20 @@ export type PortfolioInput = {
   startsOn: Date;
   timezone: string;
   readiness: Readiness;
-  /** Estimated penalties behind deadlines that are open and past due. §5a. */
-  overdueDeadlineCents: number;
+  /**
+   * Estimated surcharges on deadlines that are open and already past due. §5a.
+   * *Incurred*, not at risk — step 11's second correction: past the date the
+   * money is spent, and a portfolio that calls it "at risk" is inviting somebody
+   * to think it can still be saved.
+   */
+  missedDeadlineCents: number;
+  missedDeadlines: number;
   /** Deadlines open, not yet due. */
   openDeadlines: number;
   /** Deadlines whose date nobody has checked against this year's manual. */
   unconfirmedDeadlines: number;
+  /** Open deadlines nobody owns — the ones an owner-addressed alert would miss. */
+  unownedDeadlines: number;
 };
 
 export type PortfolioRow = PortfolioInput & {
@@ -78,9 +86,12 @@ function assess(show: PortfolioInput, asOf: Date): PortfolioRow {
     if (level === 'critical' || (level === 'warn' && severity === 'ok')) severity = level;
   };
 
-  if (show.overdueDeadlineCents > 0) {
+  if (show.missedDeadlines > 0) {
     concerns.push(
-      `${dollars(show.overdueDeadlineCents)} of penalties behind deadlines that are already past due`,
+      show.missedDeadlineCents > 0
+        ? `${dollars(show.missedDeadlineCents)} of late-order surcharges already incurred on ` +
+          `${show.missedDeadlines} missed ${show.missedDeadlines === 1 ? 'deadline' : 'deadlines'}`
+        : `${show.missedDeadlines} service ${show.missedDeadlines === 1 ? 'deadline has' : 'deadlines have'} passed unmet`,
     );
     raise('critical');
   }
@@ -117,6 +128,13 @@ function assess(show: PortfolioInput, asOf: Date): PortfolioRow {
     // A blocked task cannot be worked around by trying harder, so a show whose
     // remaining work is mostly blocked is a different problem from a late one.
     raise(share >= 20 ? 'critical' : 'warn');
+  }
+
+  if (show.unownedDeadlines > 0) {
+    concerns.push(
+      `${show.unownedDeadlines} open ${show.unownedDeadlines === 1 ? 'deadline has' : 'deadlines have'} no owner`,
+    );
+    raise('warn');
   }
 
   if (show.unconfirmedDeadlines > 0) {

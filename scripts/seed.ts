@@ -13,6 +13,7 @@ import type { Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
 import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
+import { sweepDeadlineAlerts } from '../src/lib/deadlines/store';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -395,6 +396,41 @@ async function main() {
       dueAt: at(76, 17),
       penaltyNote: 'Rooms release to public inventory; rack rate applies.',
       ownerId: marcus.id,
+      confirmedAt: now,
+    },
+    // Three rows the alert engine has something different to say about, because
+    // a register where every row is confirmed, owned and ahead of us exercises
+    // exactly one of its four cases. SCOPE.md §5a, `src/lib/deadlines/alerts.ts`.
+    {
+      showId: automate.id,
+      kind: 'av_rigging',
+      title: 'Rigging & hanging sign order',
+      dueAt: at(21, 17),
+      penaltyEstimateCents: 120_000,
+      penaltyNote: 'Date carried over from last year’s manual — not yet checked.',
+      ownerId: marcus.id,
+      // Unconfirmed on purpose: this is what a cloned or remembered date looks
+      // like, and the engine chases it as a date rather than quoting its penalty.
+      confirmedAt: null,
+    },
+    {
+      showId: automate.id,
+      kind: 'labor',
+      title: 'Install & dismantle labor order',
+      dueAt: at(19, 17),
+      penaltyEstimateCents: 65_000,
+      // Unowned on purpose: the row an owner-addressed engine would mail nobody.
+      ownerId: null,
+      confirmedAt: now,
+    },
+    {
+      showId: automate.id,
+      kind: 'sponsorship_artwork',
+      title: 'Sponsorship artwork upload',
+      dueAt: at(-3, 17),
+      penaltyEstimateCents: 90_000,
+      penaltyNote: 'Logo drops off the printed program; the sponsorship is bought either way.',
+      ownerId: reese.id,
       confirmedAt: now,
     },
   ]);
@@ -917,8 +953,15 @@ async function main() {
     attributionWindowDays: 180,
   });
 
+  // The alerts come out of the engine, not out of a list of rows typed here —
+  // the same rule step 9 set for travel requests and step 10 for the checklist.
+  // Hand-written alert rows would be evidence of notifications nobody was owed.
+  console.log('· deadline alerts (real sweep over the register)');
+  const swept = await sweepDeadlineAlerts(org.id, now, db);
+
   const counts = {
     users: people.length,
+    deadlineAlerts: swept.written,
     shows: 4,
     costCenters: costCenters.length,
     policyLayers: 3,

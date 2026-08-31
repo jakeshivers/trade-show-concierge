@@ -29,7 +29,7 @@ export default async function ReadinessPortfolio() {
   const actor = await getActor();
   const rows = await getPortfolio(actor);
 
-  const exposure = rows.reduce((sum, r) => sum + r.overdueDeadlineCents, 0);
+  const incurred = rows.reduce((sum, r) => sum + r.missedDeadlineCents, 0);
   const critical = rows.filter((r) => r.severity === 'critical');
 
   return (
@@ -59,10 +59,12 @@ export default async function ReadinessPortfolio() {
                 tone={critical.length > 0 ? 'bad' : undefined}
               />
               <Fact
-                label="Penalties already exposed"
-                value={money(exposure)}
-                tone={exposure > 0 ? 'bad' : undefined}
-                note="Deadlines open and past due. §5a."
+                label="Late-order surcharges incurred"
+                value={money(incurred)}
+                tone={incurred > 0 ? 'bad' : undefined}
+                // Not "at risk": past the date the money is spent. §5a, and
+                // `src/lib/deadlines/alerts.ts`.
+                note="Deadlines open and already past due. Not recoverable."
               />
             </div>
             <p className="mt-3 text-xs text-zinc-500">

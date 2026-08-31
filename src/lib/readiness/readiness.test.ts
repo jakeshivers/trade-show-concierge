@@ -215,9 +215,11 @@ describe('portfolio', () => {
     startsOn: new Date('2026-06-01T12:00:00Z'),
     timezone: 'UTC',
     readiness: scoreChecklist([t({ status: 'complete' })], NOW),
-    overdueDeadlineCents: 0,
+    missedDeadlineCents: 0,
+    missedDeadlines: 0,
     openDeadlines: 0,
     unconfirmedDeadlines: 0,
+    unownedDeadlines: 0,
     ...over,
   });
 
@@ -269,10 +271,18 @@ describe('portfolio', () => {
     expect(row.severity).toBe('critical');
   });
 
-  it('treats money already exposed by a missed deadline as the worst thing on the row', () => {
-    const [row] = rollUpPortfolio([show({ overdueDeadlineCents: 312_500 })], NOW);
+  it('reports a missed deadline as money already incurred, not as money at risk', () => {
+    const [row] = rollUpPortfolio(
+      [show({ missedDeadlines: 1, missedDeadlineCents: 312_500 })],
+      NOW,
+    );
     expect(row.severity).toBe('critical');
     expect(row.concerns[0]).toContain('$3,125');
+    // Step 11's second correction, asserted rather than described: past the date
+    // the surcharge is spent, and calling it "at risk" invites somebody to think
+    // it can still be saved.
+    expect(row.concerns[0]).toContain('incurred');
+    expect(row.concerns[0]).not.toContain('at risk');
   });
 
   it('raises a show whose remaining work is mostly blocked, however high its score', () => {

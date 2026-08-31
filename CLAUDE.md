@@ -37,15 +37,17 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
 
-**Done:** steps 1–10 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–11 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
 with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
 to the seam with per-org login-method control and a first app shell; the planning
 core — show list, show detail tabs, My Itinerary, cloning, and intake; the travel
-request UI with the approvals queue; and readiness — a writable checklist, templates,
-scoring that refuses to call an unplanned show ready, and a portfolio ranked on pace.
-342 tests, no keys required.
+request UI with the approvals queue; readiness — a writable checklist, templates,
+scoring that refuses to call an unplanned show ready, and a portfolio ranked on pace;
+and the service manual deadline engine — a writable register and escalating alerts that
+know the difference between money at risk and money already spent. 387 tests, no keys
+required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -53,7 +55,52 @@ reasons worth relaxing, the request expiry sweep, the kill switch, credit-first
 escalation, the credit expiry sweep, and the audit trail as a person reads it. Read
 that output before reading the code; it is the fastest way to understand the spine.
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
-and `pnpm credits` prints the credit ledger.
+`pnpm credits` prints the credit ledger, and `pnpm deadlines` prints the deadline register
+with the alerts the engine would send tonight, in the words it would send them.
+
+**What step 11 added, and where:** `src/lib/deadlines/` — the service manual deadline
+engine, split the way the spine and the planning core are. `alerts.ts` is pure and holds
+the entire argument: the T-30 / T-14 / T-3 / day-of thresholds, the 45-day confirmation
+chase, who each alert is addressed to, which *tense* it is written in, the dedupe key that
+voids itself when a date moves, and `summarizeExposure` — the one exposure model, shared
+by the register screen, the portfolio and the CLI. `edit.ts` is pure validation: a deadline
+carries a local *time of day*, penalties parse through `money/decimal.ts`, and
+`not_applicable` needs a written reason. `access.ts` is the report / confirm /
+change-the-plan split. `store.ts` is the only file touching rows, org-scoped at the source,
+and carries `sweepDeadlineAlerts`. `show_deadlines` gained `status`, `status_note`,
+`completed_by_id`, `confirmed_by_id` and `updated_at`. The register on
+`/shows/[id]/readiness` is writable — add, edit, own, confirm, complete, waive — and each
+row shows what the engine will say about it next and to whom. `pnpm deadlines` /
+`pnpm deadlines --sweep` is the engine without a screen. The seed grew an unconfirmed, an
+unowned and a missed deadline so all four alert cases are live, and produces its alert rows
+by **running the real sweep**.
+
+**The four corrections step 11 turned up:**
+
+1. **"A human confirms a deadline before it alerts" means silence on the rows most likely
+   to be wrong.** Every cloned deadline is a prediction by construction (§5c), and those
+   are exactly the dates that pass unnoticed. But quoting "$3,125 at risk on Feb 3" for a
+   date nobody checked is a fabricated bill, and one of those teaches a team to close the
+   next alert unread. So an unconfirmed deadline is chased as a **date** — earlier, at 45
+   days, and without its penalty figure — and confirmation gates the claim about *money*,
+   not the reminder. Typing a deadline never confirms it, and moving a confirmed date
+   withdraws the confirmation, or an edit launders a guess into a quoted figure.
+   `SCOPE.md` §5a.
+2. **Past the date, "at risk" is false and the audience is wrong.** The surcharge is not at
+   risk, it is incurred, and there is nothing to hurry about — and the owner who needed the
+   reminder is not the show lead who needs the cost. A missed deadline gets one past-tense
+   alert to whoever runs the show, and does not repeat nightly. The portfolio counts those
+   cents as *incurred*, not "exposed". `SCOPE.md` §5a and §5d.
+3. **An unowned deadline is the likeliest to be missed and, addressed to its owner, reaches
+   nobody.** `owner_id` is nullable and real registers are full of nulls, so an
+   owner-addressed engine sends zero alerts on precisely those rows, silently. Unownedness
+   escalates instead of muting: the alert goes to the show runners and names the missing
+   owner as the thing to fix first.
+4. **An alert is a claim about a date, so the dedupe key carries the date.** The credit
+   ledger can key expiry warnings on the bucket alone because a credit's expiry never
+   moves. A deadline's does — that is half of what editing the register is for — and a
+   bucket-only key would leave "3 days left" standing for a date that no longer exists
+   while suppressing the one the new date deserves.
 
 **What step 10 added, and where:** `src/lib/readiness/` — the first *writable* show
 detail tab, and the module that replaced the nine-line placeholder `lib/readiness.ts`.
@@ -181,21 +228,25 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Next:** step 11 — the service manual deadline engine (`SCOPE.md` §5a, §10 Phase B):
-the deadline register becomes writable, penalties and owners get edited, and the
-escalating T-30 / T-14 / T-3 / day-of alerts get built. The readiness tab already shows
-the register and marks past-due and unconfirmed rows; what is missing is editing it and
-alerting on it.
+**Next:** step 12 — team & lodging (`SCOPE.md` §10 Phase B): attendees, booth shifts and
+the conflicts between them, hotels, room blocks, and side events. The show detail Team and
+Logistics tabs are still read-only and say so where the controls would be.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 (an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
 built — but its *seam* is, and is exercised: `raw_request_text` and
 `constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
 parse, and `availableActions` already surfaces the confirmation step. What is missing is
-only the parser. The readiness tab is writable as of step 10; the deadline register on it
-is not — that is step 11 — and team and lodging (step 12) and shipment tracking (step 14)
-are still read-only, each saying so where the interaction would be rather than showing a
-dead button. **Checklist templates are code, not rows**: the library in
+only the parser. The readiness tab and its deadline register are both writable as of steps
+10 and 11; team and lodging (step 12) and shipment tracking (step 14) are still read-only,
+each saying so where the interaction would be rather than showing a dead button.
+**Deadline alerts land in the `alerts` table and nowhere else** — there is no feed screen
+(step 16) and no transport (step 20), so `pnpm deadlines` is how a person reads them
+today. The row is the durable record that the notification was owed; a transport added
+later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
+step — but the columns it writes (`extracted_from_document`, `confirmed_at`) and the rule
+it must obey (nothing extracted is quoted in dollars until a human confirms it) are both
+live and enforced by the engine today. **Checklist templates are code, not rows**: the library in
 `src/lib/readiness/templates.ts` is versioned in git and an org-editable template builder
 is deliberately deferred until the standard list has been used and argued with, which the
 templates card says on the page. The nav still grows one entry per screen
@@ -290,6 +341,27 @@ where `clerk.ts` reads it.
   plan makes it visible; `(show_id, template_key)` makes it true. A template never re-dates
   or edits a task somebody has already started, and it creates already-late tasks rather
   than hiding them.
+- **A deadline nobody confirmed is chased as a date, never quoted as an amount.** The
+  penalty figure behind a guessed date is a fabricated bill, and one of those teaches a
+  team to close the next alert unread. Typing a deadline does not confirm it, and moving a
+  confirmed date withdraws the confirmation. `src/lib/deadlines/alerts.ts`, `SCOPE.md` §5a.
+- **Past its date, a penalty is incurred, not at risk.** The tense is the product: "at
+  risk" says hurry, and there is nothing left to hurry about. A missed deadline alerts
+  once, in the past tense, to whoever runs the show rather than to the owner who needed the
+  reminder — and the portfolio counts those cents as incurred.
+- **An unowned deadline escalates; it never goes quiet.** `owner_id` is nullable, so an
+  owner-addressed alert on an unowned row reaches nobody, silently — which is exactly the
+  row most likely to be missed. It goes to the show runners and names the missing owner.
+- **A deadline alert is keyed to the deadline *and its date*.** Move the date and every
+  alert already sent about it is void. A bucket-only key (which is right for a credit,
+  whose expiry never moves) would leave "3 days left" standing for a date that no longer
+  exists. `src/lib/deadlines/alerts.ts`.
+- **A deadline carries a time of day, read in the show's zone.** A task can be due "the
+  4th" and land at 5pm local; a warehouse that closes at 4:00pm cannot, and the hour is a
+  drayage penalty.
+- **Marking a deadline "does not apply" is an edit, not a status.** It takes money out of
+  the show's exposure, so it needs a written reason and the authority to change the plan —
+  the same rule `skipped` needed, reached from an unrelated direction.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -313,6 +385,8 @@ pnpm booking:audit <id | idempotency-key>   # the audit trail for one request
 pnpm credits          # credit exposure and every live credit
 pnpm credits <id>     # one credit's ledger, entry by entry
 pnpm credits --sweep  # write off what expired, warn about what will
+pnpm deadlines        # the deadline register, its exposure, and tonight's alerts
+pnpm deadlines --sweep # write those alerts; run twice, nothing is written the second time
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
@@ -336,6 +410,10 @@ src/lib/shows/                the planning core — pure clone planner, pure int
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
                               built-in templates + idempotent apply planner, the edit
                               rules, who may edit vs. report, the pace model, the store
+src/lib/deadlines/            the §5a engine — alerts.ts (pure: thresholds, audience,
+                              tense, dedupe-by-date, the one exposure model), edit.ts
+                              (local time of day, the written reason), access.ts, store.ts
+                              (org-scoped rows + the sweep)
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)

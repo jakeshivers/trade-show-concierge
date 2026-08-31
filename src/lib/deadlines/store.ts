@@ -1,0 +1,373 @@
+import { and, asc, eq, inArray } from 'drizzle-orm';
+import { getDb } from '@/db';
+import * as s from '@/db/schema';
+import { ForbiddenError, type Actor } from '@/lib/auth/actor';
+import { zonedToInstant } from '@/lib/datetime/zoned';
+import { NotFoundError } from '@/lib/shows/store';
+import {
+  canCompleteDeadline,
+  canConfirmDeadline,
+  canEditDeadlines,
+  canWaiveDeadline,
+} from './access';
+import {
+  DeadlineError,
+  planDeadlineStatus,
+  validateDeadline,
+  type DeadlineDraft,
+} from './edit';
+import {
+  planDeadlineAlerts,
+  summarizeExposure,
+  type AlertableDeadline,
+  type Exposure,
+  type PlannedAlert,
+} from './alerts';
+
+type Db = ReturnType<typeof getDb>;
+
+/**
+ * The rows half of the deadline engine. Same posture as `readiness/store.ts`:
+ * org-scoped at the source, and every decision it makes was made by a pure
+ * function above it.
+ */
+
+async function requireShow(actor: Actor, showId: string, db: Db) {
+  const show = await db.query.shows.findFirst({
+    where: and(eq(s.shows.id, showId), eq(s.shows.orgId, actor.orgId)),
+  });
+  if (!show) throw new NotFoundError();
+  return show;
+}
+
+/** Load a deadline, having proven the show it hangs off belongs to the org. */
+async function requireDeadline(actor: Actor, deadlineId: string, db: Db) {
+  const [row] = await db
+    .select({ deadline: s.showDeadlines, show: s.shows })
+    .from(s.showDeadlines)
+    .innerJoin(s.shows, eq(s.showDeadlines.showId, s.shows.id))
+    .where(and(eq(s.showDeadlines.id, deadlineId), eq(s.shows.orgId, actor.orgId)));
+  if (!row) throw new NotFoundError('deadline');
+  return row;
+}
+
+type DeadlineRow = typeof s.showDeadlines.$inferSelect;
+
+function alertable(d: DeadlineRow): AlertableDeadline {
+  return {
+    id: d.id,
+    showId: d.showId,
+    title: d.title,
+    kind: d.kind,
+    dueAt: d.dueAt,
+    status: d.status,
+    penaltyEstimateCents: d.penaltyEstimateCents,
+    penaltyNote: d.penaltyNote,
+    ownerId: d.ownerId,
+    confirmedAt: d.confirmedAt,
+  };
+}
+
+/* ---------------------------------- read ----------------------------------- */
+
+export type RegisterEntry = {
+  deadline: DeadlineRow;
+  owner: { id: string; fullName: string } | null;
+  /** Negative once the date has passed. */
+  daysUntil: number;
+  /** What this actor may do to this row — computed once, server-side. */
+  mayComplete: boolean;
+  /** What the engine will say about it next, if anything. */
+  pending: PlannedAlert | null;
+};
+
+export type Register = {
+  show: typeof s.shows.$inferSelect;
+  entries: RegisterEntry[];
+  exposure: Exposure;
+  people: { id: string; fullName: string }[];
+  may: { edit: boolean; confirm: boolean; waive: boolean };
+};
+
+export async function getRegister(
+  actor: Actor,
+  showId: string,
+  asOf: Date = new Date(),
+  db: Db = getDb(),
+): Promise<Register> {
+  const show = await requireShow(actor, showId, db);
+
+  const [rows, people] = await Promise.all([
+    db
+      .select({ deadline: s.showDeadlines, owner: s.users })
+      .from(s.showDeadlines)
+      .leftJoin(s.users, eq(s.showDeadlines.ownerId, s.users.id))
+      .where(eq(s.showDeadlines.showId, showId))
+      .orderBy(asc(s.showDeadlines.dueAt)),
+    db
+      .select({ id: s.users.id, fullName: s.users.fullName })
+      .from(s.users)
+      .where(eq(s.users.orgId, actor.orgId))
+      .orderBy(asc(s.users.fullName)),
+  ]);
+
+  const items = rows.map((r) => alertable(r.deadline));
+  const planned = new Map(
+    planDeadlineAlerts(items, asOf).map((a) => [a.deadlineId, a] as const),
+  );
+
+  return {
+    show,
+    entries: rows.map(({ deadline, owner }) => ({
+      deadline,
+      owner: owner ? { id: owner.id, fullName: owner.fullName } : null,
+      daysUntil: Math.floor((deadline.dueAt.getTime() - asOf.getTime()) / 86_400_000),
+      mayComplete: canCompleteDeadline(actor, deadline),
+      pending: planned.get(deadline.id) ?? null,
+    })),
+    exposure: summarizeExposure(items, asOf),
+    people,
+    may: {
+      edit: canEditDeadlines(actor),
+      confirm: canConfirmDeadline(actor),
+      waive: canWaiveDeadline(actor),
+    },
+  };
+}
+
+/* --------------------------------- writes ---------------------------------- */
+
+/** `YYYY-MM-DD` + `HH:MM` in the show's zone → the instant it actually falls. */
+function dueInstant(dueDate: string, dueTime: string, timezone: string): Date {
+  return zonedToInstant(`${dueDate}T${dueTime}:00`, timezone);
+}
+
+export async function addDeadline(
+  actor: Actor,
+  showId: string,
+  draft: DeadlineDraft,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<{ id: string }> {
+  if (!canEditDeadlines(actor)) throw new ForbiddenError('add a service manual deadline');
+  const show = await requireShow(actor, showId, db);
+  const valid = validateDeadline(draft);
+
+  const [row] = await db
+    .insert(s.showDeadlines)
+    .values({
+      showId,
+      kind: valid.kind,
+      title: valid.title,
+      dueAt: dueInstant(valid.dueDate, valid.dueTime, show.timezone),
+      penaltyEstimateCents: valid.penaltyEstimateCents,
+      penaltyNote: valid.penaltyNote,
+      ownerId: valid.ownerId,
+      sourceUrl: valid.sourceUrl,
+      // A hand-entered deadline is not confirmed by the act of typing it. The
+      // person typing may be reading the manual or may be copying last year's
+      // spreadsheet, and the register cannot tell — so confirmation stays an
+      // explicit, separate act. `alerts.ts`, correction 1.
+      confirmedAt: null,
+      updatedAt: now,
+    })
+    .returning({ id: s.showDeadlines.id });
+
+  return row;
+}
+
+export async function editDeadline(
+  actor: Actor,
+  deadlineId: string,
+  draft: DeadlineDraft,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canEditDeadlines(actor)) throw new ForbiddenError('edit a service manual deadline');
+  const { deadline, show } = await requireDeadline(actor, deadlineId, db);
+  const valid = validateDeadline(draft);
+  const dueAt = dueInstant(valid.dueDate, valid.dueTime, show.timezone);
+
+  // Moving the date un-confirms the row. Confirmation is an assertion about one
+  // specific date read off the manual; carrying it onto a different date would
+  // let an edit launder a guess into a confirmed figure without anyone looking at
+  // the document. Alerts already sent are voided by the date in their dedupe key.
+  const moved = dueAt.getTime() !== deadline.dueAt.getTime();
+
+  await db
+    .update(s.showDeadlines)
+    .set({
+      kind: valid.kind,
+      title: valid.title,
+      dueAt,
+      penaltyEstimateCents: valid.penaltyEstimateCents,
+      penaltyNote: valid.penaltyNote,
+      ownerId: valid.ownerId,
+      sourceUrl: valid.sourceUrl,
+      ...(moved ? { confirmedAt: null, confirmedById: null } : {}),
+      updatedAt: now,
+    })
+    .where(eq(s.showDeadlines.id, deadline.id));
+}
+
+/**
+ * Mark a deadline done, re-open it, or take it out of scope.
+ *
+ * Two gates, not one — the same shape as `setTaskStatus`, so a refusal names the
+ * rule it broke rather than saying "not permitted".
+ */
+export async function setDeadlineStatus(
+  actor: Actor,
+  deadlineId: string,
+  next: string,
+  note: string | null,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  const { deadline } = await requireDeadline(actor, deadlineId, db);
+
+  if (!canCompleteDeadline(actor, deadline)) {
+    throw new ForbiddenError('update a deadline they do not own');
+  }
+  if (next === 'not_applicable' && !canWaiveDeadline(actor)) {
+    throw new ForbiddenError(
+      'mark a deadline not applicable — that takes its penalty out of the show’s exposure ' +
+        'and stops it alerting, so it belongs to whoever runs the show',
+    );
+  }
+
+  const change = planDeadlineStatus(next, note, actor.userId, now);
+
+  await db
+    .update(s.showDeadlines)
+    .set({
+      status: change.status,
+      statusNote: change.note,
+      completedAt: change.completedAt,
+      completedById: change.completedById,
+      updatedAt: now,
+    })
+    .where(eq(s.showDeadlines.id, deadline.id));
+}
+
+/**
+ * Confirm — or un-confirm — a date against this year's manual.
+ *
+ * Reversible on purpose: "I checked and this is wrong" has to be as easy to say
+ * as "I checked and it is right", or the only way to withdraw a confirmation is
+ * to edit the date to something else, which is worse.
+ */
+export async function setDeadlineConfirmed(
+  actor: Actor,
+  deadlineId: string,
+  confirmed: boolean,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canConfirmDeadline(actor)) {
+    throw new ForbiddenError(
+      'confirm a deadline — confirmation is what promotes a predicted date into a figure the ' +
+        'alert engine quotes in dollars',
+    );
+  }
+  const { deadline } = await requireDeadline(actor, deadlineId, db);
+
+  await db
+    .update(s.showDeadlines)
+    .set({
+      confirmedAt: confirmed ? now : null,
+      confirmedById: confirmed ? actor.userId : null,
+      updatedAt: now,
+    })
+    .where(eq(s.showDeadlines.id, deadline.id));
+}
+
+export async function deleteDeadline(
+  actor: Actor,
+  deadlineId: string,
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canEditDeadlines(actor)) throw new ForbiddenError('delete a service manual deadline');
+  const { deadline } = await requireDeadline(actor, deadlineId, db);
+  await db.delete(s.showDeadlines).where(eq(s.showDeadlines.id, deadline.id));
+}
+
+/* ---------------------------------- sweep ---------------------------------- */
+
+export type SweepResult = {
+  planned: PlannedAlert[];
+  /** Alerts actually written — a repeat run writes none, which is the feature. */
+  written: number;
+};
+
+/**
+ * Fire what is owed, for one org.
+ *
+ * Written to `alerts` rather than to email, for the reason `travel/notify.ts`
+ * gives: the row is the durable record that the notification was owed, and a
+ * transport added later cannot erase it. Step 16 builds the feed; step 20 adds
+ * Slack behind this same call.
+ *
+ * `onConflictDoNothing().returning()` and counting what came back, not what was
+ * attempted — the dedupe *is* the feature here, so a second run reporting "14
+ * alerts sent" would be reporting the opposite of what happened.
+ */
+export async function sweepDeadlineAlerts(
+  orgId: string,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<SweepResult> {
+  const rows = await db
+    .select({ deadline: s.showDeadlines })
+    .from(s.showDeadlines)
+    .innerJoin(s.shows, eq(s.showDeadlines.showId, s.shows.id))
+    .where(and(eq(s.shows.orgId, orgId), inArray(s.shows.status, LIVE_STATUSES)));
+
+  const planned = planDeadlineAlerts(rows.map((r) => alertable(r.deadline)), now);
+  if (planned.length === 0) return { planned, written: 0 };
+
+  const runners = await db
+    .select({ id: s.users.id })
+    .from(s.users)
+    .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
+
+  let written = 0;
+  for (const alert of planned) {
+    // An owner-addressed alert still copies the show runners: the owner is who
+    // acts, but a missed advance order is the show lead's money either way. An
+    // unowned one has no first recipient at all — correction 3 — so it is
+    // addressed to the runners and says so in its body.
+    const recipients = new Set<string>(runners.map((r) => r.id));
+    if (alert.audience === 'owner' && alert.ownerId) recipients.add(alert.ownerId);
+
+    for (const userId of recipients) {
+      const inserted = await db
+        .insert(s.alerts)
+        .values({
+          orgId,
+          showId: alert.showId,
+          userId,
+          severity: alert.severity,
+          title: alert.title,
+          body: alert.body,
+          dedupeKey: `${alert.dedupeKey}:${userId}`,
+          createdAt: now,
+        })
+        .onConflictDoNothing()
+        .returning({ id: s.alerts.id });
+      written += inserted.length;
+    }
+  }
+
+  return { planned, written };
+}
+
+/** A prospect has no deadlines to miss; a closed show's have already resolved. */
+const LIVE_STATUSES: (typeof s.showStatusEnum.enumValues)[number][] = [
+  'committed',
+  'planning',
+  'ready',
+  'live',
+];
+
+export { DeadlineError };

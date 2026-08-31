@@ -1,5 +1,6 @@
 import { getActor } from '@/lib/auth/actor';
 import { getChecklist } from '@/lib/readiness/store';
+import { getRegister } from '@/lib/deadlines/store';
 import { TEMPLATES } from '@/lib/readiness/templates';
 import { TASK_CATEGORIES } from '@/lib/readiness/edit';
 import {
@@ -15,6 +16,7 @@ import {
 } from '../../../_components/ui';
 import { loadShow } from '../detail';
 import { AddTaskForm, EditTaskForm, StatusControl, TemplateForm } from './forms';
+import { AddDeadlineForm, DeadlineRow } from './deadline-forms';
 
 /**
  * Readiness — the checklist, writable as of step 10, and the deadline register.
@@ -26,23 +28,23 @@ import { AddTaskForm, EditTaskForm, StatusControl, TemplateForm } from './forms'
  * overdue, blocked, unplanned — and the percentage sits beside it as context.
  * "No checklist" is its own state and says so; it is never rendered as 0%.
  *
- * Deadline editing is still step 11: the register below is read-only, and says
- * so where the controls would be.
+ * The register below is writable as of step 11, and what it renders is the alert
+ * engine's own reasoning rather than a second opinion about the same rows: each
+ * row shows what the engine will say about it next, in the tense it will say it
+ * in. §5a, and `src/lib/deadlines/alerts.ts` for why "at risk" and "already
+ * incurred" are never the same sentence.
  */
 export default async function ReadinessTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
-  const checklist = await getChecklist(actor, id);
-  const { show, deadlines } = detail;
-  const { readiness, entries, may, people } = checklist;
-
   const now = new Date();
-  const openDeadlines = deadlines.filter((d) => !d.deadline.completedAt);
-  const exposure = openDeadlines.reduce(
-    (sum, d) => sum + (d.deadline.penaltyEstimateCents ?? 0),
-    0,
-  );
-  const pastDue = openDeadlines.filter((d) => d.deadline.dueAt.getTime() < now.getTime());
+  const [checklist, register] = await Promise.all([
+    getChecklist(actor, id, now),
+    getRegister(actor, id, now),
+  ]);
+  const { show } = detail;
+  const { readiness, entries, may, people } = checklist;
+  const { exposure } = register;
 
   return (
     <div className="space-y-6">
@@ -100,51 +102,129 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
       </Card>
 
       <Card title="Service manual deadlines">
-        <p className="mb-3 text-xs text-zinc-500">
-          {money(exposure)} of estimated penalties sits behind the {openDeadlines.length} open{' '}
-          {openDeadlines.length === 1 ? 'deadline' : 'deadlines'} below
-          {pastDue.length > 0 && (
-            <>
-              , and <strong>{pastDue.length}</strong> of them {pastDue.length === 1 ? 'is' : 'are'}{' '}
-              already past due
-            </>
+        {/*
+          Three figures, never one. The confirmed and the guessed are kept apart
+          because adding them makes a number that is neither, and incurred is
+          kept apart from both because past the date it is not at risk — it is
+          spent. `src/lib/deadlines/alerts.ts`.
+        */}
+        <div className="mb-4 flex flex-wrap gap-x-8 gap-y-2">
+          <Fact
+            label="Avoidable"
+            value={money(exposure.atRiskCents)}
+            note={`across ${exposure.open} open ${exposure.open === 1 ? 'deadline' : 'deadlines'}, on dates checked against the manual`}
+          />
+          {exposure.atRiskUnconfirmedCents > 0 && (
+            <Fact
+              label="On unconfirmed dates"
+              value={money(exposure.atRiskUnconfirmedCents)}
+              tone="warn"
+              note="A guess until somebody checks it — not counted above"
+            />
           )}
-          . Editing this register and the escalating alerts on it are step 11; this is the
-          register the engine will run on.
-        </p>
-        {deadlines.length === 0 ? (
+          {exposure.missed > 0 && (
+            <Fact
+              label="Already incurred"
+              value={money(exposure.incurredCents)}
+              tone="bad"
+              note={`${exposure.missed} ${exposure.missed === 1 ? 'deadline has' : 'deadlines have'} passed — this is spent, not at risk`}
+            />
+          )}
+        </div>
+
+        {register.entries.length === 0 ? (
           <Empty>No deadlines recorded. They come from the show&rsquo;s exhibitor manual.</Empty>
         ) : (
-          <ul className="space-y-2">
-            {deadlines.map(({ deadline, owner }) => (
-              <li
-                key={deadline.id}
-                className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 pb-2 last:border-0 dark:border-zinc-800"
-              >
-                <span className="font-medium">{deadline.title}</span>
-                <Badge>{deadline.kind.replace(/_/g, ' ')}</Badge>
-                {deadline.completedAt ? (
-                  <Badge tone="good">done</Badge>
-                ) : (
-                  <>
-                    {deadline.dueAt.getTime() < now.getTime() && <Badge tone="bad">past due</Badge>}
-                    {!deadline.confirmedAt && <Badge tone="warn">unconfirmed</Badge>}
-                  </>
-                )}
-                <span className="text-zinc-500">{showDateTime(deadline.dueAt, show.timezone)}</span>
-                {deadline.penaltyEstimateCents != null && (
-                  <span className="text-rose-700 dark:text-rose-400">
-                    {money(deadline.penaltyEstimateCents)} at risk
-                  </span>
-                )}
-                <span className="ml-auto text-xs text-zinc-500">{owner?.fullName ?? 'Unowned'}</span>
-                {deadline.penaltyNote && (
-                  <span className="w-full text-xs text-zinc-500">{deadline.penaltyNote}</span>
-                )}
-              </li>
-            ))}
+          <ul className="space-y-3">
+            {register.entries.map((entry) => {
+              const d = entry.deadline;
+              const missed = d.status === 'open' && entry.daysUntil < 0;
+              return (
+                <li
+                  key={d.id}
+                  className="border-b border-zinc-100 pb-3 last:border-0 dark:border-zinc-800"
+                >
+                  <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                    <span className={d.status === 'not_applicable' ? 'font-medium line-through' : 'font-medium'}>
+                      {d.title}
+                    </span>
+                    <Badge>{d.kind.replace(/_/g, ' ')}</Badge>
+                    {d.status === 'complete' && <Badge tone="good">ordered</Badge>}
+                    {d.status === 'not_applicable' && <Badge>does not apply</Badge>}
+                    {d.status === 'open' && (
+                      <>
+                        {missed && <Badge tone="bad">missed</Badge>}
+                        {!d.confirmedAt && <Badge tone="warn">unconfirmed</Badge>}
+                        {!d.ownerId && <Badge tone="warn">unowned</Badge>}
+                      </>
+                    )}
+                    <span className="text-zinc-500">{showDateTime(d.dueAt, show.timezone)}</span>
+                    {d.penaltyEstimateCents != null && d.status === 'open' && (
+                      <span className="text-rose-700 dark:text-rose-400">
+                        {/* The tense is the product. Past the date it is not at risk. */}
+                        {money(d.penaltyEstimateCents)}{' '}
+                        {missed ? 'already incurred' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
+                      </span>
+                    )}
+                    <span className="ml-auto text-xs text-zinc-500">
+                      {entry.owner?.fullName ?? 'Unowned'}
+                    </span>
+                  </div>
+
+                  {d.penaltyNote && <p className="mt-1 text-xs text-zinc-500">{d.penaltyNote}</p>}
+                  {d.statusNote && (
+                    <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">
+                      Does not apply: {d.statusNote}
+                    </p>
+                  )}
+                  {d.sourceUrl && (
+                    <p className="mt-1 text-xs">
+                      <a href={d.sourceUrl} className="text-zinc-500 underline" rel="noreferrer">
+                        the manual page this came from
+                      </a>
+                    </p>
+                  )}
+
+                  {entry.pending && (
+                    <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                      <span className="font-medium">Alert:</span> {entry.pending.title} — to{' '}
+                      {entry.pending.audience === 'owner'
+                        ? entry.owner?.fullName ?? 'its owner'
+                        : 'whoever runs the show'}
+                    </p>
+                  )}
+
+                  <DeadlineRow
+                    showId={id}
+                    timezone={show.timezone}
+                    entry={entry}
+                    people={register.people}
+                    may={register.may}
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
+
+        {register.may.edit ? (
+          <div className="mt-4 border-t border-zinc-100 pt-4 dark:border-zinc-800">
+            <AddDeadlineForm showId={id} timezone={show.timezone} people={register.people} />
+          </div>
+        ) : (
+          <p className="mt-4 border-t border-zinc-100 pt-3 text-xs text-zinc-500 dark:border-zinc-800">
+            You can mark a deadline you own as ordered. Adding, re-dating and confirming
+            deadlines belongs to whoever runs the show — a date here is what the alerts fire
+            against and what the exposure above is computed from.
+          </p>
+        )}
+
+        <p className="mt-3 text-xs text-zinc-500">
+          Alerts escalate at 30, 14 and 3 days out and on the day. A date nobody has confirmed
+          against this year&rsquo;s manual is chased as a <em>date</em> rather than quoted as an
+          amount, because a penalty figure behind a guessed date is a fabricated bill. Run{' '}
+          <code>pnpm deadlines</code> to see what the engine would send tonight.
+        </p>
       </Card>
 
       <Card title="Checklist">

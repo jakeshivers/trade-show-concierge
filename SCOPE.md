@@ -297,6 +297,49 @@ proposes, it never authorizes.
 This is what makes the readiness score mean something concrete rather than being a
 progress bar, and it is directly measurable: "we avoided $3,100 in late fees this quarter."
 
+**Corrections from building it (step 11).** "A registry, penalties, and escalating alerts
+at T-30 / T-14 / T-3 / day-of" is four sentences of spec that turn into four different
+alerts, and three of them are not the one that sentence describes.
+
+1. **An unconfirmed deadline alerts about itself, not about its money.** The rule above —
+   a human confirms a date "before it becomes an alert" — read literally means *silence*
+   on precisely the rows most likely to be wrong, including every deadline a clone
+   predicted by shifting last year's date (§5c), which is a guess by construction. Silence
+   is the worst outcome available: not noticing a date pass is the whole thing this
+   feature exists to prevent. But "$3,125 at risk on Feb 3" for a date nobody checked is a
+   fabricated bill, and one of those is enough to teach a team to close the next one
+   unread. So an unconfirmed deadline raises a **confirm this date** alert, earlier than
+   the money alerts (45 days) and without quoting the penalty as established.
+   *Confirmation gates the claim about money, not the reminder.* It follows that typing a
+   deadline never confirms it, and that moving a confirmed deadline's date withdraws its
+   confirmation — otherwise an edit launders a guess into a quoted figure.
+2. **Past the date the tense changes, and so does the audience.** "T+1: $3,125 at risk" is
+   false — the surcharge is not at risk, it has been incurred, and there is nothing left to
+   hurry about. And the person who needed the reminder is not the person who needs the
+   fact: a missed advance order stops being the owner's to-do and becomes the show lead's
+   cost. So a missed deadline produces one past-tense alert, addressed to whoever runs the
+   show, and it does not repeat nightly. The portfolio (§5d) counts these cents as incurred
+   for the same reason and no longer calls them "exposed".
+3. **An unowned deadline is the most likely to be missed and, addressed to its owner, the
+   least likely to reach anybody.** `owner_id` is nullable and real registers are full of
+   nulls. An engine that mails the owner sends *zero* alerts on exactly those rows, and
+   silently. So unownedness escalates rather than mutes: the alert goes to whoever runs the
+   show and names the missing owner as the thing to fix first.
+4. **An alert is a claim about a date, so the dedupe key carries the date.** The credit
+   ledger keys expiry warnings on the bucket alone (§5b), which is sound because a credit's
+   expiry never moves. A deadline's does — that is half of what editing the register is
+   *for*. Keyed on the bucket alone, moving a deadline from March to May leaves a "3 days
+   left" warning standing for a date that no longer exists while suppressing the one the
+   new date deserves.
+
+Two smaller rules fell out of the same work. **A deadline carries a local time of day, not
+just a date**: a checklist task can be due "the 4th" and land at 5pm local, but a warehouse
+that closes at 4:00pm does not, and an hour here is a drayage penalty. And
+**`not_applicable` is an edit wearing a status** — it removes a dollar figure from the
+show's exposure without anybody doing the work, so it needs a written reason and the
+authority to change the plan. That is exactly the rule `skipped` needed in §5d, arrived at
+from an unrelated direction, which is the reason to trust it.
+
 ### 5b. Unused ticket credit recovery
 
 **5–11% of corporate air spend is forfeited every year in expired flight credits**, and
@@ -431,7 +474,10 @@ you already missed is how the miss stays invisible.
 schedule; a show 70% ready in nine days is the emergency, and a list sorted by percentage
 puts the emergency underneath it. `src/lib/readiness/portfolio.ts` assumes planning runs
 linearly over the 120 days before open and ranks on the gap — a crude model, stated as one
-on the page, whose value is that it reads the same way week to week.
+on the page, whose value is that it reads the same way week to week. Step 11 corrected one
+of its columns: penalties behind a deadline that has already passed are reported as
+**incurred**, never as "exposed" or "at risk", because past the date there is nothing left
+to save. §5a, correction 2.
 
 ---
 
@@ -866,7 +912,21 @@ invert phases A and C.
       Four corrections folded into §3 and §5d above: an empty checklist is unplanned, not
       ready; a percentage alone hides blocked and overdue work; skipping is an edit wearing
       a status; and a portfolio ranked by score buries the emergency. 342 tests.
-- [ ] **11.** **Service manual deadline engine** (§5a) — registry, penalties, escalating alerts
+- [x] **11.** **Service manual deadline engine** (§5a) — the register becomes writable, and
+      the escalation engine gets built. `src/lib/deadlines/` splits the way the spine and
+      the planning core do: `alerts.ts` is pure and holds the whole argument — the
+      thresholds, who each alert is addressed to, which tense it is written in, and the
+      dedupe key that voids itself when a date moves; `edit.ts` is pure validation plus the
+      local-time-of-day rule and the written reason for `not_applicable`; `access.ts` is
+      the report/confirm/change-the-plan split; `store.ts` is the only file touching rows,
+      org-scoped at the source, and carries the sweep. `show_deadlines` gained `status`,
+      `status_note`, `completed_by_id`, `confirmed_by_id` and `updated_at`. The register on
+      `/shows/[id]/readiness` is writable — add, edit, own, confirm, complete, waive — and
+      shows on each row what the engine will say next and to whom. `pnpm deadlines` prints
+      the register, the three exposure figures kept apart, and tonight's alerts;
+      `pnpm deadlines --sweep` writes them. The seed grows an unconfirmed, an unowned and a
+      missed deadline so all four cases are live, and produces its alerts by **running the
+      real sweep**. Four corrections folded into §5a above. 387 tests.
 - [ ] **12.** Team & lodging — attendees, booth shifts, conflicts, hotels, room blocks, side events
 
 ### Phase C — logistics, telemetry & ROI

@@ -143,6 +143,20 @@ export const deadlineKindEnum = pgEnum('deadline_kind', [
   'other',
 ]);
 
+/**
+ * What has become of a deadline.
+ *
+ * `not_applicable` is the dangerous one, and it is here for the same reason
+ * `skipped` is a task status: it removes a dollar figure from the show's exposure
+ * without anybody doing the work. So it carries a written reason and the same
+ * authority as deleting the row. See `src/lib/deadlines/edit.ts`.
+ */
+export const deadlineStatusEnum = pgEnum('deadline_status', [
+  'open',
+  'complete',
+  'not_applicable',
+]);
+
 export const assetKindEnum = pgEnum('asset_kind', [
   'booth',
   'display',
@@ -1052,12 +1066,18 @@ export const showDeadlines = pgTable(
     penaltyEstimateCents: integer('penalty_estimate_cents'),
     penaltyNote: text('penalty_note'),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    status: deadlineStatusEnum('status').notNull().default('open'),
+    /** Required for `not_applicable`; that is a change to the plan, not a status. */
+    statusNote: text('status_note'),
     completedAt: timestamp('completed_at', { withTimezone: true }),
+    completedById: uuid('completed_by_id').references(() => users.id, { onDelete: 'set null' }),
     sourceUrl: text('source_url'),
     // Set when extracted from a manual PDF; a human must confirm before it alerts.
     extractedFromDocument: boolean('extracted_from_document').notNull().default(false),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('show_deadlines_show_due_idx').on(t.showId, t.dueAt)],
 );
