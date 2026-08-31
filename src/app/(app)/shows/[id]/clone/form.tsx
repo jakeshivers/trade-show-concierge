@@ -4,9 +4,9 @@ import { useActionState } from 'react';
 import { clone } from '../../actions';
 import { Button } from '../../../_components/ui';
 import type { FormState } from '../../../_components/form';
+import { Message, controlClass } from '../../../_components/form-ui';
 
-const field =
-  'mt-1 w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950';
+const field = controlClass('comfortable');
 
 export function CloneForm({
   sourceId,
@@ -63,7 +63,7 @@ export function CloneForm({
         ))}
       </fieldset>
 
-      {state.error && <p className="text-sm text-rose-700 dark:text-rose-400">{state.error}</p>}
+      <Message state={state} density="comfortable" />
 
       <Button type="submit" disabled={pending}>
         {pending ? 'Cloning…' : 'Create the clone'}

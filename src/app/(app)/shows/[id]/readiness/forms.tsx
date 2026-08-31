@@ -13,6 +13,7 @@ import { MAX_WEIGHT, MIN_NOTE, TASK_CATEGORIES } from '@/lib/readiness/edit';
 import type { ChecklistEntry } from '@/lib/readiness/store';
 import type { ChecklistTemplate } from '@/lib/readiness/templates';
 import type { FormState } from '../../../_components/form';
+import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
 
 /**
  * The writable half of the readiness tab.
@@ -80,16 +81,8 @@ export function StatusControl({
         />
       )}
 
-      <button
-        type="submit"
-        disabled={pending || next === entry.task.status}
-        className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-40 dark:border-zinc-700"
-      >
-        Save
-      </button>
-      {state.error && (
-        <span className="w-full text-xs text-rose-700 dark:text-rose-400">{state.error}</span>
-      )}
+      <Submit disabled={pending || next === entry.task.status}>Save</Submit>
+      <Message state={state} className="w-full" />
     </form>
   );
 }
@@ -145,10 +138,7 @@ export function AddTaskForm({
           <Button type="submit" disabled={pending}>
             Add task
           </Button>
-          {state.error && (
-            <p className="mt-2 text-sm text-rose-700 dark:text-rose-400">{state.error}</p>
-          )}
-          {state.ok && <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{state.ok}</p>}
+          <Message state={state} density="comfortable" className="mt-2" />
         </div>
       </form>
     </details>
@@ -220,25 +210,24 @@ export function EditTaskForm({
           <Button type="submit" variant="secondary" disabled={pending}>
             Save changes
           </Button>
-          {state.error && <span className="text-xs text-rose-700 dark:text-rose-400">{state.error}</span>}
+          <Message state={state} />
         </div>
       </form>
 
       <form action={delAction} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="taskId" value={task.id} />
-        <button
-          type="submit"
-          disabled={deleting}
-          className="text-xs text-rose-700 underline hover:no-underline dark:text-rose-400"
+        <QuietSubmit
+          pending={deleting}
+          className="text-rose-700 underline hover:no-underline dark:text-rose-400"
         >
           Delete this task
-        </button>
+        </QuietSubmit>
         <span className="ml-2 text-xs text-zinc-500">
           Deleting removes it from the score entirely, and leaves no record that it existed.
           Skipping keeps the decision. Prefer skipping.
         </span>
-        {del.error && <p className="text-xs text-rose-700 dark:text-rose-400">{del.error}</p>}
+        <Message state={del} />
       </form>
     </details>
   );
@@ -282,8 +271,7 @@ export function TemplateForm({
           it never edits or re-dates a task you have already started.
         </p>
       )}
-      {state.error && <p className="text-sm text-rose-700 dark:text-rose-400">{state.error}</p>}
-      {state.ok && <p className="text-sm text-emerald-700 dark:text-emerald-400">{state.ok}</p>}
+      <Message state={state} density="comfortable" />
     </form>
   );
 }

@@ -23,6 +23,7 @@ import { Button } from '../../../_components/ui';
 import { ATTENDEE_STATUSES, SIDE_EVENT_KINDS } from '@/lib/team/edit';
 import type { RosterEntry, ShiftEntry, SideEventEntry } from '@/lib/team/store';
 import type { FormState } from '../../../_components/form';
+import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
 
 /**
  * The writable team tab.
@@ -40,18 +41,8 @@ import type { FormState } from '../../../_components/form';
  *   second attempt carries the acknowledgement. See `team/store.ts`.
  */
 
-const input =
-  'rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950';
-
-function Err({ state }: { state: FormState }) {
-  if (!state.error) return null;
-  return <span className="w-full text-xs text-rose-700 dark:text-rose-400">{state.error}</span>;
-}
-
-function Ok({ state }: { state: FormState }) {
-  if (!state.ok) return null;
-  return <span className="w-full text-xs text-emerald-700 dark:text-emerald-400">{state.ok}</span>;
-}
+/** The one input class string, from `_components/form-ui.tsx`. */
+const inputClass = controlClass('compact');
 
 /* -------------------------------- attendees -------------------------------- */
 
@@ -90,13 +81,13 @@ function WindowFields({
     <>
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         lands
-        <input type="date" name="arrivesOn" defaultValue={a.date} className={input} />
-        <input type="time" name="arrivesAt" defaultValue={a.time} className={input} />
+        <input type="date" name="arrivesOn" defaultValue={a.date} className={inputClass} />
+        <input type="time" name="arrivesAt" defaultValue={a.time} className={inputClass} />
       </label>
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         leaves
-        <input type="date" name="departsOn" defaultValue={b.date} className={input} />
-        <input type="time" name="departsAt" defaultValue={b.time} className={input} />
+        <input type="date" name="departsOn" defaultValue={b.date} className={inputClass} />
+        <input type="time" name="departsAt" defaultValue={b.time} className={inputClass} />
       </label>
     </>
   );
@@ -138,7 +129,7 @@ function AnswerForm({
         name="status"
         value={status}
         onChange={(e) => setStatus(e.target.value as typeof status)}
-        className={input}
+        className={inputClass}
       >
         <option value="invited">Not answered</option>
         <option value="confirmed">I&rsquo;m going</option>
@@ -146,10 +137,10 @@ function AnswerForm({
         <option value="waitlist">Waitlist</option>
       </select>
       <WindowFields timezone={timezone} attendee={entry.attendee} />
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         Save
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -170,8 +161,8 @@ function EditAttendee({
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="attendeeId" value={entry.attendee.id} />
-        <input name="role" defaultValue={entry.attendee.role} className={input} />
-        <select name="status" defaultValue={entry.attendee.status} className={input}>
+        <input name="role" defaultValue={entry.attendee.role} className={inputClass} />
+        <select name="status" defaultValue={entry.attendee.status} className={inputClass}>
           {ATTENDEE_STATUSES.map((s) => (
             <option key={s} value={s}>
               {s}
@@ -179,10 +170,10 @@ function EditAttendee({
           ))}
         </select>
         <WindowFields timezone={timezone} attendee={entry.attendee} />
-        <button type="submit" disabled={pending} className={`${input} font-medium`}>
+        <Submit pending={pending}>
           Save
-        </button>
-        <Err state={state} />
+        </Submit>
+        <Message state={state} />
       </form>
     </details>
   );
@@ -196,10 +187,10 @@ function UnstaffForm({ showId, entry }: { showId: string; entry: RosterEntry }) 
       <input type="hidden" name="attendeeId" value={entry.attendee.id} />
       {/* The second press carries the acknowledgement the server asked for. */}
       <input type="hidden" name="acknowledged" value={state.error ? 'true' : 'false'} />
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         {state.error ? 'Take them off anyway' : 'Take off this show'}
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -219,7 +210,7 @@ export function InviteForm({
       <summary className="cursor-pointer text-sm font-medium">Staff somebody on this show</summary>
       <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
-        <select name="userId" required className={input}>
+        <select name="userId" required className={inputClass}>
           <option value="">Who?</option>
           {people.map((p) => (
             <option key={p.id} value={p.id}>
@@ -227,22 +218,22 @@ export function InviteForm({
             </option>
           ))}
         </select>
-        <input name="role" required placeholder="Role, e.g. Technical demos" className={input} />
+        <input name="role" required placeholder="Role, e.g. Technical demos" className={inputClass} />
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           lands
-          <input type="date" name="arrivesOn" className={input} />
-          <input type="time" name="arrivesAt" className={input} />
+          <input type="date" name="arrivesOn" className={inputClass} />
+          <input type="time" name="arrivesAt" className={inputClass} />
         </label>
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           leaves
-          <input type="date" name="departsOn" className={input} />
-          <input type="time" name="departsAt" className={input} />
+          <input type="date" name="departsOn" className={inputClass} />
+          <input type="time" name="departsAt" className={inputClass} />
         </label>
         <Button type="submit" disabled={pending}>
           Invite
         </Button>
-        <Err state={state} />
-        <Ok state={state} />
+        <Message state={state} />
+        <Message state={state} />
       </form>
       <p className="mt-2 text-xs text-zinc-500">
         Times are read in the show&rsquo;s own zone ({timezone}). A travel window is optional —
@@ -285,7 +276,7 @@ function AssignForm({ showId, entry }: { showId: string; entry: ShiftEntry }) {
     <form action={action} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={entry.shiftId} />
-      <select name="userId" required className={input}>
+      <select name="userId" required className={inputClass}>
         <option value="">Assign…</option>
         {entry.assignable.map((p) => (
           <option key={p.id} value={p.id}>
@@ -293,10 +284,10 @@ function AssignForm({ showId, entry }: { showId: string; entry: ShiftEntry }) {
           </option>
         ))}
       </select>
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         Add
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -324,7 +315,7 @@ export function UnassignButton({
       >
         ×
       </button>
-      <Err state={state} />
+      <Message state={state} />
     </form>
   );
 }
@@ -335,10 +326,10 @@ function DeleteShift({ showId, shiftId }: { showId: string; shiftId: string }) {
     <form action={action} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={shiftId} />
-      <button type="submit" disabled={pending} className="text-xs text-zinc-500 hover:underline">
+      <QuietSubmit pending={pending}>
         Delete shift
-      </button>
-      <Err state={state} />
+      </QuietSubmit>
+      <Message state={state} />
     </form>
   );
 }
@@ -364,7 +355,7 @@ function PresenceForm({
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={entry.shiftId} />
       <input type="hidden" name="present" value="true" />
-      <select name="userId" required className={input}>
+      <select name="userId" required className={inputClass}>
         <option value="">Was actually there…</option>
         {options.map((s) => (
           <option key={s.userId} value={s.userId}>
@@ -372,10 +363,10 @@ function PresenceForm({
           </option>
         ))}
       </select>
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         Check in
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -389,13 +380,13 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
         <input type="hidden" name="showId" value={showId} />
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           from
-          <input type="date" name="startsOn" required className={input} />
-          <input type="time" name="startsAt" required className={input} />
+          <input type="date" name="startsOn" required className={inputClass} />
+          <input type="time" name="startsAt" required className={inputClass} />
         </label>
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           to
-          <input type="date" name="endsOn" required className={input} />
-          <input type="time" name="endsAt" required className={input} />
+          <input type="date" name="endsOn" required className={inputClass} />
+          <input type="time" name="endsAt" required className={inputClass} />
         </label>
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           staff needed
@@ -405,15 +396,15 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
             min={1}
             max={20}
             defaultValue={2}
-            className={`${input} w-16`}
+            className={`${inputClass} w-16`}
           />
         </label>
-        <input name="notes" placeholder="Notes" className={input} />
+        <input name="notes" placeholder="Notes" className={inputClass} />
         <Button type="submit" disabled={pending}>
           Add shift
         </Button>
-        <Err state={state} />
-        <Ok state={state} />
+        <Message state={state} />
+        <Message state={state} />
       </form>
       <p className="mt-2 text-xs text-zinc-500">Times are {timezone} — the show&rsquo;s zone.</p>
     </details>
@@ -438,23 +429,23 @@ export function EditShiftForm({
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="shiftId" value={entry.shiftId} />
-        <input type="date" name="startsOn" defaultValue={from.slice(0, 10)} className={input} />
-        <input type="time" name="startsAt" defaultValue={from.slice(11, 16)} className={input} />
-        <input type="date" name="endsOn" defaultValue={to.slice(0, 10)} className={input} />
-        <input type="time" name="endsAt" defaultValue={to.slice(11, 16)} className={input} />
+        <input type="date" name="startsOn" defaultValue={from.slice(0, 10)} className={inputClass} />
+        <input type="time" name="startsAt" defaultValue={from.slice(11, 16)} className={inputClass} />
+        <input type="date" name="endsOn" defaultValue={to.slice(0, 10)} className={inputClass} />
+        <input type="time" name="endsAt" defaultValue={to.slice(11, 16)} className={inputClass} />
         <input
           type="number"
           name="targetStaff"
           min={1}
           max={20}
           defaultValue={entry.targetStaff}
-          className={`${input} w-16`}
+          className={`${inputClass} w-16`}
         />
-        <input name="notes" defaultValue={entry.notes ?? ''} placeholder="Notes" className={input} />
-        <button type="submit" disabled={pending} className={`${input} font-medium`}>
+        <input name="notes" defaultValue={entry.notes ?? ''} placeholder="Notes" className={inputClass} />
+        <Submit pending={pending}>
           Save
-        </button>
-        <Err state={state} />
+        </Submit>
+        <Message state={state} />
       </form>
     </details>
   );
@@ -529,7 +520,7 @@ export function RsvpControl({
             name="status"
             value={next}
             onChange={(e) => setNext(e.target.value)}
-            className={input}
+            className={inputClass}
           >
             <option value="invited">invited</option>
             <option value="accepted">accepted</option>
@@ -539,7 +530,7 @@ export function RsvpControl({
           <button
             type="submit"
             disabled={pending || next === status}
-            className={`${input} font-medium disabled:opacity-40`}
+            className={`${inputClass} font-medium disabled:opacity-40`}
           >
             Save
           </button>
@@ -581,7 +572,7 @@ function InviteGuestForm({
     <form action={action} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="eventId" value={eventId} />
-      <select name="userId" className={input}>
+      <select name="userId" className={inputClass}>
         <option value="">A colleague…</option>
         {people.map((p) => (
           <option key={p.id} value={p.id}>
@@ -590,13 +581,13 @@ function InviteGuestForm({
         ))}
       </select>
       <span className="text-xs text-zinc-400">or</span>
-      <input name="guestName" placeholder="Guest name" className={input} />
-      <input name="guestCompany" placeholder="Company" className={input} />
-      <input name="guestEmail" type="email" placeholder="Email" className={input} />
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <input name="guestName" placeholder="Guest name" className={inputClass} />
+      <input name="guestCompany" placeholder="Company" className={inputClass} />
+      <input name="guestEmail" type="email" placeholder="Email" className={inputClass} />
+      <Submit pending={pending}>
         Invite
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -633,9 +624,9 @@ function Fields({
         required
         defaultValue={event?.name}
         placeholder="Customer dinner"
-        className={input}
+        className={inputClass}
       />
-      <select name="kind" defaultValue={event?.kind ?? 'dinner'} className={input}>
+      <select name="kind" defaultValue={event?.kind ?? 'dinner'} className={inputClass}>
         {SIDE_EVENT_KINDS.map((k) => (
           <option key={k} value={k}>
             {k}
@@ -646,17 +637,17 @@ function Fields({
         name="location"
         defaultValue={event?.location ?? ''}
         placeholder="Where"
-        className={input}
+        className={inputClass}
       />
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         from
-        <input type="date" name="startsOn" required defaultValue={from?.slice(0, 10)} className={input} />
-        <input type="time" name="startsAt" required defaultValue={from?.slice(11, 16)} className={input} />
+        <input type="date" name="startsOn" required defaultValue={from?.slice(0, 10)} className={inputClass} />
+        <input type="time" name="startsAt" required defaultValue={from?.slice(11, 16)} className={inputClass} />
       </label>
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         to
-        <input type="date" name="endsOn" defaultValue={to?.slice(0, 10) ?? ''} className={input} />
-        <input type="time" name="endsAt" defaultValue={to?.slice(11, 16) ?? ''} className={input} />
+        <input type="date" name="endsOn" defaultValue={to?.slice(0, 10) ?? ''} className={inputClass} />
+        <input type="time" name="endsAt" defaultValue={to?.slice(11, 16) ?? ''} className={inputClass} />
       </label>
       <input
         type="number"
@@ -664,15 +655,15 @@ function Fields({
         min={1}
         defaultValue={event?.capacity ?? ''}
         placeholder="Seats"
-        className={`${input} w-20`}
+        className={`${inputClass} w-20`}
       />
       <input
         name="budget"
         defaultValue={event?.budgetCents != null ? (event.budgetCents / 100).toFixed(2) : ''}
         placeholder="Budget, e.g. 4500.00"
-        className={input}
+        className={inputClass}
       />
-      <select name="hostId" defaultValue={event?.hostId ?? ''} className={input}>
+      <select name="hostId" defaultValue={event?.hostId ?? ''} className={inputClass}>
         <option value="">No host</option>
         {people.map((p) => (
           <option key={p.id} value={p.id}>
@@ -680,7 +671,7 @@ function Fields({
           </option>
         ))}
       </select>
-      <select name="costCenterId" required defaultValue={event?.costCenterId ?? ''} className={input}>
+      <select name="costCenterId" required defaultValue={event?.costCenterId ?? ''} className={inputClass}>
         <option value="">Cost center…</option>
         {costCenters.map((c) => (
           <option key={c.id} value={c.id}>
@@ -691,8 +682,8 @@ function Fields({
       <Button type="submit" disabled={pending}>
         {submitLabel}
       </Button>
-      <Err state={state} />
-      <Ok state={state} />
+      <Message state={state} />
+      <Message state={state} />
     </form>
   );
 }
@@ -751,10 +742,10 @@ function SideEventFields({
       <form action={dropAction} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="eventId" value={entry.event.id} />
-        <button type="submit" disabled={dropping} className="text-xs text-zinc-500 hover:underline">
+        <QuietSubmit pending={dropping}>
           Delete this event
-        </button>
-        <Err state={dropState} />
+        </QuietSubmit>
+        <Message state={dropState} />
       </form>
     </details>
   );

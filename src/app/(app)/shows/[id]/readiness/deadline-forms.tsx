@@ -12,6 +12,7 @@ import { Button } from '../../../_components/ui';
 import { DEADLINE_KINDS, MIN_REASON } from '@/lib/deadlines/edit';
 import type { RegisterEntry } from '@/lib/deadlines/store';
 import type { FormState } from '../../../_components/form';
+import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
 
 /**
  * The writable register.
@@ -124,16 +125,8 @@ function StatusControl({
         />
       )}
 
-      <button
-        type="submit"
-        disabled={pending || next === entry.deadline.status}
-        className="rounded-md border border-zinc-300 px-2 py-1 text-xs font-medium disabled:opacity-40 dark:border-zinc-700"
-      >
-        Save
-      </button>
-      {state.error && (
-        <span className="w-full text-xs text-rose-700 dark:text-rose-400">{state.error}</span>
-      )}
+      <Submit disabled={pending || next === entry.deadline.status}>Save</Submit>
+      <Message state={state} className="w-full" />
     </form>
   );
 }
@@ -163,7 +156,7 @@ function ConfirmControl({
       >
         {confirmed ? 'Withdraw confirmation' : 'Confirm against the manual'}
       </button>
-      {state.error && <span className="text-xs text-rose-700 dark:text-rose-400">{state.error}</span>}
+      <Message state={state} />
     </form>
   );
 }
@@ -243,18 +236,17 @@ function EditDeadline({
       <form action={delAction} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="deadlineId" value={d.id} />
-        <button
-          type="submit"
-          disabled={deleting}
-          className="text-xs text-rose-700 underline hover:no-underline dark:text-rose-400"
+        <QuietSubmit
+          pending={deleting}
+          className="text-rose-700 underline hover:no-underline dark:text-rose-400"
         >
           Delete this deadline
-        </button>
+        </QuietSubmit>
         <span className="ml-2 text-xs text-zinc-500">
           Deleting leaves no record that the deadline existed. If it simply does not apply this
           year, say so instead — that keeps the decision and its reason.
         </span>
-        {del.error && <p className="text-xs text-rose-700 dark:text-rose-400">{del.error}</p>}
+        <Message state={del} />
       </form>
     </details>
   );
@@ -350,8 +342,7 @@ function Fields({
         <Button type="submit" variant="secondary" disabled={pending}>
           {submitLabel}
         </Button>
-        {state.error && <p className="mt-2 text-sm text-rose-700 dark:text-rose-400">{state.error}</p>}
-        {state.ok && <p className="mt-2 text-sm text-emerald-700 dark:text-emerald-400">{state.ok}</p>}
+        <Message state={state} density="comfortable" className="mt-2" />
       </div>
     </form>
   );

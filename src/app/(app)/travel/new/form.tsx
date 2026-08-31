@@ -4,6 +4,7 @@ import { useActionState, useState } from 'react';
 import { openRequest } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
+import { Field, controlClass } from '../../_components/form-ui';
 
 /**
  * The request form.
@@ -22,8 +23,7 @@ import type { FormState } from '../../_components/form';
  * and then be told no.
  */
 
-const field =
-  'mt-1 w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950';
+const fieldClass = controlClass('comfortable');
 
 type Show = {
   id: string;
@@ -67,7 +67,7 @@ export function RequestForm({
               : 'Whose trip this is. The policy that applies is theirs, not yours.'
           }
         >
-          <select name="travelerId" defaultValue={me.id} className={field}>
+          <select name="travelerId" defaultValue={me.id} className={fieldClass}>
             {travelers.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.fullName}
@@ -85,7 +85,7 @@ export function RequestForm({
               const s = shows.find((x) => x.id === e.target.value);
               if (s) setTimezone(s.timezone);
             }}
-            className={field}
+            className={fieldClass}
           >
             <option value="">— not for a show —</option>
             {shows.map((s) => (
@@ -103,7 +103,7 @@ export function RequestForm({
             name="originAirport"
             required
             maxLength={3}
-            className={`${field} uppercase`}
+            className={`${fieldClass} uppercase`}
             placeholder="ORD"
           />
         </Field>
@@ -114,12 +114,12 @@ export function RequestForm({
             maxLength={3}
             defaultValue={chosen?.airportCode ?? ''}
             key={chosen?.airportCode ?? 'none'}
-            className={`${field} uppercase`}
+            className={`${fieldClass} uppercase`}
             placeholder="LAS"
           />
         </Field>
         <Field label="Cabin" hint="A preference. Policy has the final say.">
-          <select name="cabinPreference" defaultValue="" className={field}>
+          <select name="cabinPreference" defaultValue="" className={fieldClass}>
             <option value="">no preference</option>
             <option value="economy">economy</option>
             <option value="premium_economy">premium economy</option>
@@ -137,7 +137,7 @@ export function RequestForm({
           required
           value={timezone}
           onChange={(e) => setTimezone(e.target.value)}
-          className={field}
+          className={fieldClass}
         />
       </Field>
 
@@ -147,10 +147,10 @@ export function RequestForm({
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Earliest I can leave">
-            <input type="datetime-local" name="earliestDeparture" required className={field} />
+            <input type="datetime-local" name="earliestDeparture" required className={fieldClass} />
           </Field>
           <Field label="Latest I can arrive" hint="Usually move-in, or the first meeting.">
-            <input type="datetime-local" name="latestArrival" required className={field} />
+            <input type="datetime-local" name="latestArrival" required className={fieldClass} />
           </Field>
         </div>
       </fieldset>
@@ -161,10 +161,10 @@ export function RequestForm({
         </legend>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Earliest I can leave">
-            <input type="datetime-local" name="returnEarliestDeparture" className={field} />
+            <input type="datetime-local" name="returnEarliestDeparture" className={fieldClass} />
           </Field>
           <Field label="Latest I can arrive home">
-            <input type="datetime-local" name="returnLatestArrival" className={field} />
+            <input type="datetime-local" name="returnLatestArrival" className={fieldClass} />
           </Field>
         </div>
       </fieldset>
@@ -173,7 +173,7 @@ export function RequestForm({
         label="Cost center"
         hint="Every financial row carries one at creation, never backfilled. Defaults to the traveler's."
       >
-        <select name="costCenterId" defaultValue={me.costCenterId ?? ''} className={field}>
+        <select name="costCenterId" defaultValue={me.costCenterId ?? ''} className={fieldClass}>
           <option value="">— the traveler&rsquo;s default —</option>
           {costCenters.map((c) => (
             <option key={c.id} value={c.id}>
@@ -185,7 +185,7 @@ export function RequestForm({
       </Field>
 
       <Field label="Notes" hint="Anything an approver would want to know.">
-        <textarea name="notes" rows={2} className={field} />
+        <textarea name="notes" rows={2} className={fieldClass} />
       </Field>
 
       <div className="flex items-center gap-3">
@@ -200,20 +200,3 @@ export function RequestForm({
   );
 }
 
-function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="text-sm font-medium">{label}</span>
-      {children}
-      {hint && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
-    </label>
-  );
-}

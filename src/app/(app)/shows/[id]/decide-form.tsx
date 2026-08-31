@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { decide } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
+import { Message } from '../../_components/form-ui';
 
 /**
  * Commit or decline a prospect.
@@ -43,7 +44,7 @@ export function DecideForm({ showId }: { showId: string }) {
         </Button>
       </div>
 
-      {state.error && <p className="text-sm text-rose-700 dark:text-rose-400">{state.error}</p>}
+      <Message state={state} density="comfortable" />
     </form>
   );
 }

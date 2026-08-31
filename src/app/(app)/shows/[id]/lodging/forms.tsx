@@ -13,6 +13,7 @@ import { Button } from '../../../_components/ui';
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from '@/lib/lodging/edit';
 import type { LodgingEntry } from '@/lib/lodging/store';
 import type { FormState } from '../../../_components/form';
+import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
 
 /**
  * The lodging tab's controls.
@@ -24,18 +25,8 @@ import type { FormState } from '../../../_components/form';
  * rather than making somebody switch tabs to say who is chasing it.
  */
 
-const input =
-  'rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950';
-
-function Err({ state }: { state: FormState }) {
-  if (!state.error) return null;
-  return <span className="w-full text-xs text-rose-700 dark:text-rose-400">{state.error}</span>;
-}
-
-function Ok({ state }: { state: FormState }) {
-  if (!state.ok) return null;
-  return <span className="w-full text-xs text-emerald-700 dark:text-emerald-400">{state.ok}</span>;
-}
+/** The one input class string, from `_components/form-ui.tsx`. */
+const inputClass = controlClass('compact');
 
 function local(d: Date | null, timeZone: string): { date: string; time: string } {
   if (!d) return { date: '', time: '' };
@@ -85,46 +76,46 @@ function Fields({
         required
         defaultValue={lodging?.hotelName}
         placeholder="Hotel"
-        className={input}
+        className={inputClass}
       />
       <input
         name="confirmationCode"
         defaultValue={lodging?.confirmationCode ?? ''}
         placeholder="Confirmation"
-        className={input}
+        className={inputClass}
       />
       <input
         name="address"
         defaultValue={lodging?.address ?? ''}
         placeholder="Address"
-        className={`${input} min-w-56`}
+        className={`${inputClass} min-w-56`}
       />
-      <input name="phone" defaultValue={lodging?.phone ?? ''} placeholder="Phone" className={input} />
+      <input name="phone" defaultValue={lodging?.phone ?? ''} placeholder="Phone" className={inputClass} />
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         in
-        <input type="date" name="checkInOn" defaultValue={checkIn.date} className={input} />
+        <input type="date" name="checkInOn" defaultValue={checkIn.date} className={inputClass} />
         <input
           type="time"
           name="checkInAt"
           defaultValue={checkIn.time || DEFAULT_CHECK_IN}
-          className={input}
+          className={inputClass}
         />
       </label>
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         out
-        <input type="date" name="checkOutOn" defaultValue={checkOut.date} className={input} />
+        <input type="date" name="checkOutOn" defaultValue={checkOut.date} className={inputClass} />
         <input
           type="time"
           name="checkOutAt"
           defaultValue={checkOut.time || DEFAULT_CHECK_OUT}
-          className={input}
+          className={inputClass}
         />
       </label>
       <input
         name="nightlyRate"
         defaultValue={lodging?.nightlyRateCents != null ? (lodging.nightlyRateCents / 100).toFixed(2) : ''}
         placeholder="Rate, e.g. 289.00"
-        className={input}
+        className={inputClass}
       />
       <label className="flex items-center gap-1 text-xs text-zinc-500">
         room block closes
@@ -132,20 +123,20 @@ function Fields({
           type="date"
           name="roomBlockCutoffOn"
           defaultValue={cutoff.date}
-          className={input}
+          className={inputClass}
         />
         <input
           type="time"
           name="roomBlockCutoffAt"
           defaultValue={cutoff.time || '17:00'}
-          className={input}
+          className={inputClass}
         />
       </label>
       <select
         name="costCenterId"
         required
         defaultValue={lodging?.costCenterId ?? ''}
-        className={input}
+        className={inputClass}
       >
         <option value="">Cost center…</option>
         {costCenters.map((c) => (
@@ -154,12 +145,12 @@ function Fields({
           </option>
         ))}
       </select>
-      <input name="notes" defaultValue={lodging?.notes ?? ''} placeholder="Notes" className={input} />
+      <input name="notes" defaultValue={lodging?.notes ?? ''} placeholder="Notes" className={inputClass} />
       <Button type="submit" disabled={pending}>
         {submitLabel}
       </Button>
-      <Err state={state} />
-      <Ok state={state} />
+      <Message state={state} />
+      <Message state={state} />
     </form>
   );
 }
@@ -213,10 +204,10 @@ export function EditLodgingForm({
       <form action={dropAction} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="lodgingId" value={entry.lodging.id} />
-        <button type="submit" disabled={dropping} className="text-xs text-zinc-500 hover:underline">
+        <QuietSubmit pending={dropping}>
           Delete this hotel record
-        </button>
-        <Err state={dropState} />
+        </QuietSubmit>
+        <Message state={dropState} />
       </form>
     </details>
   );
@@ -234,7 +225,7 @@ export function RoomGuests({
     <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="lodgingId" value={entry.lodging.id} />
-      <select name="userId" required className={input}>
+      <select name="userId" required className={inputClass}>
         <option value="">Put somebody in this block…</option>
         {entry.assignable.map((p) => (
           <option key={p.id} value={p.id}>
@@ -242,10 +233,10 @@ export function RoomGuests({
           </option>
         ))}
       </select>
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         Add
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
@@ -273,7 +264,7 @@ export function DropGuestButton({
       >
         ×
       </button>
-      <Err state={state} />
+      <Message state={state} />
     </form>
   );
 }
@@ -296,7 +287,7 @@ export function CutoffOwnerForm({
     <form action={action} className="mt-1 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="deadlineId" value={deadlineId} />
-      <select name="ownerId" defaultValue={ownerId ?? ''} className={input}>
+      <select name="ownerId" defaultValue={ownerId ?? ''} className={inputClass}>
         <option value="">Nobody owns it</option>
         {people.map((p) => (
           <option key={p.id} value={p.id}>
@@ -308,12 +299,12 @@ export function CutoffOwnerForm({
         name="penaltyEstimate"
         defaultValue={penaltyEstimateCents != null ? (penaltyEstimateCents / 100).toFixed(2) : ''}
         placeholder="What blowing it costs, e.g. 6200.00"
-        className={`${input} min-w-56`}
+        className={`${inputClass} min-w-56`}
       />
-      <button type="submit" disabled={pending} className={`${input} font-medium`}>
+      <Submit pending={pending}>
         Save
-      </button>
-      <Err state={state} />
+      </Submit>
+      <Message state={state} />
     </form>
   );
 }
