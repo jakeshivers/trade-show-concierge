@@ -12,6 +12,9 @@ admin-defined spend and schedule constraints.
   travel policy, ROI, non-negotiables, build order (§10), and open decisions (§11).
 - **`RESEARCH.md`** — competitive analysis. Explains *why* the service-manual deadline
   engine and ticket-credit recovery are the differentiators.
+- **`UI-REWORK.md`** — proposed, not started, gates nothing. The app layer's deferred
+  consolidation, measured, plus one framing defect on the roster. Needs a scope call
+  (`SCOPE.md` §11.11). Read it before adding a sixth `forms.tsx`.
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
@@ -289,6 +292,14 @@ Middleware), Clerk's context in Clerk mode and a pass-through otherwise. Its cor
 still standing: a login-method restriction is enforced at sign-in and we are not present
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
+
+**Open alongside the build order:** `UI-REWORK.md` — the app layer has grown by
+copy-paste since step 8 (correctly; `ui.tsx` said to wait for ten screens, and there are
+now 16). Step 12 produced the fourth and fifth copies and duplicated one zone-formatting
+helper twice within itself, which is the signal. It gates nothing and can be done before or
+after step 13, but it gets more expensive every step and it carries one real defect — the
+roster offers an admin a first-person "I'm going" form on every colleague's row. Needs a
+scope call; see `SCOPE.md` §11.11.
 
 **Next:** step 13 — flight tracking (`SCOPE.md` §10 Phase C): a status provider behind the
 usual interface, a flight board, and delay alerts read against the show's move-in time. The

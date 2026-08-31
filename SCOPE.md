@@ -1090,3 +1090,13 @@ the benefit of the model without the setup cost blocking the spine.
    it shapes what "workspace" means in the data model.
 10. **Data residency.** Lead PII plus EU shows may require EU hosting. Competitors lead
     with it. Decide before step 17, since it constrains hosting at step 20.
+11. **How wide should the UI rework go, and when?** `src/app/` has been growing by
+    copy-paste since step 8 — deliberately, because the shape was still being discovered,
+    and `ui.tsx` said so in its header. Step 12 tipped it: five drifted copies of
+    `FormState`, 42 hand-wired form call sites, and one zone-formatting helper written
+    twice *within that one step*. **`UI-REWORK.md` has the measurements, the plan in four
+    tranches, and the argument.** Recommending option A there — the plumbing consolidation
+    plus one framing defect on the roster, no restyling — because it is the only option
+    that gets more expensive with every step and the only one that makes step 13 cheaper.
+    A visual pass is worth deferring past steps 13, 16 and especially 19 (the offline PWA),
+    which is a change to how the client works rather than a reskin.
