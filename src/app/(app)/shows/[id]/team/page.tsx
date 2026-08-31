@@ -2,17 +2,9 @@ import Link from 'next/link';
 import { getTeamBoard } from '@/lib/team/store';
 import { Badge, Card, Empty, money, showDateTime, type Tone } from '../../../_components/ui';
 import { loadShow } from '../detail';
-import {
-  AddShiftForm,
-  AddSideEventForm,
-  AttendeeControls,
-  EditShiftForm,
-  InviteForm,
-  RsvpControl,
-  ShiftControls,
-  SideEventControls,
-  UnassignButton,
-} from './forms';
+import { AttendeeControls, InviteForm } from './roster-forms';
+import { AddShiftForm, EditShiftForm, ShiftControls, UnassignButton } from './shift-forms';
+import { AddSideEventForm, RsvpControl, SideEventControls } from './side-event-forms';
 
 /**
  * Team — who is going, who is on the booth, and who is in two places at once.
