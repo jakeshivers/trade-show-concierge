@@ -25,11 +25,14 @@ import type { FormState } from './form';
 
 export type Density = 'compact' | 'comfortable';
 
+const CONTROL_BASE =
+  'rounded-lg border border-border-strong bg-panel text-text transition-colors ' +
+  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-ring ' +
+  'disabled:cursor-not-allowed disabled:opacity-50';
+
 const CONTROL: Record<Density, string> = {
-  compact:
-    'rounded-md border border-zinc-300 bg-white px-2 py-1 text-xs dark:border-zinc-700 dark:bg-zinc-950',
-  comfortable:
-    'w-full rounded-md border border-zinc-300 bg-white p-2 text-sm dark:border-zinc-700 dark:bg-zinc-950',
+  compact: `${CONTROL_BASE} px-2 py-1 text-xs`,
+  comfortable: `${CONTROL_BASE} w-full p-2 text-sm`,
 };
 
 /** The one input class string, as a class string, for the cases that need one. */
@@ -82,8 +85,8 @@ export function Field({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{label}</span>
-      {hint && <span className="mt-0.5 block text-xs text-zinc-500">{hint}</span>}
+      <span className="text-sm font-medium text-text">{label}</span>
+      {hint && <span className="mt-0.5 block text-xs text-text-muted">{hint}</span>}
       <div className="mt-1">{children}</div>
     </label>
   );
@@ -111,7 +114,7 @@ export function Message({
       role="status"
       className={cn(
         size,
-        state.error ? 'text-rose-700 dark:text-rose-400' : 'text-emerald-700 dark:text-emerald-400',
+        state.error ? 'text-bad' : 'text-good',
         className,
       )}
     >
@@ -171,7 +174,7 @@ export function QuietSubmit({
       {...props}
       disabled={pending || props.disabled}
       className={cn(
-        'text-xs text-zinc-500 hover:underline disabled:cursor-not-allowed disabled:opacity-50',
+        'text-xs text-text-muted hover:underline disabled:cursor-not-allowed disabled:opacity-50',
         className,
       )}
     >
@@ -217,7 +220,7 @@ export function ZonedDateTime({
   const date = zonedDateInput(instant, timeZone);
   const time = zonedTimeInput(instant, timeZone);
   return (
-    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-text-muted">
       {label}
       <Input type="date" name={dateName} required={required} defaultValue={date} />
       <Input type="time" name={timeName} required={required} defaultValue={time || defaultTime} />

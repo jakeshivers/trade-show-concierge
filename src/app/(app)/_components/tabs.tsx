@@ -12,7 +12,7 @@ export function Tabs({ items }: { items: { href: string; label: string }[] }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-1 overflow-x-auto border-b border-zinc-200 text-sm dark:border-zinc-800">
+    <nav className="flex gap-1 overflow-x-auto border-b border-border text-sm">
       {items.map((item) => {
         const active = pathname === item.href;
         return (
@@ -22,8 +22,8 @@ export function Tabs({ items }: { items: { href: string; label: string }[] }) {
             aria-current={active ? 'page' : undefined}
             className={
               active
-                ? 'border-b-2 border-zinc-900 px-3 py-2 font-medium text-zinc-950 dark:border-zinc-100 dark:text-zinc-50'
-                : 'border-b-2 border-transparent px-3 py-2 text-zinc-600 hover:border-zinc-300 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-zinc-50'
+                ? 'border-b-2 border-brand px-3 py-2 font-medium text-brand'
+                : 'border-b-2 border-transparent px-3 py-2 text-text-muted hover:border-border-strong hover:text-text'
             }
           >
             {item.label}
