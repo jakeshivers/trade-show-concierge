@@ -1,6 +1,6 @@
 # Trade Show Concierge — Scope & Expectations
 
-**Status:** draft for review · **Last updated:** 2026-08-30
+**Status:** draft for review · **Last updated:** 2026-08-31
 
 An enterprise system for planning and executing a company's trade show calendar —
 shows, readiness, people, lodging, and booth shipments — with live travel telemetry
@@ -287,6 +287,7 @@ Modeling choices worth calling out:
 | **Lead & meeting capture** | Log leads and on-site meetings against a show. CSV import **and a REST intake endpoint** so any scanner can feed us; manual entry as the floor. |
 | **ROI** | Cost vs. pipeline and closed revenue per show. Cost-per-lead, cost-per-meeting, **cost-per-impression**, pipeline multiple. Impressions and **forecast** revenue alongside actuals. Year-over-year and show-vs-show comparison. |
 | **Audit log** | Every agent decision and approval, immutable, exportable. |
+| **Assistant** ⭐ | One box that answers across the workspace and **drafts** travel and lodging requests for a person to commit. Never books, buys, approves or confirms. Its access model is the tool list, not a prompt: every tool is an existing org-scoped store call as the asking actor. §6f. |
 
 ### Explicitly out of scope — v1
 
@@ -930,6 +931,101 @@ The web form is one caller. A Slack adapter parses a message into the same
 `TravelRequestInput` and renders state changes as Slack blocks. **No agent logic moves**
 when Slack arrives — which is the whole reason to define this boundary now.
 
+### 6f. The conversational assistant — what makes "read and draft only" true (step 15)
+
+§6a's rule is unchanged and this step is its first real exercise: **the LLM parses and
+narrates; the deterministic policy engine authorizes.** What step 15 adds is the parser
+the seam has been waiting for since step 4 — `raw_request_text`,
+`constraints_confirmed_at`, and an agent that refuses to search an unconfirmed parse were
+all built and tested before anything could produce one.
+
+**The access model is the tool list, and it is not a prompt.** The assistant gets no
+database access of its own. Every tool is an existing org-scoped store function, called
+with the asking `Actor`, through the same `access.ts` gate the screen goes through. So
+"which room is Shelley in" asked by a Member is not refused by an instruction a model can
+be argued out of — `getLodgingBoard` calls `travelerScope(actor)` and narrows the query,
+so the row is never retrieved, there is nothing in the transcript to leak, and there is no
+rule for an injected instruction to override. `people` returns only the asker for a
+Member, which is why "book Shelley a flight" fails on the same list the form's dropdown is
+built from. **Adding one tool that queries around the actor is the single thing that
+would break the whole posture**, and `src/lib/assistant/tools.ts` says so in its header.
+
+Five corrections came out of building it.
+
+1. **A withheld tool is not described, and naming one gets the same answer as inventing
+   one.** The subtractive half is obvious: `access.ts` filters the tool list, so a Member
+   is never *told* `draft_lodging` exists. The half that is easy to get wrong is the reply
+   when a model names it anyway. "That tool exists but is not available to you" is a map —
+   it confirms the capability, names it, and invites a second route to it. "That is not a
+   tool" ends it. Both cases now return the identical sentence.
+
+   More generally: **nothing in the system prompt is load-bearing for access.** If a rule
+   would be dangerous to have disobeyed, it is in code. What the prompt carries is *tense* —
+   that an unconfirmed deadline is a date and not an amount, that "delivered" is the
+   carrier's word, that an unchecked flight is not an on-time flight. Those distinctions
+   are four steps of work, and a narrator that flattens them back into "two deadlines at
+   risk, flights on time" undoes all of it in the register a person actually reads.
+
+2. **A `recorded` provider can replay a payload. It cannot replay prose.** The other three
+   integrations obey one rule: a replay may describe a *shape* and must not assert a fact
+   about this workspace — EasyPost's replay projects a recorded journey onto the crate's
+   real transit window, AeroAPI's projects a recorded delay onto the real block time.
+   Prose has no equivalent move. "MedTech is 62% ready and two deadlines are at risk" is
+   not a shape that can be projected onto anything; it is a sentence about a different
+   workspace, and replaying it puts a fabricated figure on screen under the app's own
+   byline — the exact failure §5a spends an entire engine avoiding. So the `scripted`
+   model replays **only tool plans**: it decides which tools a question calls for, those
+   tools then run for real against the real database as the real actor, and it closes with
+   one fixed sentence that characterises nothing. The test asserts that sentence contains
+   no digits.
+
+3. **`submitTravelRequest` inferred human confirmation from the *absence* of raw text, and
+   that inference inverts for this caller.** No raw text meant "a human typed these
+   constraints into a form, so they are confirmed by construction" — correct for both
+   callers it had, the form and the dry-run script. An assistant filing a request without
+   raw text would have had its parse marked human-confirmed, and the agent would have
+   searched a reading nobody read. The draft path therefore refuses to file without the
+   person's own words rather than defaulting. Two more things make the boundary
+   structural rather than stated: the assistant does not hold `confirmConstraints` as a
+   tool, and the `AgentDeps` it is handed carry a `FlightProvider` whose every method
+   rejects with a sentence naming the rule. (`travel/actions.ts` passes `null as never`
+   there for the same reason, which works and reads as an oversight; from a language model
+   the difference between a refusal and `Cannot read properties of null` is worth the
+   fifteen lines.)
+
+4. **A follow-up must not be answered from the previous turn's tool result.** The
+   transcript is replayed to the model **without** tool results. A tool result is a
+   snapshot of rows as they were when it ran, and "has it landed yet?" is precisely a
+   question about the row that has since moved. Feeding the old snapshot back is how an
+   assistant becomes confidently stale, and it would do so most reliably on the questions
+   people ask twice. The prose stays — it is what the conversation is *about* — and
+   anything factual is looked up again.
+
+5. **A transcript belongs to the person in it — the only table in this app scoped to a
+   user rather than an org.** Not a privacy flourish. Every tool result inside a transcript
+   was retrieved under the scope of whoever was talking; `travelerScope` had already
+   narrowed it. A second reader — an admin, a travel manager — would be reading rows that a
+   query narrowed for somebody else, which is the lateral path the whole posture exists to
+   close. So there is no "read another user's conversation" function, and adding one would
+   be the second way to break the posture after adding an ungated tool.
+
+**And one thing that got easier.** This is the first integration where a vendor SDK
+exists, so there is no `wire.ts` beside the adapter and no fixture file of payloads we
+invented. Duffel, AeroAPI and EasyPost are hand-transcribed published schemas checked
+against fixtures we wrote ourselves — a closed loop that proves internal consistency and
+structurally cannot catch a misread field name (§10, step 12.5). `@anthropic-ai/sdk` ships
+the wire types with the client, so the compiler checks the shape and there is nothing for
+a capture script to arbitrate. What remains unverified for this adapter is only
+*behavioural* — whether the model uses the tools well — and not structural.
+
+**What is deliberately not built.** Streaming: a server action returns the whole answer at
+once, which is worse to watch and keeps every tool call inside the request, running as the
+actor `getActor()` resolved, with no token the browser holds. That is a presentation
+change and moves no access decision. Hotel *booking* stays out of v1 per §5, so a lodging
+draft creates a record; its room block cutoff is deliberately left blank, because a cutoff
+owns a row in the §5a register (§5e) and a guessed one becomes a deadline the engine
+chases and eventually quotes money against.
+
 ---
 
 ## 7. Travel policy — what an admin can set
@@ -1237,23 +1333,38 @@ invert phases A and C.
       grew a live show and a prior-year one, because a calendar where every show is fifty
       days out has no freight in motion and no move-out to have gone quiet after. Five
       corrections folded into §5g above. 571 tests.
-- [ ] **15.** Conversational assistant — a chat agent that answers questions across the
-      workspace and **drafts** travel and lodging requests for a human to commit.
-      Read-and-draft only: it never confirms its own parse and never triggers a purchase,
-      because §6a's rule stands unchanged — an LLM parses requests into constraints and
-      narrates verdicts; the deterministic policy engine is the only thing that authorizes
-      spend. A flight request lands as a `travel_request` in the state machine that already
-      exists (the §6a seam — `raw_request_text`, `constraints_confirmed_at`, and an agent
-      that refuses to search an unconfirmed parse — is built and exercised; only the parser
-      is missing). A hotel request creates a lodging *record*, since §5 keeps hotel booking
-      out of v1.
-      **The access model is the hard part and is not a prompt.** The agent gets no database
-      access of its own: it calls the same org-scoped stores a screen calls, as the asking
-      actor, through the same `access.ts` gates. So "which room is Shelley in" is not
-      refused by a filter a model could be talked around — the row is never retrieved,
-      because `travelerScope` narrowed the query before the agent saw anything. Every tool
-      it holds is an existing store function; adding one that queries around the actor is
-      the one thing that would break the whole posture.
+- [x] **15.** **Conversational assistant** — a chat agent that answers across the workspace
+      and **drafts** travel and lodging requests for a human to commit. §6a is unchanged:
+      the LLM parses and narrates, the deterministic policy engine authorizes, and this is
+      the first thing to use the parser seam built at step 4.
+      `src/lib/integrations/llm/` is the fourth integration behind the usual interface —
+      `types.ts` performs one exchange and runs no loop (running a tool means choosing an
+      actor, which must not live in an adapter); `anthropic/client.ts` is the Messages API
+      through the official SDK, so this is the **first adapter with no hand-written wire
+      schema** and nothing for a capture script to arbitrate; `scripted/` replays **tool
+      plans, never prose**, because a canned sentence about a workspace is a fabricated
+      claim in a way a canned tracking payload is not. `selectAssistantModel` has no
+      fallback.
+      `src/lib/assistant/` is the model, split the way everything since step 8 has been.
+      **`tools.ts` is the access model and the whole point:** every tool is an existing
+      org-scoped store function, called as the asking actor, through the same `access.ts`
+      gate a screen goes through — so a Member asking about a colleague's room is refused
+      by `travelerScope` narrowing the query, not by a rule a model could be talked around.
+      `access.ts` is subtractive: a withheld tool is never described. `prompt.ts` carries
+      **tense, not access** — no line in it is load-bearing. `loop.ts` is a manual loop with
+      three bounds of ours, and dispatch that answers a withheld tool exactly as it answers
+      an invented one. `draft.ts` refuses to file a request without the person's own words,
+      refuses to guess a time zone, and holds a `FlightProvider` whose every method rejects.
+      `store.ts` scopes a conversation to a **user**, the only table in the app that does,
+      and replays prose without stale tool results.
+      Schema: `assistant_conversations`, `assistant_messages` (append-only, with the tool
+      result kept beside the prose because the prose is the paraphrase). Screens:
+      `/assistant` and `/assistant/[id]`, first in the nav, with tool steps rendered beside
+      the answer rather than behind it. `pnpm assistant` is the loop without a screen and
+      `pnpm assistant --tools` prints the surface per role. The seed produces its two
+      transcripts by **running the real loop against the real tools** — one as a member and
+      one as an admin, asking questions whose *results* differ while nothing about the
+      prompt does. Five corrections folded into §6f above. 591 tests.
 - [ ] **16.** Assets & collateral inventory, reservations, chain of custody
 - [ ] **17.** Alerts feed · **true-cost rollup** (nearly free once 12, 14 land)
 - [ ] **18.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture

@@ -336,6 +336,13 @@ export const users = pgTable(
  */
 export const loginPolicyModeEnum = pgEnum('login_policy_mode', ['unrestricted', 'allowlist']);
 
+export const assistantRoleEnum = pgEnum('assistant_role', [
+  'user',
+  'assistant',
+  /** A tool ran. The row holds what was asked for and what came back. */
+  'tool',
+]);
+
 /**
  * Per-org control over permitted authentication strategies — "everyone signs in
  * with Okta, no passwords." SCOPE.md §3 calls this an enterprise security-review
@@ -1669,6 +1676,95 @@ export const showOutcomes = pgTable(
     attributionWindowDays: integer('attribution_window_days').notNull().default(180),
     asOf: timestamp('as_of', { withTimezone: true }).notNull().defaultNow(),
   },
+);
+
+/* ------------------------------ the assistant ------------------------------ */
+
+/**
+ * One conversation with the assistant. SCOPE.md §10 step 15.
+ *
+ * Scoped to a **user**, not to an org, and read by nobody else — not by an
+ * admin, not by a travel manager. That is stricter than every other table here
+ * and it is not a privacy flourish. Every tool result inside a transcript was
+ * retrieved as the person who was talking: `travelerScope` had already narrowed
+ * it, `access.ts` had already gated it. A second reader would be reading rows
+ * that were fetched under somebody else's scope, which is exactly the lateral
+ * path the whole access posture exists to close. So the transcript belongs to
+ * the person in it.
+ */
+export const assistantConversations = pgTable(
+  'assistant_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    /**
+     * Which model answered, recorded per conversation because it changes what
+     * the transcript is. A `scripted` run chose its tools by keyword match and
+     * wrote no prose of its own; a screen replaying one must say so, the way
+     * every other replayed provider in this app does.
+     */
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('assistant_conversations_user_idx').on(t.userId, t.updatedAt)],
+);
+
+/**
+ * The transcript, append-only.
+ *
+ * A `tool` row is the load-bearing one. The assistant's prose is a paraphrase
+ * and the app must never treat it as a source: the numbers a person is entitled
+ * to rely on are the ones in `resultJson`, which came out of a store function
+ * this turn. The screen renders those beside the prose for that reason, so a
+ * figure the model got wrong is contradicted on the same screen rather than
+ * standing alone.
+ */
+export const assistantMessages = pgTable(
+  'assistant_messages',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => assistantConversations.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    role: assistantRoleEnum('role').notNull(),
+    /** Prose, for `user` and `assistant` rows. Empty on a `tool` row. */
+    text: text('text').notNull().default(''),
+
+    /* --- tool rows only --- */
+    toolName: text('tool_name'),
+    /** What the model asked for, after Zod validation — never the raw input. */
+    toolInputJson: jsonb('tool_input_json').$type<Record<string, unknown>>(),
+    /** What the store returned, as the asking actor. The authoritative half. */
+    toolResultJson: jsonb('tool_result_json').$type<unknown>(),
+    /** A refused or failed tool call is kept: it is why an answer is thin. */
+    toolError: text('tool_error'),
+
+    /**
+     * Set on an `assistant` row that produced a draft, and the whole point of
+     * the step: a link to a `travel_requests` or `lodgings` row a human still
+     * has to commit. Nothing here ever confirms its own parse.
+     */
+    draftTravelRequestId: uuid('draft_travel_request_id').references(() => travelRequests.id, {
+      onDelete: 'set null',
+    }),
+    draftLodgingId: uuid('draft_lodging_id').references(() => lodgings.id, {
+      onDelete: 'set null',
+    }),
+
+    inputTokens: integer('input_tokens'),
+    outputTokens: integer('output_tokens'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('assistant_messages_seq_unique').on(t.conversationId, t.seq)],
 );
 
 /* --------------------------------- shared ---------------------------------- */

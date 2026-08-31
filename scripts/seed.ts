@@ -28,6 +28,8 @@ import {
 import { addLodging, assignRoom } from '../src/lib/lodging/store';
 import { addShipment, syncShipmentTracking } from '../src/lib/shipping/store';
 import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
+import { ask } from '../src/lib/assistant/store';
+import { ScriptedAssistantModel } from '../src/lib/integrations/llm/scripted/provider';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -1468,6 +1470,36 @@ async function main() {
     db,
   );
 
+  // The assistant's transcripts come out of the real loop, against the real
+  // tools, as the real actor — the same rule as everything above, and here it
+  // buys something specific. A hand-written transcript is prose about a
+  // workspace, and prose about a workspace is the one kind of seed row that is
+  // *indistinguishable from the product being wrong*: it would sit on screen
+  // under the app's byline making claims no query produced. So these two run
+  // through `ask()` with the scripted model, which plans tool calls and asserts
+  // nothing, and every figure in them came out of a store this run.
+  //
+  // Two conversations rather than one, and they are the demonstration: Priya is
+  // a member and Shelley an admin, they ask the *same* question, and the tool
+  // results differ. Nothing about the prompt differs. That difference is the
+  // access model, and it is in the queries.
+  console.log('· assistant conversations (real loop, scripted model, real tools)');
+  const scriptedModel = new ScriptedAssistantModel();
+  await ask({
+    actor: actorFor(priya),
+    model: scriptedModel,
+    question: 'Am I flying anywhere? What is my itinerary?',
+    now,
+    db,
+  });
+  await ask({
+    actor: admin,
+    model: scriptedModel,
+    question: 'Which crates are we worried about?',
+    now,
+    db,
+  });
+
   const counts = {
     users: people.length,
     deadlineAlerts: swept.written,
@@ -1482,6 +1514,7 @@ async function main() {
     shifts: shifts.length,
     ticketCredits: creditRows.length,
     travelRequests: 3,
+    assistantConversations: 2,
   };
   console.log('\n✓ seed complete', counts);
 }

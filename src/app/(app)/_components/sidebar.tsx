@@ -8,6 +8,7 @@ import {
   Inbox,
   LayoutDashboard,
   Luggage,
+  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   PackageSearch,
@@ -47,6 +48,10 @@ const GROUPS: Group[] = [
     label: 'Plan',
     items: [
       { href: '/', label: 'Overview', Icon: LayoutDashboard },
+      // First in Plan rather than last in Travel: §1's corollary is that a
+      // Member should barely have to learn this app, and for them this screen
+      // is most of it.
+      { href: '/assistant', label: 'Assistant', Icon: MessagesSquare },
       { href: '/shows', label: 'Shows', Icon: CalendarDays },
       { href: '/readiness', label: 'Readiness', Icon: ClipboardCheck },
     ],

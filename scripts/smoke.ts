@@ -60,12 +60,20 @@ async function routes(): Promise<Check[]> {
     { path: '/travel/approvals', expect: 'pproval' },
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
+    { path: '/assistant', expect: 'never books' },
     // Admin-only: with DEV_ACTOR_EMAIL set to a member this legitimately 404s,
     // which is the shell working rather than a smoke failure.
     { path: '/settings/security', expect: 'Sign-in methods' },
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
+
+  // Same reasoning as the travel request above, for a stricter reason: an
+  // assistant conversation belongs to one person and nobody else can open it,
+  // so the only id that is legitimately a 200 is one scraped from the list page
+  // as whoever DEV_ACTOR_EMAIL names.
+  const conversation = await firstConversation();
+  if (conversation) checks.push({ path: `/assistant/${conversation}`, expect: 'onversation' });
   return checks;
 }
 
@@ -88,6 +96,12 @@ async function firstTravelRequest(): Promise<string | null> {
     if (m) return m[1];
   }
   return null;
+}
+
+async function firstConversation(): Promise<string | null> {
+  const res = await fetch(`${base}/assistant`);
+  const m = /\/assistant\/([0-9a-f-]{36})/.exec(await res.text());
+  return m ? m[1] : null;
 }
 
 /** Tags out, entities in, whitespace collapsed — enough to grep prose. */

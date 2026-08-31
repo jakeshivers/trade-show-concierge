@@ -61,7 +61,10 @@ by what is wrong rather than by what leaves next, and delay alerts that only spe
 delay costs the arrival buffer the ticket was approved under; and shipping — an EasyPost
 adapter behind the usual interface, an event timeline that a nightly poll cannot double,
 and a receiving *window* with two edges, because freight that arrives before a show-site
-dock opens is refused rather than early. 571 tests, no keys required.
+dock opens is refused rather than early; and the conversational assistant — a chat agent
+whose access model is its tool list rather than its prompt, which reads through the same
+org-scoped stores a screen reads through and drafts requests a person still has to
+confirm. 591 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -322,7 +325,7 @@ is still next. The plumbing half:
   `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
 - **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
   `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all 19 routes against a running `pnpm dev` and checks 200 plus
+- **`pnpm smoke`** fetches all 21 routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
 And the visual half:
@@ -380,6 +383,80 @@ themes now. `UI-REWORK.md` §10 and §11 are the long version.
    real answer that a two-way toggle silently destroys the first time it is pressed, after
    which the app stops tracking a laptop that switches at sunset with nothing on screen
    saying so.
+
+**What step 15 added, and where:** `src/lib/integrations/llm/` — the fourth integration
+behind an interface, and the first one where a vendor SDK exists. `types.ts` performs **one
+exchange and runs no loop**: running a tool means choosing an actor to run it as, and that
+choice must not live inside an adapter. `anthropic/client.ts` is the Messages API through
+`@anthropic-ai/sdk`, so unlike Duffel, AeroAPI and EasyPost there is **no `wire.ts` and no
+fixture file of payloads we invented** — the vendor ships the types, the compiler checks
+the shape, and there is nothing left for a capture script to arbitrate. `scripted/` is the
+zero-key model and it replays **tool plans, never prose** (below). `assistant/provider.ts`
+selects between them with **no fallback**.
+
+`src/lib/assistant/` is the model, split the way everything since step 8 has been.
+**`tools.ts` is the whole step**: fifteen tools, every one an existing org-scoped store
+function called as the asking actor through the same `access.ts` gate a screen goes
+through — no query, no join, no org id from the model. `access.ts` is subtractive, so a
+withheld tool is never described. `prompt.ts` carries **tense and nothing load-bearing**.
+`loop.ts` is a manual loop with three bounds of ours (`MAX_TURNS`, `MAX_TOOL_CALLS`, and a
+`max_tokens` stop that is never presented as an answer). `draft.ts` refuses to file without
+the person's own words, refuses to guess a time zone, and carries a `FlightProvider` whose
+every method rejects. `serialize.ts` sends instants rather than formatted local strings and
+announces truncation. `store.ts` is the only file touching rows and scopes a conversation
+to a **user**.
+
+Schema: `assistant_conversations` (user-scoped, with the provider recorded per
+conversation) and `assistant_messages` (append-only; a `tool` row keeps the validated input
+and the store's actual result, because the prose is the paraphrase). Screens: `/assistant`
+and `/assistant/[id]`, first in the nav, with each tool step rendered *beside* the answer
+and openable. `pnpm assistant` is the loop without a screen; `pnpm assistant --tools`
+prints the surface per role. The seed produces two transcripts by **running the real loop
+against the real tools** — a member and an admin asking questions whose *results* differ
+while nothing about the prompt does.
+
+**The five corrections step 15 turned up:**
+
+1. **A withheld tool must not be described, and naming one must get the same answer as
+   inventing one.** The first half is easy and `access.ts` does it. The second is the one
+   worth arguing about, and a test caught the code contradicting its own comment: "that
+   tool exists but is not available to you" is a *map* — it confirms the capability, names
+   it, and invites another route to it. "That is not a tool" ends it. Generally: **nothing
+   in the system prompt is load-bearing for access.** If a rule would be dangerous to have
+   disobeyed it lives in code, and every such rule here does. The prompt carries tense — an
+   unconfirmed deadline is a date and not an amount, delivered is the carrier's word, an
+   unchecked flight is not on time — because a narrator that flattens those back into "two
+   deadlines at risk, flights on time" undoes four steps of work in the register a person
+   actually reads. `SCOPE.md` §6f.
+2. **A `recorded` provider can replay a payload; it cannot replay prose.** The other three
+   replays obey one rule — describe a *shape*, never assert a fact about this workspace.
+   EasyPost's projects a recorded journey onto the crate's real transit window. Prose has
+   no equivalent move: "MedTech is 62% ready" is not a shape, it is a sentence about a
+   different workspace, and it would land on screen under the app's own byline. So the
+   `scripted` model replays only **which tools to call**; those run for real, and its one
+   canned sentence characterises nothing. The test asserts it contains no digits.
+3. **`submitTravelRequest` inferred human confirmation from the *absence* of raw text, and
+   that inverts for this caller.** No raw text meant "typed into a form, therefore
+   confirmed" — right for the form and the dry-run script, and catastrophic for a parser:
+   the request would be marked human-confirmed and searched with nobody having read the
+   parse. The draft path refuses rather than defaulting. Two more things make it
+   structural: the assistant does not hold `confirmConstraints`, and its `AgentDeps` carry
+   a provider whose every method rejects with a sentence naming the rule (`travel/
+   actions.ts` passes `null as never` there — fine from a form, worth fifteen lines from a
+   language model).
+4. **A follow-up must not be answered from the previous turn's tool result.** The
+   transcript replays prose *without* tool results. A result is a snapshot of rows as they
+   were when it ran, and "has it landed yet?" is exactly a question about the row that has
+   since moved — so feeding it back makes the assistant confidently stale on precisely the
+   questions people ask twice.
+5. **A transcript belongs to the person in it — the only table in this app scoped to a
+   user rather than an org.** Every tool result inside one was retrieved under that
+   person's scope, so a second reader is reading rows a query narrowed for somebody else:
+   the lateral path the whole posture exists to close. There is no admin read, and adding
+   one would be the second way to break the posture after adding an ungated tool. (A
+   related bug, caught by an empty `/assistant` page: this file's own test cleanup deleted
+   *every* conversation rather than its own, wiping the seeded ones — green test run,
+   blank screen.)
 
 **What step 14 added, and where:** `src/lib/integrations/shipping/` — the third integration
 behind an interface, in the shape the first two settled on. `types.ts` is the provider
@@ -541,28 +618,19 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 15 — the **conversational assistant** (`SCOPE.md` §10, inserted at 15; the
-old 15–21 shifted up by one). A chat agent that answers questions across the workspace and
-**drafts** travel and lodging requests for a human to commit — read-and-draft only, never a
-purchase, because §6a's rule stands: the LLM parses and narrates, the deterministic policy
-engine authorizes. A flight request lands as a `travel_request` in the state machine that
-already exists; the §6a seam is built and exercised and only the parser is missing. A hotel
-request creates a lodging *record*, since §5 keeps hotel booking out of v1.
-
-**The access model is the hard part of step 15, and it is not a prompt.** The agent must get
-no database access of its own: every tool it holds is an existing org-scoped store function,
-called as the asking actor, through the same `access.ts` gates a screen goes through. Then
-"which room is Shelley in" is not refused by a filter a model could be talked around — the
-row is never retrieved, because `travelerScope` narrowed the query before the agent saw
-anything. Adding one tool that queries around the actor is the single thing that would break
-the whole posture.
+**Next:** step 16 — **assets & collateral inventory, reservations, chain of custody**
+(`SCOPE.md` §10). Logistics is writable as of step 14 and what it still lacks is chain of
+custody on the asset reservations; the tab says so where those controls would be rather
+than showing a dead button. Assets and shipping share a model — "what is in the crate" is
+the same question — so the interesting part is probably where the two meet.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
-(an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
-built — but its *seam* is, and is exercised: `raw_request_text` and
-`constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
-parse, and `availableActions` already surfaces the confirmation step. What is missing is
-only the parser. The readiness tab, its deadline register, the team tab, lodging and
+is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
+night" into constraints and files them — but it deliberately stops there: the request is
+filed unconfirmed, and reading the parse and confirming it happens on `/travel/[id]`, by
+the person whose trip it is. The assistant does not stream (a server action returns the
+whole answer, which keeps every tool call inside the request as the actor `getActor()`
+resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
 logistics are all writable as of steps 10–14 — **there is no read-only tab left.** What
 Logistics still lacks is chain of custody on the asset reservations (step 16), and it says
 so where those controls would be rather than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
@@ -588,6 +656,13 @@ to published schemas and tested against fixtures we wrote ourselves — the clos
 12.5 named, which proves internal consistency and structurally cannot catch a wrong field
 name. Neither has a capture script yet; `pnpm duffel:capture` is the shape the two of them
 need before either is trusted with a real crate or a real gate.
+
+**The Anthropic adapter (step 15) has never met a live key either, and is in a different
+category.** It uses the vendor's own SDK, so there is no hand-written wire schema to be
+wrong about and no capture script that would tell us anything — the compiler already
+checks the shape. What is unverified there is *behavioural*: whether the model chooses
+tools well, keeps the tenses `prompt.ts` asks for, and stops at drafting. None of that is
+load-bearing for access, which is the point of putting the access model in `tools.ts`.
 
 **Outstanding — and step 12.5 built the tools to close it.** The Duffel adapter is still
 verified only against fixtures and mocked HTTP written to the published v2 schema.
@@ -822,6 +897,33 @@ silently. One key is now `AuthConfigError`.
   `recorded` only when `SHIPMENT_TRACKING_PROVIDER=recorded` says so, otherwise an error
   naming the variable. The sentence it produces is "the booth will be there before the doors
   open".
+- **The assistant's access model is its tool list, not its prompt.** Every tool is an
+  existing org-scoped store function, called as the asking actor, through the same
+  `access.ts` gate a screen goes through. "Which room is Shelley in" is refused because
+  `travelerScope` narrowed the query before the agent saw anything — the row is never
+  retrieved, so there is nothing to leak and no rule for an injected instruction to
+  override. **Adding one tool that queries around the actor breaks the whole posture**, and
+  so would adding a way to read somebody else's transcript. `src/lib/assistant/tools.ts`.
+- **A tool the actor may not hold is never described, and naming it gets "not a tool".**
+  Telling a model that a capability exists but is withheld is a map to aim at next.
+- **Nothing in the system prompt is load-bearing.** If a rule would be dangerous to have
+  disobeyed, it is in code. `prompt.ts` carries *tense* — which is the product, and the
+  thing a summary destroys.
+- **The assistant drafts; it never confirms its own parse.** A drafted travel request is
+  filed with the person's own words and `constraints_confirmed_at` null, the agent refuses
+  to search until a human confirms, `confirmConstraints` is not a tool, and the
+  `FlightProvider` it is handed rejects on every method. Filing without raw text would mark
+  the parse human-confirmed, so the draft path refuses rather than defaulting. `SCOPE.md`
+  §6a and §6f.
+- **A replayed model plans tools; it never writes prose.** The `recorded` rule everywhere
+  else — describe a shape, assert nothing about this workspace — has no prose form. A
+  canned sentence about a workspace is a fabricated figure under the app's byline, which is
+  the failure the §5a engine exists to prevent.
+- **A transcript replays prose, never stale tool results.** A tool result is a snapshot of
+  rows at the moment it ran, and "has it landed yet?" is a question about the row that has
+  moved since.
+- **A conversation is scoped to a user, not an org** — the only table here that is —
+  because every result inside it was fetched under that person's scope.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -867,11 +969,14 @@ pnpm flights --sync   # ask the status provider, write the changes and the alert
 pnpm shipping         # every crate, worst first, and what the engine would say
 pnpm shipping <show id>  # one show's freight
 pnpm shipping --sync  # ask the tracking provider, write the scans and the alerts
+pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
+pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
+pnpm assistant --tools  # the tool surface per role — the access model as a table
 pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/ (needs a test key)
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 19 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 21 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -892,6 +997,8 @@ src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
                               vocabulary both it and the Logistics tab render through
+src/app/(app)/assistant/     the concierge and one conversation, with each tool step
+                              rendered beside the answer rather than behind it
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
 src/app/(app)/shows/[id]/logistics/  writable freight, its event timeline, and receipt
@@ -928,6 +1035,17 @@ src/lib/shipping/             freight — status.ts (pure: the two-edged receivi
                               append-only timeline)
 src/lib/integrations/flightstatus/  provider interface + AeroAPI adapter + `recorded` replay
 src/lib/integrations/shipping/      provider interface + EasyPost adapter + `recorded` replay
+src/lib/integrations/llm/     provider interface + Anthropic adapter (the first with no
+                              hand-written wire schema) + a `scripted` model that replays
+                              tool *plans* and never prose
+src/lib/assistant/            the concierge — tools.ts (the access model: every tool is an
+                              existing org-scoped store call as the asking actor),
+                              access.ts (subtractive — a withheld tool is not described),
+                              prompt.ts (tense, never access), loop.ts (a manual loop with
+                              our own bounds), draft.ts (files unconfirmed, guesses no
+                              zone, holds a provider that cannot fly), serialize.ts,
+                              provider.ts (env → model, no fallback), store.ts (rows,
+                              scoped to a *user*)
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)
