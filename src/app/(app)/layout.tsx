@@ -38,6 +38,11 @@ const NAV: NavItem[] = [
   { href: '/', label: 'Overview', see: () => true },
   { href: '/shows', label: 'Shows', see: () => true },
   { href: '/itinerary', label: 'My itinerary', see: () => true },
+  { href: '/travel', label: 'Travel', see: () => true },
+  // Everyone has an approvals page; for a Member it is their own requests
+  // waiting on somebody else, which is worth a nav entry — "where has my
+  // request got to" is the question the queue exists to answer.
+  { href: '/travel/approvals', label: 'Approvals', see: () => true },
   { href: '/settings/security', label: 'Security', see: isAdmin },
 ];
 

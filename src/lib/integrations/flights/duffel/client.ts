@@ -105,8 +105,13 @@ export type DuffelConfig = {
   hardCeilingCents: number | null;
 };
 
-export function configFromEnv(): DuffelConfig {
-  const raw = process.env.FLIGHT_BOOKING_MAX_CENTS;
+/**
+ * The env is a parameter rather than a global read so that a caller which was
+ * itself handed an environment — `lib/travel/provider.ts` — can pass it through.
+ * Defaulting to `process.env` keeps every existing caller unchanged.
+ */
+export function configFromEnv(env: Record<string, string | undefined> = process.env): DuffelConfig {
+  const raw = env.FLIGHT_BOOKING_MAX_CENTS;
   const ceiling = raw == null || raw.trim() === '' ? null : Number(raw);
   if (ceiling !== null && (!Number.isSafeInteger(ceiling) || ceiling <= 0)) {
     throw new Error(
@@ -114,8 +119,8 @@ export function configFromEnv(): DuffelConfig {
     );
   }
   return {
-    accessToken: process.env.DUFFEL_ACCESS_TOKEN,
-    liveBooking: process.env.FLIGHT_BOOKING_LIVE === 'true',
+    accessToken: env.DUFFEL_ACCESS_TOKEN,
+    liveBooking: env.FLIGHT_BOOKING_LIVE === 'true',
     hardCeilingCents: ceiling,
   };
 }

@@ -21,6 +21,7 @@ import * as offerFacts from '@/lib/policy/offer';
 import type { FlightProvider } from '@/lib/integrations/flights/types';
 import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
+import { offerStanding } from './review';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
 import { passengerForUser, type Passenger } from './passengers';
 import { notifyTicketed, notifyUnreachableCredit } from './notify';
@@ -1248,9 +1249,16 @@ export async function approveRequest(
   });
   // A hold keeps the space; only a price guarantee keeps the fare. Approving a
   // held-but-unguaranteed fare still has to survive a re-price.
-  const offerStillGood =
-    snapshot.offerExpiresAt > deps.now() ||
-    (held !== undefined && held.priceGuaranteedUntil !== null && held.priceGuaranteedUntil > deps.now());
+  //
+  // Step 9 moved this predicate into `review.ts` rather than leaving it inline,
+  // because the approvals screen has to tell the approver whether the number
+  // they are looking at is a price or a ceiling — and a screen that computes
+  // that separately from the engine will eventually disagree with it about what
+  // is being authorized.
+  const offerStillGood = offerStanding(
+    { offerExpiresAt: snapshot.offerExpiresAt, hold: held ?? null },
+    deps.now(),
+  ).bookableAtShownPrice;
 
   await deps.db.insert(s.approvals).values({
     travelRequestId: request.id,

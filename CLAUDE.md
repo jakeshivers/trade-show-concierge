@@ -37,13 +37,13 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
 
-**Done:** steps 1–8 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–9 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
 with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
-to the seam with per-org login-method control and a first app shell; and the planning
-core — show list, show detail tabs, My Itinerary, cloning, and intake. 267 tests, no
-keys required.
+to the seam with per-org login-method control and a first app shell; the planning
+core — show list, show detail tabs, My Itinerary, cloning, and intake; and the travel
+request UI with the approvals queue. 307 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -52,6 +52,45 @@ escalation, the credit expiry sweep, and the audit trail as a person reads it. R
 that output before reading the code; it is the fastest way to understand the spine.
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
 and `pnpm credits` prints the credit ledger.
+
+**What step 9 added, and where:** the first screens over the booking spine.
+`src/lib/travel/review.ts` is the design core and is pure — `offerStanding` answers *what
+does approving this actually do right now* in four cases (live / held-and-guaranteed /
+held-but-not / expired), `STATUS` says what each machine status means to a person waiting
+on one, and `availableActions` returns what an actor may do **with a reason attached to
+every refusal**. `provider.ts` selects the flight provider from the environment and is the
+first code to do so — every previous caller constructed one by hand. `queue.ts` is the
+org-scoped, `travelerScope`-narrowed read layer, same posture as `shows/store.ts`.
+Screens: `/travel`, `/travel/new`, `/travel/[id]` (which is `pnpm booking:audit` as a page,
+reusing `getAuditTrail` rather than assembling a second, thinner version), and
+`/travel/approvals`. The nav gained Travel and Approvals; the show detail Travel tab now
+links through instead of naming step 9.
+
+**The three corrections step 9 turned up:**
+
+1. **An approval screen that shows a fare beside an Approve button lies about half the
+   time.** §6b settled that an approval authorizes an *amount*, not an offer, and
+   `approveRequest` implements that faithfully — but the approver only ever sees the
+   screen, and a bare number reads as a price. The standing of the offer is now on the
+   queue row itself, and the predicate that decides it moved out of `agent.ts` into
+   `review.ts` so the screen and the engine cannot disagree about what is being
+   authorized. `SCOPE.md` §6b.
+2. **Cancel does not tell the airline, and only a button made that visible.**
+   `FlightProvider.cancel()` is implemented and called by nothing; `cancelRequest` closes
+   our row and returns credits. Harmless while cancelling was script-only, reachable by a
+   person now — so on a ticketed request the button reads "Close this record" and says the
+   carrier still has to be called. Wiring it properly is the void/refund work in §6d.
+   `SCOPE.md` §6d.
+3. **The config layer is where "no fake data behind a real integration" is easiest to
+   break.** A script named `booking:dry-run` may name `RecordedFlightProvider` in its own
+   source; a web request has nobody to name it, so the choice moves into configuration —
+   and a default that quietly served replayed offers to a screen would be indistinguishable
+   there from real availability. `selectProvider` has **no fallback**: Duffel with a key,
+   `recorded` only when explicitly asked for, and otherwise an error naming the variable.
+   Screens that replay say so in a banner. Same reasoning drove the seed: it produces its
+   travel requests by running the *real* agent against the `recorded` provider rather than
+   inserting offer snapshots by hand, which would file fares no airline ever quoted as
+   evidence in the table the whole audit story rests on.
 
 **What step 8 added, and where:** `src/lib/shows/` is the planning core, split the same
 way the booking spine is — pure decisions apart from the rows. `clone.ts` is a pure
@@ -99,10 +138,16 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Next:** step 9 — the travel request UI and the approvals queue, which is the first
-screen over the spine steps 4–6 built (`SCOPE.md` §10, Phase B).
+**Next:** step 10 — readiness: checklist CRUD, templates, scoring, and the portfolio
+rollup (`SCOPE.md` §10, Phase B). It is the first step that makes a show detail tab
+writable.
 
-**Deliberately not built, and visible as such:** every step-8 tab is read-only apart from
+**Deliberately not built, and visible as such:** the free-text request box §6a describes
+(an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
+built — but its *seam* is, and is exercised: `raw_request_text` and
+`constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
+parse, and `availableActions` already surfaces the confirmation step. What is missing is
+only the parser. Every step-8 tab is still read-only apart from
 intake and cloning. Checklist editing is step 10, the deadline engine step 11, team and
 lodging step 12, shipment tracking step 14 — and each tab says so where the interaction
 would be, rather than showing a dead button. The nav still grows one entry per screen
@@ -161,7 +206,20 @@ where `clerk.ts` reads it.
   error naming the missing fields — a plausible placeholder would be accepted by the
   carrier and produce a real ticket that does not match the traveler's ID.
 - **An approval authorizes an amount, not an offer.** Offers expire in ~30 minutes;
-  approval queues do not. Re-price on approval and re-run policy. `SCOPE.md` §6b.
+  approval queues do not. Re-price on approval and re-run policy. `SCOPE.md` §6b — and
+  the screen must say which of the two the number on it is, via `offerStanding` in
+  `src/lib/travel/review.ts`. The agent imports the same predicate; never write a second
+  liveness check for the UI.
+- **The provider is never chosen by falling back.** `selectProvider` uses Duffel with a
+  key, `recorded` only when `FLIGHT_PROVIDER=recorded` says so explicitly, and otherwise
+  throws naming the variable. A screen quietly serving replayed offers is indistinguishable
+  there from real availability. Screens that replay say so on the page.
+- **Seed data is produced by the pipeline, not typed.** `scripts/seed.ts` gets its travel
+  requests by running the real agent against the `recorded` provider. Hand-written
+  `offer_snapshots` rows would file fares no airline ever quoted as evidence.
+- **Cancelling does not tell the airline.** `FlightProvider.cancel()` is implemented and
+  called by nothing; `cancelRequest` closes our row and returns credits. The UI says so on
+  a ticketed request rather than implying the ticket is gone. `SCOPE.md` §6d.
 - **Runs with zero API keys and zero cloud accounts.** `pnpm db:reset && pnpm test`
   must work on a clean clone. Hosting is deferred; do not wire a cloud provider.
 - **Every financial row carries a cost center at creation.** Never backfilled.
@@ -212,6 +270,8 @@ Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 ```
 src/db/schema.ts              ~35 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
+src/app/(app)/travel/        the request list, the form, the audit trail as a page,
+                              and the approvals queue
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
@@ -221,7 +281,9 @@ src/lib/policy/               the decision layer — pure, deterministic, 47 tes
 src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
 src/lib/travel/               the spine — state machine, policy store, booking agent,
                               kill switch, passenger identity, credit ledger, audit
-                              trail, notifications
+                              trail, notifications; plus step 9's read/present layer:
+                              review.ts (pure — what approving does, who may act),
+                              provider.ts (env → provider, no fallback), queue.ts
 src/lib/money/ src/lib/datetime/  correctness primitives; see ground rules
 scripts/seed.ts               the only place seed data lives
 ```

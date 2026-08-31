@@ -106,6 +106,14 @@ used. Clerk's instance settings remain the primary control; `org_login_policies`
 org's recorded, versioned intent and the input to our second gate. It fails closed: under
 an allowlist, an account whose identities cannot be read is refused, never admitted.
 
+**Where this is enforced, as of step 9:** in the query, in `src/lib/travel/queue.ts` and
+`src/lib/shows/store.ts`. A Member asking the travel list for the whole org gets
+themselves — `scope: 'all'` is a request, not an authorization — and a Member loading a
+colleague's request by id gets *not found* rather than *forbidden*, because "forbidden"
+would confirm that a colleague is flying somewhere. The approvals queue deliberately
+still lists a Travel Manager's *own* pending request, with the reason it is not theirs to
+sign, so the queue cannot quietly disagree with the request's own page.
+
 **What "see own shows" actually scopes** — corrected at step 8. The table above draws
 its line around *travel*, not around shows, and reading it as "a Member may only see
 shows they are staffed on" is the wrong split: the show calendar is the org's plan, and
@@ -437,6 +445,21 @@ for a fresh decision rather than quietly charging the difference. A hold changes
 only where the fare was also guaranteed — a held-but-unguaranteed offer still has to
 survive the re-price.
 
+**What step 9 added, putting a screen on this:** the sentence above is a rule about
+the *engine*, and an approver never sees the engine. Shown a fare beside an Approve
+button, a person reasonably believes they are authorizing that fare — and roughly half
+the time they are not, because the offer died hours ago and approving will re-search.
+So the standing of an offer is now a first-class thing the UI states, in four cases:
+**live**, **held with the fare guaranteed**, **held with the fare *not* guaranteed**,
+and **expired**. The middle pair is the one §6b already warned about and the one a
+screen most easily elides.
+
+The predicate that decides it lives in `src/lib/travel/review.ts` and the agent imports
+it — it used to be written inline in `approveRequest`. Two copies of "is this offer
+still good?" would eventually disagree, and the copy that drifted would be the one
+talking to the human. One definition, rendered on the queue row and re-read at the
+moment of purchase.
+
 **Hold orders are the mitigation**, and Duffel names this exact use case. When an offer
 carries `payment_requirements.requires_instant_payment: false`, we can create a `hold`
 order that reserves the space without paying, giving the approver a real deadline
@@ -520,6 +543,17 @@ The user has confirmed this is in scope. Setting expectations honestly:
   void window, involuntary schedule changes, refunds, and exchanges.** Exchanges are
   the hardest — an exchange is a fare-difference calculation plus a new ticket, not an
   edit — and are where booking integrations go to die.
+**A gap step 9 made visible, and how it is handled meanwhile.** `cancelRequest` closes
+our record, releases any credit the booking consumed, and writes a cancelled
+non-refundable ticket off as a new credit. It does **not** call the airline:
+`FlightProvider.cancel()` is implemented and, as of step 9, is called by nothing. That
+was invisible while cancelling was something only a script could do. Putting a button on
+it makes the gap reachable by a person who will reasonably assume the ticket is gone, so
+the button on a ticketed request reads "Close this record" and says in as many words that
+the carrier still has to be called. Wiring it properly is the void/refund work above, and
+a half-wired cancel that *sometimes* reaches the carrier would be worse than one that
+never claims to.
+
 - **Compliance:** purchasing travel on others' behalf carries travel-seller disclosure
   obligations, and registration requirements in some US states. Worth a lawyer's hour
   before go-live, not after.
@@ -753,7 +787,14 @@ invert phases A and C.
       `/itinerary`. Two corrections folded into §3 and §5c above: "see own shows" scopes
       *travel*, not the calendar; and a clone that carries confirmations or shipments
       manufactures facts. 267 tests.
-- [ ] **9.** Travel request UI + approvals queue (the UI for steps 4–5)
+- [x] **9.** **Travel request UI + approvals queue** — the first screens over the spine.
+      `/travel`, `/travel/new`, `/travel/[id]` (the audit trail as a page), and
+      `/travel/approvals`. Added `src/lib/travel/review.ts` — pure, and the single
+      answer to *what does approving this actually do right now*; `provider.ts` —
+      env → provider, with no silent fallback to replayed offers; `queue.ts` — the
+      org-scoped, `travelerScope`-narrowed reads. The seed now produces its travel
+      requests by **running the real agent against the `recorded` provider** rather
+      than writing offer snapshots by hand. Three corrections below. 307 tests.
 - [ ] **10.** Readiness — checklist CRUD, templates, scoring, portfolio rollup
 - [ ] **11.** **Service manual deadline engine** (§5a) — registry, penalties, escalating alerts
 - [ ] **12.** Team & lodging — attendees, booth shifts, conflicts, hotels, room blocks, side events

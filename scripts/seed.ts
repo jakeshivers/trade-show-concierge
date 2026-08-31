@@ -8,6 +8,9 @@
  */
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
+import type { Actor } from '../src/lib/auth/actor';
+import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
+import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -715,6 +718,114 @@ async function main() {
     }),
   );
 
+  /**
+   * Travel requests — produced by running the *real* agent, not written by hand.
+   *
+   * The screens step 9 added need requests in several states to be worth
+   * looking at, and there was an obvious shortcut: insert `travel_requests`,
+   * `offer_snapshots`, and `policy_evaluations` rows directly with plausible
+   * numbers in them. That shortcut is the thing SCOPE.md's second non-negotiable
+   * forbids. An offer snapshot is a *record of what a provider returned*; typing
+   * one by hand fabricates a fare that no airline ever quoted and then files it
+   * as evidence, in the one table the whole audit story rests on.
+   *
+   * So the seed submits real requests and runs the real agent against the
+   * `recorded` provider — captured payloads replayed through the production
+   * normalizer, stamped `provider: recorded` and `live: false`, and structurally
+   * unable to spend money. Every snapshot, verdict, and timeline row below is
+   * genuinely produced by the pipeline that will produce them in anger.
+   *
+   * The clocks are deliberate. The escalated request is run two hours in the
+   * past so that its offer is already dead by the time anyone opens the
+   * approvals queue — which is the case §6b is about, and the case a queue
+   * seeded with fresh offers would never show anyone.
+   */
+  console.log('· travel requests (real agent runs against the recorded provider)');
+
+  const actorFor = (u: (typeof people)[number]): Actor => ({
+    userId: u.id,
+    orgId: u.orgId,
+    email: u.email,
+    fullName: u.fullName,
+    role: u.role,
+    costCenterId: u.costCenterId,
+  });
+
+  const agentDeps = (nowAt: Date): AgentDeps => ({
+    db,
+    provider: new RecordedFlightProvider({ now: () => nowAt }),
+    now: () => nowAt,
+    // Never true in the seed. Nothing here may reach a payment path.
+    live: false,
+  });
+
+  // 1. Within policy, and therefore never seen by a human: the agent searched,
+  //    judged, and booked it. Present so the list is not made entirely of
+  //    exceptions — most requests should look like this one.
+  {
+    const d = agentDeps(now);
+    const request = await submitTravelRequest(
+      {
+        travelerId: priya.id,
+        showId: automate.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: at(24, 7),
+        latestArrival: at(25, 18),
+        returnEarliestDeparture: at(29, 16),
+        returnLatestArrival: at(30, 23),
+        idempotencyKey: 'seed:priya:automate:out',
+        notes: 'Booth demo lead — needs to be on site for move-in.',
+      },
+      actorFor(priya),
+      d,
+    );
+    await runAgent(request.id, d, actorFor(priya));
+  }
+
+  // 2. Over the auto-approve band, escalated, and *left waiting* — with its
+  //    offer already expired. This is the row the approvals queue exists for:
+  //    the price on screen is a ceiling, not a fare, and approving re-searches.
+  {
+    const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    const d = agentDeps(twoHoursAgo);
+    const request = await submitTravelRequest(
+      {
+        travelerId: ingrid.id,
+        originAirport: 'SFO',
+        destinationAirport: 'LHR',
+        earliestDeparture: at(45, 8),
+        latestArrival: at(47, 20),
+        idempotencyKey: 'seed:ingrid:lhr',
+        notes: 'Partner summit in London — long-haul, expected to need sign-off.',
+      },
+      actorFor(marcus),
+      d,
+    );
+    await runAgent(request.id, d, actorFor(marcus));
+  }
+
+  // 3. Nothing matched. Not an error state and not a dead end — the screen says
+  //    which constraint to relax, and searching again from here is one click.
+  {
+    const d = agentDeps(now);
+    const request = await submitTravelRequest(
+      {
+        travelerId: tomas.id,
+        showId: packexpo.id,
+        originAirport: 'MSP',
+        destinationAirport: 'ORD',
+        earliestDeparture: at(200, 6),
+        latestArrival: at(200, 11),
+        idempotencyKey: 'seed:tomas:packexpo',
+        notes: 'Short hop — no recorded payload covers this route, so it finds nothing.',
+      },
+      actorFor(marcus),
+      d,
+    );
+    await runAgent(request.id, d, actorFor(marcus));
+  }
+
   console.log('· show outcomes (prior-year comparison basis)');
   await db.insert(s.showOutcomes).values({
     showId: medtech.id,
@@ -734,6 +845,7 @@ async function main() {
     assets: assetRows.length,
     shifts: shifts.length,
     ticketCredits: creditRows.length,
+    travelRequests: 3,
   };
   console.log('\n✓ seed complete', counts);
 }

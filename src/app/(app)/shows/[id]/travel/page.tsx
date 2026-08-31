@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Badge, Card, Empty, money, showDateTime, type Tone } from '../../../_components/ui';
 import { loadShow } from '../detail';
 
@@ -60,8 +61,12 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
       <Card title="Travel requests">
         {requests.length === 0 ? (
           <Empty>
-            No requests for this show. The request form and the approvals queue are step 9 — the
-            booking spine itself already runs headless via <code>pnpm booking:dry-run</code>.
+            No requests for this show.{' '}
+            <Link href="/travel/new" className="underline">
+              Open one
+            </Link>{' '}
+            and the agent searches, rules on it against policy, and either books it or sends it for
+            approval.
           </Empty>
         ) : (
           <ul className="space-y-1.5">
@@ -71,9 +76,9 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
                 className="flex flex-wrap items-baseline gap-x-3 gap-y-1 border-b border-zinc-100 py-1.5 last:border-0 dark:border-zinc-800"
               >
                 <Badge>{request.status}</Badge>
-                <span>
+                <Link href={`/travel/${request.id}`} className="hover:underline">
                   {request.originAirport} → {request.destinationAirport}
-                </span>
+                </Link>
                 <span className="text-zinc-500">
                   {showDateTime(request.earliestDeparture, show.timezone)}
                 </span>
