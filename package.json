@@ -19,6 +19,8 @@
     "flights": "tsx scripts/flights.ts",
     "shipping": "tsx scripts/shipping.ts",
     "assets": "tsx scripts/assets.ts",
+    "alerts": "tsx scripts/alerts.ts",
+    "cost": "tsx scripts/cost.ts",
     "assistant": "tsx scripts/assistant.ts",
     "smoke": "tsx scripts/smoke.ts",
     "duffel:capture": "tsx scripts/duffel-capture.ts",

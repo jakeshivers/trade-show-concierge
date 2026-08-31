@@ -703,15 +703,23 @@ export async function runCreditMaintenance(
   db: Db,
   orgId: string,
   now: Date,
-): Promise<{ forfeitedCents: number; sweptCount: number; alertsSent: number; warned: number }> {
+): Promise<{
+  forfeitedCents: number;
+  sweptCount: number;
+  alertsSent: number;
+  /** Warnings the sweep no longer makes: the credit was spent, or the bucket tightened. */
+  alertsResolved: number;
+  warned: number;
+}> {
   const swept = await sweepExpiredCredits(db, orgId, now);
   const expiring = await creditsExpiringSoon(db, orgId, now);
-  const alertsSent = await notifyExpiringCredits(db, { orgId, expiring, now });
+  const alerts = await notifyExpiringCredits(db, { orgId, expiring, now });
 
   return {
     forfeitedCents: swept.reduce((sum, x) => sum + x.forfeitedCents, 0),
     sweptCount: swept.length,
-    alertsSent,
+    alertsSent: alerts.raised,
+    alertsResolved: alerts.resolved,
     warned: expiring.length,
   };
 }

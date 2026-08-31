@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { canApprove } from '@/lib/auth/actor';
 import { canCloneShow, canDecideShow } from '@/lib/shows/visibility';
 import { Tabs } from '../../_components/tabs';
 import { loadShow } from './detail';
@@ -15,9 +16,10 @@ import {
  * Show detail — the header and its tabs.
  *
  * The tabs are real routes rather than client state so a link to a show's
- * deadlines is a link to a show's deadlines. Steps 9–12 made each of them
- * editable in turn; Logistics is the last one still read-only, and says so where
- * its controls would be. None of them promise an action that does not exist yet.
+ * deadlines is a link to a show's deadlines. Steps 9–14 made each of them
+ * editable in turn, and step 16 gave Logistics its chain of custody — there is
+ * no read-only tab left. None of them promise an action that does not exist yet,
+ * and Cost is not shown at all to somebody who may not read it.
  */
 
 const TABS = [
@@ -27,6 +29,10 @@ const TABS = [
   { segment: 'lodging', label: 'Lodging' },
   { segment: 'travel', label: 'Travel' },
   { segment: 'logistics', label: 'Logistics' },
+  // Not shown to a Member at all, rather than shown and refused. A tab that
+  // exists and says no is an invitation to ask why; a show's cost is every
+  // colleague's fare in one number, and §3 draws that line around travel.
+  { segment: 'cost', label: 'Cost', approverOnly: true },
 ];
 
 export default async function ShowLayout({
@@ -75,7 +81,7 @@ export default async function ShowLayout({
       </header>
 
       <Tabs
-        items={TABS.map((tab) => ({
+        items={TABS.filter((tab) => !tab.approverOnly || canApprove(actor)).map((tab) => ({
           href: `/shows/${show.id}${tab.segment ? `/${tab.segment}` : ''}`,
           label: tab.label,
         }))}

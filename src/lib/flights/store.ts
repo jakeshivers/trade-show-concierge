@@ -14,6 +14,11 @@ import {
   type BufferContext,
   type TrackedFlight,
 } from './status';
+import {
+  syncConditionAlerts,
+  type AlertSyncResult,
+  type AlertWrite,
+} from '@/lib/alerts/store';
 
 type Db = ReturnType<typeof getDb>;
 type FlightRow = typeof s.flights.$inferSelect;
@@ -317,6 +322,8 @@ export type SyncResult = {
   noRecord: number;
   planned: PlannedFlightAlert[];
   alertsWritten: number;
+  /** Standings this sweep no longer finds. The delay came back inside the buffer. */
+  alertsResolved: number;
   /** Present when no provider is configured. Nothing was checked. */
   unavailable?: string;
 };
@@ -431,8 +438,15 @@ export async function syncFlightStatuses(
     if (alert) planned.push(alert);
   }
 
-  const alertsWritten = await writeFlightAlerts(orgId, planned, now, db);
-  return { checked: due.length, changed, noRecord, planned, alertsWritten };
+  const { raised, resolved } = await writeFlightAlerts(orgId, planned, now, db);
+  return {
+    checked: due.length,
+    changed,
+    noRecord,
+    planned,
+    alertsWritten: raised,
+    alertsResolved: resolved,
+  };
 }
 
 /**
@@ -445,36 +459,32 @@ async function writeFlightAlerts(
   planned: PlannedFlightAlert[],
   now: Date,
   db: Db,
-): Promise<number> {
-  if (planned.length === 0) return 0;
-
+): Promise<AlertSyncResult> {
   const runners = await db
     .select({ id: s.users.id })
     .from(s.users)
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
 
-  let written = 0;
+  const writes: AlertWrite[] = [];
   for (const alert of planned) {
     const recipients = new Set<string>([alert.travelerId]);
     if (alert.showId) for (const r of runners) recipients.add(r.id);
 
     for (const userId of recipients) {
-      const inserted = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId: alert.showId,
-          userId,
-          severity: alert.severity,
-          title: alert.title,
-          body: alert.body,
-          dedupeKey: `${alert.dedupeKey}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: s.alerts.id });
-      written += inserted.length;
+      writes.push({
+        showId: alert.showId,
+        userId,
+        severity: alert.severity,
+        title: alert.title,
+        body: alert.body,
+        dedupeKey: `${alert.dedupeKey}:${userId}`,
+      });
     }
   }
-  return written;
+
+  // An empty plan is the sweep's ordinary result — most nights nothing is worth
+  // saying — and it is also the moment a flight that had lost its buffer stops
+  // having lost it. Both go through the same call, so the second cannot be
+  // forgotten while the first is being celebrated.
+  return syncConditionAlerts(db, { orgId, source: 'flight', writes, now });
 }

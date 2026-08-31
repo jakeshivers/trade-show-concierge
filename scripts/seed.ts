@@ -6,14 +6,15 @@
  * something to develop against without any API keys. Nothing here implies a live
  * flight status or a real fare.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
 import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
-import { sweepDeadlineAlerts } from '../src/lib/deadlines/store';
+import { setDeadlineStatus, sweepDeadlineAlerts } from '../src/lib/deadlines/store';
+import { acknowledgeAlert } from '../src/lib/alerts/store';
 import { syncFlightStatuses } from '../src/lib/flights/store';
 import { RecordedStatusProvider } from '../src/lib/integrations/flightstatus/recorded/provider';
 import { instantToZoned } from '../src/lib/datetime/zoned';
@@ -1688,8 +1689,44 @@ async function main() {
     db,
   });
 
+  // The feed's two states that only a *second* run can produce, produced by
+  // running things a second time rather than by writing rows that look like it.
+  //
+  // Resolution is the half of step 17 that nothing else in the seed demonstrates:
+  // an alert ends because a sweep stops planning it, not because anybody clears
+  // it. So somebody orders the carpet, the register no longer has anything to
+  // say about that deadline, and the row it left behind is closed by the next
+  // sweep — which is exactly what a crate arriving or a delay recovering does.
+  console.log('· one deadline gets done, and the alert it raised resolves itself');
+  const carpet = await db.query.showDeadlines.findFirst({
+    where: and(eq(s.showDeadlines.showId, automate.id), eq(s.showDeadlines.kind, 'furniture_carpet')),
+  });
+  if (carpet) {
+    await setDeadlineStatus(
+      actorFor(marcus),
+      carpet.id,
+      'complete',
+      'Ordered through the advance rate portal.',
+      now,
+      db,
+    );
+  }
+  const resweep = await sweepDeadlineAlerts(org.id, now, db);
+
+  // And one alert somebody has read. Acknowledging is a person saying "I have
+  // seen this" about their own row, so it is done as that person, through the
+  // same call the screen makes — a row with `acknowledged_at` typed into it
+  // would be hearsay in the one column that records that somebody looked.
+  const mine = await db
+    .select()
+    .from(s.alerts)
+    .where(and(eq(s.alerts.userId, marcus.id), isNull(s.alerts.resolvedAt)))
+    .limit(1);
+  if (mine[0]) await acknowledgeAlert(actorFor(marcus), mine[0].id, now, db);
+
   const counts = {
     users: people.length,
+    alertsResolved: resweep.resolved,
     deadlineAlerts: swept.written,
     flightsChecked: flightSync.checked,
     flightAlerts: flightSync.alertsWritten,

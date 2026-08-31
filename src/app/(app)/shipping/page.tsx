@@ -166,8 +166,9 @@ export default async function ShippingBoardPage() {
                 so an estimate that drifts a few hours either way is not a fresh piece of news.
                 One of them has no shipment behind it at all: it fires on the{' '}
                 <em>absence</em> of a return leg, which is the failure that surfaces a quarter
-                late. There is no feed screen yet (step 17); <code>pnpm shipping</code> is how a
-                person reads them today.
+                late. They are on the <a className="underline hover:no-underline" href="/alerts">alerts
+                feed</a> for the people they are addressed to, and a crate arriving is what takes
+                one down — nobody clears it by hand.
               </p>
             </Card>
           )}

@@ -825,6 +825,31 @@ export const shipmentEvents = pgTable(
 
 /* --------------------------------- alerts ---------------------------------- */
 
+/**
+ * Every notification this product owes somebody, and the durable record that it
+ * was owed. Five engines write here; step 17 built the screen that reads it.
+ *
+ * Two things a row can be, and the difference is load-bearing:
+ *
+ * - A **condition** — "this crate has not scanned in five days" — is a claim
+ *   that is true right now and can stop being true without anybody touching the
+ *   alert. Conditions are planned by a nightly sweep over the *whole*
+ *   population, so a key the sweep no longer plans is a condition that has
+ *   ended, and the sweep resolves it. That precondition is the whole basis of
+ *   `resolved_at`: an engine that planned over a subset would resolve half the
+ *   board every night by simply not having looked.
+ * - A **notice** — "your flight is ticketed" — happened once, at an instant, and
+ *   is never untrue afterwards. Nothing resolves it; it is read and dismissed.
+ *
+ * `dedupe_key` was the entire dedupe story until now, and it hid a bug that only
+ * a feed makes reachable: with `onConflictDoNothing`, a condition that ends and
+ * later recurs under the same key silently reuses the row somebody already
+ * acknowledged — so the second occurrence is muted by a dismissal of the first.
+ * The writer upserts instead: `last_seen_at` and `occurrences` move every night
+ * a condition still holds, and a row that had been *resolved* comes back
+ * un-acknowledged, because a recurrence is news.
+ */
+
 export const alerts = pgTable(
   'alerts',
   {
@@ -835,17 +860,42 @@ export const alerts = pgTable(
     showId: uuid('show_id').references(() => shows.id, { onDelete: 'cascade' }),
     /** Whose alert this is. Null means the whole org sees it. */
     userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /**
+     * Which engine wrote it: `deadline`, `flight`, `shipping`, `asset`,
+     * `credit`, `booking`. Not parsed out of the dedupe key — a feed that has to
+     * regex a key to decide where a row links is a feed that breaks the next
+     * time a key gains a segment.
+     */
+    source: text('source').notNull().default('unknown'),
+    /** `condition` (can end, and the sweep says when) or `notice` (happened once). */
+    kind: text('kind').notNull().default('condition'),
     severity: text('severity').notNull().default('info'),
     title: text('title').notNull(),
     body: text('body'),
     // Stable key so a repeating condition updates one alert instead of piling up.
     dedupeKey: text('dedupe_key').notNull(),
-    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    /** First reported. Deliberately never moved: "since when" is the question. */
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Last time a sweep still found this true. */
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** How many sweeps have said it. One alert said nine nights running is a story. */
+    occurrences: integer('occurrences').notNull().default(1),
+    /**
+     * When the condition stopped holding. Set by the sweep, never by a person —
+     * acknowledging is not fixing, and conflating the two would let a feed be
+     * cleared by dismissal while every crate stayed exactly where it was.
+     */
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+    acknowledgedById: uuid('acknowledged_by_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
   },
   (t) => [
     uniqueIndex('alerts_dedupe_idx').on(t.orgId, t.dedupeKey),
     index('alerts_user_idx').on(t.userId, t.acknowledgedAt),
+    index('alerts_feed_idx').on(t.orgId, t.userId, t.resolvedAt),
+    index('alerts_source_idx').on(t.orgId, t.source),
   ],
 );
 

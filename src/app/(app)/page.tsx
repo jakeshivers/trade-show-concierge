@@ -4,6 +4,7 @@ import { readLoginPolicy } from '@/lib/auth/login-policy-store';
 import { formatStrategies } from '@/lib/auth/login-methods';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
 import { getItinerary, listShows } from '@/lib/shows/store';
+import { getAlertFeed } from '@/lib/alerts/store';
 import { getDb } from '@/db';
 import {
   Badge,
@@ -30,11 +31,12 @@ import {
 export default async function OverviewPage() {
   const actor = await getActor();
   const db = getDb();
-  const [policy, purchasing, shows, trips] = await Promise.all([
+  const [policy, purchasing, shows, trips, feed] = await Promise.all([
     readLoginPolicy(actor.orgId, db),
     purchasingStatus(actor.orgId, db),
     listShows(actor),
     getItinerary(actor),
+    getAlertFeed(actor),
   ]);
 
   const prospects = shows.filter((s) => s.status === 'prospect');
@@ -72,6 +74,27 @@ export default async function OverviewPage() {
           </>
         }
       />
+
+      {/* Above everything, including what needs deciding: a missed receiving
+          window is this week and a prospect is next quarter. It is a count and a
+          link rather than the alerts themselves — the feed orders and groups
+          them, and a second, shorter opinion here would be the one people read. */}
+      {feed.summary.outstanding > 0 && (
+        <Card title="Owed to you">
+          <p>
+            <Link href="/alerts" className="font-medium underline hover:no-underline">
+              {feed.summary.outstanding} outstanding alert
+              {feed.summary.outstanding === 1 ? '' : 's'}
+            </Link>{' '}
+            <span className="text-text-muted">
+              {feed.summary.critical > 0 && `${feed.summary.critical} critical · `}
+              {feed.summary.unchecked > 0 &&
+                `${feed.summary.unchecked} not re-checked recently · `}
+              from the deadline, flight, freight, asset and credit engines.
+            </span>
+          </p>
+        </Card>
+      )}
 
       {prospects.length > 0 && (
         <Card title="Awaiting a decision">

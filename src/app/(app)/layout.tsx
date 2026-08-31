@@ -58,7 +58,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar isAdmin={isAdmin(me)} />
+      <Sidebar isAdmin={isAdmin(me)} isApprover={canApprove(me)} />
       <div className="flex min-w-0 flex-1 flex-col">
         {authMode() === 'dev' && (
           <div className="bg-warn-soft px-6 py-1.5 text-center text-xs text-text">

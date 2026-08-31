@@ -10,10 +10,12 @@ import {
   LayoutDashboard,
   Luggage,
   MessagesSquare,
+  BellRing,
   PanelLeftClose,
   PanelLeftOpen,
   PackageSearch,
   Plane,
+  Receipt,
   Radar,
   ShieldCheck,
 } from 'lucide-react';
@@ -37,7 +39,19 @@ import { ThemeToggle } from './theme-toggle';
  * rather than the subtle shift dense products reach for and users miss.
  */
 
-type Item = { href: string; label: string; Icon: typeof LayoutDashboard; adminOnly?: boolean };
+type Item = {
+  href: string;
+  label: string;
+  Icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
+  /**
+   * Travel Manager and Admin. Not the same gate as `adminOnly`, and the
+   * difference is §3's line rather than a convenience: a true-cost figure is
+   * every colleague's fare added up, which is the thing `travelerScope` narrows
+   * a Member's own queries to avoid showing them.
+   */
+  approverOnly?: boolean;
+};
 type Group = { label: string; items: Item[] };
 
 /**
@@ -54,7 +68,11 @@ const GROUPS: Group[] = [
       // is most of it.
       { href: '/assistant', label: 'Assistant', Icon: MessagesSquare },
       { href: '/shows', label: 'Shows', Icon: CalendarDays },
+      // Above Readiness because it is the screen a person opens first: five
+      // engines write to it and, until step 17, nothing read any of them.
+      { href: '/alerts', label: 'Alerts', Icon: BellRing },
       { href: '/readiness', label: 'Readiness', Icon: ClipboardCheck },
+      { href: '/cost', label: 'True cost', Icon: Receipt, approverOnly: true },
     ],
   },
   {
@@ -77,7 +95,7 @@ const GROUPS: Group[] = [
   },
 ];
 
-export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
+export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover: boolean }) {
   const pathname = usePathname();
   const collapsed = usePref('nav-collapsed', '0') === '1';
 
@@ -112,7 +130,9 @@ export function Sidebar({ isAdmin }: { isAdmin: boolean }) {
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {GROUPS.map((group) => {
-          const items = group.items.filter((i) => !i.adminOnly || isAdmin);
+          const items = group.items.filter(
+            (i) => (!i.adminOnly || isAdmin) && (!i.approverOnly || isApprover),
+          );
           if (items.length === 0) return null;
           return (
             <div key={group.label} className="mb-4">

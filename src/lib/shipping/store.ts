@@ -19,6 +19,11 @@ import {
   planShipmentAlert,
   type PlannedShipmentAlert,
 } from './alerts';
+import {
+  syncConditionAlerts,
+  type AlertSyncResult,
+  type AlertWrite,
+} from '@/lib/alerts/store';
 import { ShippingError, describeDeletion, validateShipment, type ShipmentDraft } from './edit';
 import { expectedCheckIntervalMinutes, reconcile, type TrackedShipment } from './status';
 
@@ -471,6 +476,8 @@ export type ShipmentSyncResult = {
   noRecord: number;
   planned: PlannedShipmentAlert[];
   alertsWritten: number;
+  /** Conditions this sweep no longer finds. The crate arrived. */
+  alertsResolved: number;
   unavailable?: string;
 };
 
@@ -591,8 +598,16 @@ export async function syncShipmentTracking(
 
   planned.push(...planReturnGaps(all, now));
 
-  const alertsWritten = await writeShipmentAlerts(orgId, planned, now, db);
-  return { checked: due.length, changed, scansAdded, noRecord, planned, alertsWritten };
+  const { raised, resolved } = await writeShipmentAlerts(orgId, planned, now, db);
+  return {
+    checked: due.length,
+    changed,
+    scansAdded,
+    noRecord,
+    planned,
+    alertsWritten: raised,
+    alertsResolved: resolved,
+  };
 }
 
 function firstMovement(scans: TrackingScan[]): Date | null {
@@ -662,38 +677,34 @@ async function writeShipmentAlerts(
   planned: PlannedShipmentAlert[],
   now: Date,
   db: Db,
-): Promise<number> {
-  if (planned.length === 0) return 0;
-
+): Promise<AlertSyncResult> {
   const runners = await db
     .select({ id: s.users.id })
     .from(s.users)
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
 
-  let written = 0;
+  const writes: AlertWrite[] = [];
   for (const alert of planned) {
     const recipients = new Set<string>(runners.map((r) => r.id));
     if (alert.ownerId) recipients.add(alert.ownerId);
 
     for (const userId of recipients) {
-      const inserted = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId: alert.showId,
-          userId,
-          severity: alert.severity,
-          title: alert.title,
-          body: alert.body,
-          dedupeKey: `${alert.dedupeKey}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: s.alerts.id });
-      written += inserted.length;
+      writes.push({
+        showId: alert.showId,
+        userId,
+        severity: alert.severity,
+        title: alert.title,
+        body: alert.body,
+        dedupeKey: `${alert.dedupeKey}:${userId}`,
+      });
     }
   }
-  return written;
+
+  // Not `if (writes.length === 0) return` — an empty plan is the sweep saying
+  // every crate is fine, which is exactly when the standing alerts have to be
+  // closed. Bailing early on nothing-to-say is how a board stays red after the
+  // freight arrives.
+  return syncConditionAlerts(db, { orgId, source: 'shipping', writes, now });
 }
 
 /** Shows with outbound freight but nothing recorded coming back. For the CLI. */

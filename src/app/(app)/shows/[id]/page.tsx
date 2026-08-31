@@ -79,8 +79,10 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
             <Row label="Recorded spend">
               {money(committedCents)}
               <span className="block text-xs text-text-muted">
-                {expenses.length} expense {expenses.length === 1 ? 'line' : 'lines'}. The true-cost
-                rollup that folds in flights, lodging, and shipping lands at step 17.
+                {expenses.length} expense {expenses.length === 1 ? 'line' : 'lines'} — this
+                figure is expenses only. The Cost tab folds in what was actually charged for
+                flights, the hotel rows, the freight and the print, and says what it is still
+                missing.
               </span>
             </Row>
             <Row label="Open deadlines">

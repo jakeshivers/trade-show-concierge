@@ -49,6 +49,11 @@ import {
   type CollateralItem,
   type StockStanding,
 } from './inventory';
+import {
+  syncConditionAlerts,
+  type AlertSyncResult,
+  type AlertWrite,
+} from '@/lib/alerts/store';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -881,6 +886,8 @@ export type AssetSweepResult = {
   reservations: number;
   planned: PlannedAssetAlert[];
   alertsWritten: number;
+  /** Conditions this sweep no longer finds. The crate is back on the shelf. */
+  alertsResolved: number;
 };
 
 /**
@@ -973,8 +980,13 @@ export async function sweepAssetAlerts(
     if (alert) planned.push(alert);
   }
 
-  const alertsWritten = await writeAssetAlerts(orgId, planned, now, db);
-  return { reservations: reservationRows.length, planned, alertsWritten };
+  const { raised, resolved } = await writeAssetAlerts(orgId, planned, now, db);
+  return {
+    reservations: reservationRows.length,
+    planned,
+    alertsWritten: raised,
+    alertsResolved: resolved,
+  };
 }
 
 /**
@@ -991,35 +1003,29 @@ async function writeAssetAlerts(
   planned: PlannedAssetAlert[],
   now: Date,
   db: Db,
-): Promise<number> {
-  if (planned.length === 0) return 0;
-
+): Promise<AlertSyncResult> {
   const runners = await db
     .select({ id: s.users.id })
     .from(s.users)
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
 
-  let written = 0;
+  const writes: AlertWrite[] = [];
   for (const alert of planned) {
     const recipients = new Set<string>(runners.map((r) => r.id));
     if (alert.userId) recipients.add(alert.userId);
     for (const userId of recipients) {
-      const inserted = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId: alert.showId,
-          userId,
-          severity: alert.severity,
-          title: alert.title,
-          body: alert.body,
-          dedupeKey: `${alert.dedupeKey}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: s.alerts.id });
-      written += inserted.length;
+      writes.push({
+        showId: alert.showId,
+        userId,
+        severity: alert.severity,
+        title: alert.title,
+        body: alert.body,
+        dedupeKey: `${alert.dedupeKey}:${userId}`,
+      });
     }
   }
-  return written;
+
+  // The booth came back, or somebody counted the shelf. Absence from tonight's
+  // plan is the only signal either of those produces.
+  return syncConditionAlerts(db, { orgId, source: 'asset', writes, now });
 }

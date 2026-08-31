@@ -53,7 +53,13 @@ async function routes(): Promise<Check[]> {
     { path: `/shows/${id}/travel`, expect: 'ravel' },
     { path: `/shows/${id}/logistics`, expect: 'Shipments' },
     { path: `/shows/${id}/clone`, expect: 'lone' },
+    // Approver-only, like /cost. As a Member both of these render the refusal
+    // instead of the figures, which is the access model working rather than a
+    // smoke failure — same caveat as /settings/security below.
+    { path: `/shows/${id}/cost`, expect: 'has cost so far' },
     { path: '/readiness', expect: 'eadiness' },
+    { path: '/alerts', expect: 'engines' },
+    { path: '/cost', expect: 'made up' },
     { path: '/itinerary', expect: 'tinerary' },
     { path: '/travel', expect: 'ravel' },
     { path: '/travel/new', expect: 'equest' },

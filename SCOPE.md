@@ -235,8 +235,10 @@ Modeling choices worth calling out:
   one agent run share a timestamp — the clock is injected so the pipeline is
   reproducible — and an audit log that cannot be put in order is not an audit log.
 - **Cost is derived, never entered.** A show's true cost is a rollup of booth/space fees,
-  every `flight.price_cents`, every `lodging` night, every `shipment.cost_cents`, and
-  `expense` rows for the rest. Nobody assembles it. This is what makes §8 credible.
+  what the agent was actually charged, every `lodging` night, every `shipment.cost_cents`,
+  and `expense` rows for the rest. Nobody assembles it. This is what makes §8 credible —
+  and step 17 found that deriving it is the easy half: the figure has to carry what it is
+  missing, or it is a confidently wrong number under the app's own byline. §8a.
 - **`lead` carries `crm_external_id`.** The CRM owns the truth about pipeline; we own
   the attribution link. We never try to become the CRM.
 - **`show_deadline` carries a `penalty_estimate`.** A deadline without a dollar figure is
@@ -827,6 +829,59 @@ the product reports. And §5a's tense rule reappears at the end of the chain: pa
 where a $84,000 booth can plausibly turn up, "return it" is the wrong sentence — the alert
 switches from chasing to an insurance and replacement conversation, and stops nagging.
 
+### 5i. The alerts feed — what a written alert stops being able to say (step 17)
+
+Five engines wrote to the `alerts` table — deadlines (§5a), flights (§5f), shipping (§5g),
+assets (§5h) and the credit sweep (§5b) — and for twelve steps nothing read it. Every one
+of those steps ended by noting that a CLI was how a person heard any of it. Building the
+screen turned out not to be a rendering job: **an alert row is a record that a notification
+was owed at some instant, and a feed shows it later**, and four things can have happened in
+between that the row cannot express.
+
+**A condition can end, and only the engine can say so.** "This crate has not scanned in
+five days" stops being true when the crate scans. Nothing in the table could represent
+that, so the feed's first design question was who is allowed to take an alert down. Not a
+person: a dismiss button that cleared the board would be the acknowledged-and-forgotten
+failure with a nicer interface. The answer falls out of a property all five engines already
+have for their own reasons — **each plans over its whole population, not over what
+changed** (§5g states the sharpest version: an engine that speaks on transitions cannot
+report a stall, which is the failure with no transition in it). So a key an engine no
+longer plans is a condition that has ended, and the sweep resolves it. That precondition is
+load-bearing: an engine that planned over a subset would silently close every row it did
+not look at, which is a screen going quietly green.
+
+**Acknowledging is not fixing, and the two must not share a column.** A person may say "I
+have seen this" about their own row; the crate is still in the wrong city, so the alert
+stays on the screen under its own heading and the next sweep still finds it.
+
+**The old dedupe muted recurrences, and only a feed could make that reachable.** Every
+writer used `onConflictDoNothing`, so a condition that ended and came back under the same
+key reused the row somebody had acknowledged weeks earlier — arriving pre-dismissed, with
+nobody told. The writer upserts now: `last_seen_at` and `occurrences` move each night a
+condition still holds, and a row that had resolved comes back un-acknowledged with its
+clock restarted, because a recurrence is news. This is also why the five near-identical
+fan-out blocks were consolidated into one writer — they had already drifted (three counted
+what was inserted, one counted what was attempted), and none of them could express an
+ending.
+
+**An unswept alert is not a current alert.** Nothing in this product runs on a schedule yet
+(step 21), so a row's claim is exactly as fresh as the last sweep. `unchecked` is a standing
+of its own and a figure on the page — §5f's rule that an unchecked flight is not an on-time
+flight, applied to the thing reporting the flights.
+
+**An engine dedupes a fact; a feed has to dedupe a sentence.** Eleven people on one re-timed
+flight is eleven correct rows — each traveler's own feed shows exactly one — and one piece
+of news for the show runner who receives a copy of all eleven. No engine can see that,
+because each only ever looks at one leg. Grouping is therefore a view concern and
+deliberately not a change to any dedupe key: keys are how an engine avoids writing twice,
+grouping is how a person avoids reading twice.
+
+**There is no org-wide read**, including for an admin. Every engine writes one row per
+recipient, so the audience was decided when the alert was planned, by code that knew what
+it was about — and a feed offering "everybody's alerts" would be a second, dumber audience
+model whose first act would be showing a manager the delay on a Member's personal flight
+home, which §5f addresses to the traveler alone.
+
 ---
 
 ## 6. The booking agent
@@ -1175,6 +1230,54 @@ expense reports, and what they produce is wrong — it usually misses shipping e
 and undercounts travel. **We get it for free.** That is the strongest argument for
 this app existing.
 
+**What step 17 established, building it.** The addition really is a query, and it is not
+the work. The work is that **a total which does not say what it is missing is a fabricated
+bill** — §5a's rule about quoting a penalty behind an unconfirmed date, at the scale of a
+whole show. A computed figure carries an authority a spreadsheet never had, so a
+confidently wrong one is worse than the spreadsheet it replaced. Every line therefore
+carries its coverage, and a total is called a total only when everything that exists
+carries a figure and nothing structural is absent; otherwise the word is **"at least"**.
+Six things the rollup refuses to do, each a way the number would have been wrong:
+
+1. **A dry run is not spend.** `bookings.live` is the provider's word (§6c) and exists to
+   protect exactly this figure — a Duffel *test* key issues orders that look real in every
+   respect. The seeded workspace is made entirely of dry runs, so a rollup that summed
+   charged amounts without reading `live` would have looked plausible and been fiction from
+   its first day.
+2. **A credit is not a discount, and a credit-funded trip is not a free one.**
+   `chargedCents` is new money; the credit covered the rest and was bought last year, on a
+   ticket for a trip somebody cancelled. Counting the fare charges the same dollars to two
+   shows; counting only the cash and saying nothing makes a trip flown entirely on credit
+   look free. So cash is the line and the credit is a memo beside it.
+3. **Stock consumed is not stock bought, and only one of them is money.** A print run is an
+   outlay on the show that ordered it; what a later show takes off the shelf is a valuation
+   of things already paid for. Consumption sits outside the total, and where a show has
+   both, the overlap is named rather than silently resolved — only a person knows whether
+   the print run *was* this stock.
+4. **A lodging row is one reservation.** `lodging/store.ts` already refuses to invent a
+   room count, so nights × rate is per reservation and a block recorded as one row with
+   four guests is an undercount. Named, not fixed: the fix is a number somebody has to type.
+5. **Committed is not paid.** `expenses.paid` is the only tense marker in the money, and
+   before a show most of a cost is a commitment — §5a's distinction between at risk and
+   incurred, one table over.
+6. **Staff time is days, not dollars.** §11.8 is open and there is no loaded rate anywhere
+   in this workspace, so attendee-days are counted and deliberately not priced. A dollar
+   figure there would be a number we invented, which is the one thing this page exists not
+   to do.
+
+Two consequences worth stating. **A silent line is not a zero**: a show with no booth-space
+figure is not a cheap show, it is a show nobody has entered the invoice for, and because
+that line is usually the largest one, its absence is what decides that a figure is *thin*
+rather than merely incomplete. And **a prospect is absent rather than shown at $0**, for
+§5d's reason: a zero in a cost table reads as a bargain instead of as an absence.
+
+**Who sees it.** Travel Manager and Admin — the same audience §3 gives "see all users'
+travel and shipments". A show's true cost is every colleague's fare in one figure, and
+`travelerScope` narrows a Member's own travel queries precisely so a colleague's fare is
+never on their screen; an aggregate that showed them the total would walk around the
+narrowing rather than through it. The tab is not rendered for a Member at all, rather than
+rendered and refused.
+
 ### 8b. The return side — needs a CRM
 
 Leads and meetings we can capture. Pipeline and revenue we cannot invent; they live in
@@ -1495,7 +1598,33 @@ invert phases A and C.
       **through the real stores** — including a booth signed out to last spring's Detroit
       show and never checked in, which is the sentence the schema comment has carried since
       step 1. Six corrections folded into §5h above. 656 tests.
-- [ ] **17.** Alerts feed · **true-cost rollup** (nearly free once 12, 14 land)
+- [x] **17.** Alerts feed · **true-cost rollup** — `src/lib/alerts/` and `src/lib/cost/`,
+      split the way everything since step 8 has been. `alerts/feed.ts` is pure and holds the
+      whole argument: the five standings (`new` / `repeating` / `unchecked` / `acknowledged`
+      / `resolved`), `linkFor` (read off `source`, never regexed out of a dedupe key),
+      ordering that puts a three-week-old critical above tonight's, and `groupFeed` — an
+      engine dedupes a fact, a feed has to dedupe a sentence. `alerts/access.ts` is the
+      posture: there is no org-wide read, because every engine already decided the audience.
+      `alerts/store.ts` is the **one writer** the five engines now share, and the bug the
+      consolidation fixed is the step's sharpest: `onConflictDoNothing` meant a condition
+      that ended and recurred under the same key reused a row somebody had acknowledged, so
+      the recurrence arrived pre-dismissed. `syncConditionAlerts` records what an engine
+      says is true *and closes what it no longer says*, which is the only signal a crate
+      arriving produces. `alerts/sweep.ts` runs all five and reports the two that need a
+      provider and did not get one, because an engine that could not run is not an engine
+      with nothing to say. `cost/rollup.ts` is pure and refuses six things (§8a): a dry run
+      is not spend, a credit is not a discount, consumption is not an outlay, a lodging row
+      is one reservation, committed is not paid, staff time is days rather than dollars.
+      `cost/store.ts` loads every show's inputs in a fixed number of queries so the
+      portfolio and a show's own tab cannot disagree about the arithmetic. `cost/access.ts`
+      is Travel Manager and Admin, for §3's reason about aggregating other people's fares.
+      Schema: `alerts` gained `source`, `kind` (`condition` vs `notice`), `last_seen_at`,
+      `occurrences`, `resolved_at` and `acknowledged_by_id`. Screens: `/alerts` and `/cost`
+      in the nav, a **Cost** tab on the show that is not rendered at all for a Member, and a
+      line on the overview. `pnpm alerts` / `pnpm alerts --sweep` / `pnpm alerts --as` and
+      `pnpm cost` / `pnpm cost <show id>` are the two engines without a screen. The seed
+      completes one deadline and re-runs the sweep so a **resolved** row exists, and
+      acknowledges one alert *as the person it was addressed to*. 693 tests.
 - [ ] **18.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture
 - [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
 
@@ -1542,6 +1671,10 @@ the benefit of the model without the setup cost blocking the spine.
 8. **Is staff time in the cost?** Including attendee-days × a loaded rate usually
    doubles the true cost of a show and is the honest number. Some organizations find
    that unwelcome. Your call whether it's on by default, optional, or absent.
+   **Step 17 built the half that does not need the answer:** attendee-days are counted
+   and shown beside every show's total, and never priced, because there is no loaded rate
+   in this workspace and inventing one would be the fabricated figure §8a exists to
+   refuse. Deciding this adds a rate and a line; it changes nothing already built.
 9. **Pricing model.** ExhibitDay is per-seat ($99–199/mo); Trade Show PRO is **per event**
    (€990, unlimited users). Per-event matches how trade show budgets actually work —
    budgeted individually, often by different owners — and sidesteps the "we only do four

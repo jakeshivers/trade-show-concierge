@@ -24,6 +24,7 @@ import {
   type Exposure,
   type PlannedAlert,
 } from './alerts';
+import { syncConditionAlerts, type AlertWrite } from '@/lib/alerts/store';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -341,6 +342,8 @@ export type SweepResult = {
   planned: PlannedAlert[];
   /** Alerts actually written — a repeat run writes none, which is the feature. */
   written: number;
+  /** Rows tonight's plan no longer contains: done, waived, confirmed, or moved. */
+  resolved: number;
 };
 
 /**
@@ -351,9 +354,11 @@ export type SweepResult = {
  * transport added later cannot erase it. Step 17 builds the feed; step 21 adds
  * Slack behind this same call.
  *
- * `onConflictDoNothing().returning()` and counting what came back, not what was
- * attempted — the dedupe *is* the feature here, so a second run reporting "14
- * alerts sent" would be reporting the opposite of what happened.
+ * It counts what was written, not what was attempted — the dedupe *is* the
+ * feature here, so a second run reporting "14 alerts sent" would be reporting the
+ * opposite of what happened. Step 17 added the other half of that sentence: a
+ * third run, after somebody completed the task, reports one *resolved*, because
+ * a plan that no longer contains a key is this engine saying the thing is over.
  */
 export async function sweepDeadlineAlerts(
   orgId: string,
@@ -367,14 +372,13 @@ export async function sweepDeadlineAlerts(
     .where(and(eq(s.shows.orgId, orgId), inArray(s.shows.status, LIVE_STATUSES)));
 
   const planned = planDeadlineAlerts(rows.map((r) => alertable(r.deadline)), now);
-  if (planned.length === 0) return { planned, written: 0 };
 
   const runners = await db
     .select({ id: s.users.id })
     .from(s.users)
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
 
-  let written = 0;
+  const writes: AlertWrite[] = [];
   for (const alert of planned) {
     // An owner-addressed alert still copies the show runners: the owner is who
     // acts, but a missed advance order is the show lead's money either way. An
@@ -384,25 +388,30 @@ export async function sweepDeadlineAlerts(
     if (alert.audience === 'owner' && alert.ownerId) recipients.add(alert.ownerId);
 
     for (const userId of recipients) {
-      const inserted = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId: alert.showId,
-          userId,
-          severity: alert.severity,
-          title: alert.title,
-          body: alert.body,
-          dedupeKey: `${alert.dedupeKey}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: s.alerts.id });
-      written += inserted.length;
+      writes.push({
+        showId: alert.showId,
+        userId,
+        severity: alert.severity,
+        title: alert.title,
+        body: alert.body,
+        dedupeKey: `${alert.dedupeKey}:${userId}`,
+      });
     }
   }
 
-  return { planned, written };
+  // There is no early return on an empty plan any more, and the reason is the
+  // key shape §5a argued for: a deadline alert is keyed to the deadline *and its
+  // date*, so completing a task, confirming it, waiving it or moving the date
+  // all take the row out of tonight's plan. Absence is how every one of those
+  // reaches the feed, and an early return would have made "nothing is wrong" the
+  // one outcome that changes nothing on screen.
+  const { raised, resolved } = await syncConditionAlerts(db, {
+    orgId,
+    source: 'deadline',
+    writes,
+    now,
+  });
+  return { planned, written: raised, resolved };
 }
 
 /** A prospect has no deadlines to miss; a closed show's have already resolved. */

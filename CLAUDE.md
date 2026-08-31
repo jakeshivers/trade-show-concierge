@@ -66,8 +66,11 @@ whose access model is its tool list rather than its prompt, which reads through 
 org-scoped stores a screen reads through and drafts requests a person still has to
 confirm; and assets & collateral — a chain of custody that is finally a log rather than a
 flag, an availability verdict that refuses a booth three different ways, and an inventory
-whose on-hand figure is a projection of a ledger rather than a number somebody typed.
-656 tests, no keys required.
+whose on-hand figure is a projection of a ledger rather than a number somebody typed; and
+the alerts feed and the true-cost rollup — one screen that finally reads what five engines
+have been writing to the `alerts` table since step 11, and a cost figure that leads with
+what it is missing rather than with the number.
+693 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -83,6 +86,69 @@ count would have called full. `pnpm flights` prints the flight board and what th
 engine would say tonight — which, on most legs, is nothing. `pnpm shipping` prints every
 crate worst-first, the receiving window each is judged against, and the one alert that has
 no shipment behind it: a show that moved out with freight and nothing recorded coming back.
+`pnpm alerts` prints what one person is actually owed — `--as` somebody else and the table
+is different, which is the access model rather than a filter — and `pnpm alerts --sweep`
+runs all five engines and reports what each one *resolved* as well as what it raised.
+`pnpm cost` prints every show's true cost worst-first with its coverage, and
+`pnpm cost <show id>` prints one show line by line with every gap named in the words the
+screen uses.
+
+**What step 17 added, and where:** `src/lib/alerts/` and `src/lib/cost/`, split the way
+everything since step 8 has been. `alerts/feed.ts` is pure and is the whole argument: an
+alert row records that a notification was **owed at an instant**, and a feed shows it later,
+so `standingOf` reports which of five things it has become — `new`, `repeating`,
+`unchecked` (nothing has re-run the sweep, which is §5f's rule about an unchecked flight
+applied to the thing reporting the flights), `acknowledged` (seen, still true) and
+`resolved`. `linkFor` reads `source` rather than regexing a dedupe key. `groupFeed` collapses
+one sentence said by many rows. `alerts/access.ts` refuses an org-wide read at all.
+`alerts/store.ts` is now the **only** file that writes the table: `syncConditionAlerts`
+takes an engine's complete current plan, upserts it, and **closes every key the engine no
+longer plans**, which is the only signal a crate arriving produces. `alerts/sweep.ts` runs
+all five engines and names the ones that could not run. `cost/rollup.ts` is pure and holds
+the six refusals; `cost/store.ts` loads every show's inputs in a fixed number of queries so
+the portfolio and a show's tab cannot disagree; `cost/access.ts` is Travel Manager and
+Admin.
+
+Schema: `alerts` gained `source`, `kind` (`condition` vs `notice`), `last_seen_at`,
+`occurrences`, `resolved_at` and `acknowledged_by_id`. Screens: `/alerts` and `/cost` in the
+nav, a **Cost** tab on the show that is not rendered at all for a Member, and one line on
+the overview above everything else. The five engines' fan-out logic stayed where it was —
+each knows who cares about a stalled crate — and only the write is shared. The seed
+completes one deadline and re-runs the sweep so a genuinely **resolved** row exists, and
+acknowledges one alert *as the person it was addressed to*.
+
+**The five corrections step 17 turned up:**
+
+1. **`onConflictDoNothing` muted every recurrence, and only a feed made it reachable.** A
+   condition that ends and comes back under the same dedupe key reused the row somebody
+   acknowledged weeks ago — so the second occurrence arrived pre-dismissed and nobody was
+   told. Invisible while nothing read the table, and the first thing a feed would have
+   found. The writer upserts now, `occurrences` and `last_seen_at` move each night, and a
+   row that had resolved comes back un-acknowledged with its clock restarted.
+2. **Only an engine may resolve an alert, and it can only do so because it plans over
+   everything.** A person acknowledging is not a person fixing, so the dismiss button that
+   clears a board would be the acknowledged-and-forgotten failure with a nicer interface.
+   Resolution is therefore absence-from-tonight's-plan — which is sound *only* because all
+   five engines plan over their whole population rather than over what changed, each for
+   its own already-stated reason. An engine that planned over a subset would silently close
+   every row it did not look at.
+3. **An engine dedupes a fact; a feed has to dedupe a sentence.** Eleven people on one
+   re-timed flight is eleven correct rows and one piece of news for the manager who
+   receives all eleven. No engine can see that, because each only ever looks at one leg.
+   Grouping is a view concern and deliberately not a change to any dedupe key.
+4. **A dry run is not spend, and the seeded workspace is made entirely of dry runs.**
+   `bookings.live` is the provider's word and the ground rule above says it exists to
+   protect the true-cost rollup — this is the step where something finally read it. A
+   rollup that summed charged amounts would have looked plausible and been fiction on day
+   one. Same shape three more times: a credit is not a discount (the fare was paid last
+   year, on a cancelled ticket, and belongs to that show), stock consumed is not stock
+   bought, and committed is not paid.
+5. **A cost figure that does not say what it is missing is the fabricated bill §5a
+   refuses to quote, at the scale of a show.** A computed number carries authority a
+   spreadsheet never had, so a confidently wrong one is worse than what it replaced. Every
+   line carries its coverage, the headline word is "at least" unless nothing is missing,
+   and a *silent* line is not a zero — a show with no booth-space figure is not a cheap
+   show, it is a show nobody has entered the invoice for.
 
 **What step 12 added, and where:** `src/lib/team/` and `src/lib/lodging/`, split the way
 everything since step 8 has been. `team/coverage.ts` is pure and holds the whole argument:
@@ -328,7 +394,7 @@ is still next. The plumbing half:
   `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
 - **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
   `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all 21 routes against a running `pnpm dev` and checks 200 plus
+- **`pnpm smoke`** fetches all 25 routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
 And the visual half:
@@ -694,15 +760,12 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 17 — **alerts feed · true-cost rollup** (`SCOPE.md` §10). Five engines now
-write to the `alerts` table — deadlines, flights, shipping, assets, and the credit sweep —
-and there is still no screen that reads it, so `pnpm deadlines` / `pnpm flights` /
-`pnpm shipping` / `pnpm assets` / `pnpm credits` are how a person hears any of them. The
-true-cost half is the one the whole architecture has been paying into: flights, lodging,
-shipping and now collateral consumption all carry a cost center at creation, so the rollup
-is a query rather than an assembly. The interesting part is probably the coverage
-indicator — a cost figure that does not say what it is missing is the same fabricated bill
-§5a refuses to quote.
+**Next:** step 18 — **leads & meetings** (`SCOPE.md` §10): CSV import, a REST intake
+endpoint, and the GDPR posture. §8c says plainly that this is the weakest link in the whole
+ROI story and that the problem is behavioural rather than technical — reps do not log leads,
+and a cost-per-lead computed over a bad lead count is *confidently* wrong, which §8a now has
+a whole vocabulary for refusing. Step 17's coverage indicator is the shape the lead side
+will need too: the number has to say what it is missing before it says anything else.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -712,12 +775,14 @@ the person whose trip it is. The assistant does not stream (a server action retu
 whole answer, which keeps every tool call inside the request as the actor `getActor()`
 resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
 logistics are all writable as of steps 10–14, and Logistics grew chain of custody and
-collateral at step 16 — **there is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
+collateral at step 16, and Cost arrived at step 17 as the seventh tab — **there is no
+read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Deadline, flight, shipment and asset alerts land in the `alerts` table and nowhere
-else** — there is no feed screen (step 17) and no transport (step 21), so `pnpm deadlines`,
-`pnpm flights`, `pnpm shipping` and `pnpm assets` are how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
+**Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
+pushes, and nothing runs them on a schedule either — an alert is exactly as fresh as the
+last time somebody pressed *Re-check everything*, which is why `unchecked` is a standing
+and a figure on the page rather than a footnote. **Nothing rebooks a cancelled flight**, and the alert says so
 rather than implying otherwise: the agent buys against a travel request and the ticket is
 already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
 later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
@@ -1044,6 +1109,46 @@ silently. One key is now `AuthConfigError`.
 - **Past the point where an asset can turn up, "return it" is the wrong sentence.** A booth
   nobody has seen in six weeks is an insurance and replacement conversation. §5a's tense
   rule, at the end of the chain of custody. `src/lib/assets/alerts.ts`.
+- **Only a sweep resolves an alert; a person only ever says they have seen it.**
+  `acknowledged_at` is "I read this" and `resolved_at` is "this stopped being true", and a
+  screen that let one set the other would be the acknowledged-and-forgotten failure with a
+  nicer interface. Resolution is absence from tonight's plan, which is sound **only**
+  because every engine plans over its whole population rather than over what changed — an
+  engine that planned over a subset would silently close every row it did not look at.
+  `src/lib/alerts/store.ts`.
+- **A recurrence is news, and the old dedupe swallowed it.** `onConflictDoNothing` meant a
+  condition that ended and came back under the same key reused a row somebody had
+  acknowledged, arriving pre-dismissed. A resolved row that recurs comes back
+  un-acknowledged, with `occurrences` reset and its clock restarted.
+- **An engine dedupes a fact; a feed dedupes a sentence.** Eleven people on one re-timed
+  flight is eleven correct rows and one piece of news for whoever receives all eleven.
+  Grouping is a view concern and never a change to a dedupe key.
+- **An alert nobody has re-checked is not a current alert**, and nothing here runs on a
+  schedule yet. `unchecked` is a standing of its own, counted on the page — §5f's rule
+  about the unchecked flight, applied to the thing that reports the flights.
+- **There is no org-wide alert read, including for an admin.** Every engine writes one row
+  per recipient, so the audience was decided where the reasoning lives. A feed-level
+  "everybody's alerts" would be a second, dumber audience model, and its first act would be
+  showing a manager a Member's personal flight home. `src/lib/alerts/access.ts`.
+- **A cost figure that does not say what it is missing is a fabricated bill.** §5a's rule at
+  the scale of a show. A total is only called a total when everything that exists carries a
+  figure and nothing structural is absent; otherwise the word is *at least*, and the line
+  says why. A **silent** line is not a zero: a show with no booth-space figure is not a
+  cheap show, it is a show nobody has entered the invoice for. `src/lib/cost/rollup.ts`.
+- **A dry run is not spend, a credit is not a discount, consumption is not an outlay, and
+  committed is not paid.** `bookings.live` is the provider's word and the rollup is the
+  thing it was always protecting — the seeded workspace is made entirely of dry runs, so a
+  rollup that summed charged amounts would have been fiction on day one. A credit-funded
+  fare was bought last year on a cancelled ticket and belongs to that show, so it is a memo
+  beside the total. Stock issued off a shelf was paid for when it was printed. And
+  `expenses.paid` is the only tense marker in the money.
+- **Staff time is counted in days and never priced.** §11.8 is open and there is no loaded
+  rate in this workspace; a dollar figure would be one we invented, which is the thing the
+  page exists to refuse.
+- **A show's cost is Travel Manager and Admin.** It is every colleague's fare in one figure,
+  and `travelerScope` narrows a Member's own travel queries precisely so a colleague's fare
+  is never on their screen. The tab is not rendered for a Member rather than rendered and
+  refused.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. A cloned asset *reservation*
@@ -1094,6 +1199,11 @@ pnpm shipping --sync  # ask the tracking provider, write the scans and the alert
 pnpm assets           # the register worst-first, the clashes, the shelf vs. what is free
 pnpm assets <show id> # one show's reservations and allocations
 pnpm assets --sweep   # write tonight's asset alerts; run twice, nothing is written again
+pnpm alerts           # what one person is actually owed, worst first
+pnpm alerts --as priya@…  # the same feed as somebody else; the access model, not a filter
+pnpm alerts --sweep   # run all five engines; prints what each raised *and resolved*
+pnpm cost             # every committed show's true cost, biggest first, with its coverage
+pnpm cost <show id>   # one show line by line, every gap named
 pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
 pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
 pnpm assistant --tools  # the tool surface per role — the access model as a table
@@ -1101,7 +1211,7 @@ pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 21 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 25 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -1118,6 +1228,10 @@ src/db/schema.ts              ~35 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
+src/app/(app)/alerts/        the feed: five engines' output, grouped, with the standing
+                              of each — and no way for a person to resolve one
+src/app/(app)/cost/          the true-cost portfolio, and `_present.tsx` — the vocabulary
+                              it and the show's Cost tab both render through
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
@@ -1128,6 +1242,7 @@ src/app/(app)/assistant/     the concierge and one conversation, with each tool 
                               rendered beside the answer rather than behind it
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
+src/app/(app)/shows/[id]/cost/     the show's true cost, not rendered at all for a Member
 src/app/(app)/shows/[id]/logistics/  three models on one page: writable freight and its
                               timeline, the assets it carries with their custody chain,
                               and the collateral allocated to the show
@@ -1135,6 +1250,15 @@ src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatt
                               form.ts (one FormState + FormData helpers, dependency-free),
                               form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts
 src/app/(app)/shows/[id]/team/  roster-forms · shift-forms · side-event-forms, one per card
+src/lib/alerts/               the feed — feed.ts (pure: the five standings, ordering,
+                              grouping a sentence rather than a fact, where each source
+                              links), access.ts (no org-wide read), store.ts (the one
+                              writer the five engines share; records a plan and closes what
+                              it no longer contains), sweep.ts (all five, and the ones that
+                              could not run)
+src/lib/cost/                 true cost — rollup.ts (pure: the lines, the six refusals, and
+                              coverage as a shape rather than a percentage), store.ts (every
+                              show's inputs in a fixed number of queries), access.ts
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the

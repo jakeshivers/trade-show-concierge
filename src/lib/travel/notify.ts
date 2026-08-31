@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { getDb } from '@/db';
 import * as s from '@/db/schema';
+import { recordNotices, syncConditionAlerts, type AlertWrite } from '@/lib/alerts/store';
 
 /**
  * Ticketing notifications. SCOPE.md §6c rail 6: every purchase notifies the
@@ -9,10 +10,19 @@ import * as s from '@/db/schema';
  * There is no email or Slack transport yet, so these land in the `alerts` table
  * — which is the right first stop regardless: an alert row is the durable record
  * that the notification was owed, and a transport that fails later cannot erase
- * it. Step 20 adds Slack behind this same call.
+ * it. Step 21 adds Slack behind this same call.
  *
  * The dedupe key is per booking, so a retried ticketing writes one alert per
  * recipient rather than a pile.
+ *
+ * Two of the three below are **notices** and one is a **condition**, which is
+ * the distinction step 17 had to draw before a feed could exist. A ticket was
+ * bought and a credit was missed at the moment of a purchase: both happened, at
+ * an instant, and no later state of the world makes either untrue, so nothing
+ * ever resolves them. A credit *approaching expiry* is a claim about right now
+ * that ends when the credit is spent — and a feed that could not tell those
+ * apart would either nag about a ticket bought in March forever, or quietly
+ * close a warning about money that is still about to evaporate.
  */
 
 type Db = ReturnType<typeof getDb>;
@@ -63,21 +73,19 @@ export async function notifyTicketed(
       })),
   ];
 
-  for (const r of recipients) {
-    await db
-      .insert(s.alerts)
-      .values({
-        orgId,
-        showId,
-        userId: r.userId,
-        severity: 'info',
-        title: r.title,
-        body: r.body,
-        dedupeKey: `booking:${booking.id}:ticketed:${r.userId}`,
-        createdAt: now,
-      })
-      .onConflictDoNothing();
-  }
+  await recordNotices(db, {
+    orgId,
+    source: 'booking',
+    now,
+    writes: recipients.map((r) => ({
+      showId,
+      userId: r.userId,
+      severity: 'info' as const,
+      title: r.title,
+      body: r.body,
+      dedupeKey: `booking:${booking.id}:ticketed:${r.userId}`,
+    })),
+  });
 
   return recipients.length;
 }
@@ -119,33 +127,31 @@ export async function notifyUnreachableCredit(
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
   const recipients = [travelerId, ...managers.map((m) => m.id).filter((id) => id !== travelerId)];
 
-  let sent = 0;
+  const writes: AlertWrite[] = [];
   for (const credit of credits) {
     for (const userId of recipients) {
-      const written = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId,
-          userId,
-          severity: 'warning',
-          title: `${usd(credit.remainingValueCents)} of ${credit.airlineCode} credit went unused`,
-          body:
-            `This purchase paid cash while ${usd(credit.remainingValueCents)} of ${credit.airlineCode} ` +
-            `credit sits unused, expiring ${day(credit.expiresOn)}. It is not redeemable through our ` +
-            'booking provider — recover it directly with the airline' +
-            (credit.ticketNumber ? `, ticket ${credit.ticketNumber}` : '') +
-            (credit.recordLocator ? `, record locator ${credit.recordLocator}` : '') +
-            '.',
-          dedupeKey: `credit:${credit.id}:unreachable:${requestId}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        .returning({ id: s.alerts.id });
-      sent += written.length;
+      writes.push({
+        showId,
+        userId,
+        severity: 'warning',
+        title: `${usd(credit.remainingValueCents)} of ${credit.airlineCode} credit went unused`,
+        body:
+          `This purchase paid cash while ${usd(credit.remainingValueCents)} of ${credit.airlineCode} ` +
+          `credit sits unused, expiring ${day(credit.expiresOn)}. It is not redeemable through our ` +
+          'booking provider — recover it directly with the airline' +
+          (credit.ticketNumber ? `, ticket ${credit.ticketNumber}` : '') +
+          (credit.recordLocator ? `, record locator ${credit.recordLocator}` : '') +
+          '.',
+        dedupeKey: `credit:${credit.id}:unreachable:${requestId}:${userId}`,
+      });
     }
   }
-  return sent;
+
+  // A notice, not a condition: this is a report of what happened at the moment
+  // of one purchase. The credit may well still be sitting there tomorrow, and
+  // the *expiry* warning below is the row that says so — this one is about a
+  // cash payment that has already been made.
+  return recordNotices(db, { orgId, source: 'credit', writes, now });
 }
 
 /**
@@ -163,46 +169,43 @@ export async function notifyExpiringCredits(
     expiring: { credit: CreditRow; bucketDays: number; daysLeft: number }[];
     now: Date;
   },
-): Promise<number> {
+): Promise<{ raised: number; resolved: number }> {
   const { orgId, expiring, now } = args;
-  if (expiring.length === 0) return 0;
+  // No early return on an empty list: nothing expiring is the *good* case, and
+  // it is also the case where yesterday's warnings have to be taken down.
 
   const managers = await db
     .select({ id: s.users.id })
     .from(s.users)
     .where(and(eq(s.users.orgId, orgId), inArray(s.users.role, ['travel_manager', 'admin'])));
 
-  let sent = 0;
+  const writes: AlertWrite[] = [];
   for (const { credit, bucketDays, daysLeft } of expiring) {
     const audience = [
       credit.userId,
       ...managers.map((m) => m.id).filter((id) => id !== credit.userId),
     ];
     for (const userId of audience) {
-      const written = await db
-        .insert(s.alerts)
-        .values({
-          orgId,
-          showId: null,
-          userId,
-          // Under two weeks this stops being a reminder and starts being a loss.
-          severity: bucketDays <= 14 ? 'warning' : 'info',
-          title: `${usd(credit.remainingValueCents)} ${credit.airlineCode} credit expires in ${daysLeft} day(s)`,
-          body:
-            `Issued ${day(credit.issuedOn)}, expires ${day(credit.expiresOn)}. ` +
-            (credit.providerCreditId
-              ? 'The booking agent will apply it automatically to a matching itinerary.'
-              : 'It is not redeemable through our booking provider — book with the airline directly to use it.'),
-          dedupeKey: `credit:${credit.id}:expiry:${bucketDays}:${userId}`,
-          createdAt: now,
-        })
-        .onConflictDoNothing()
-        // Count what was written, not what was attempted. The dedupe is the
-        // whole feature here, so a caller reporting "6 alerts sent" on a repeat
-        // run would be reporting the opposite of what happened.
-        .returning({ id: s.alerts.id });
-      sent += written.length;
+      writes.push({
+        showId: null,
+        userId,
+        // Under two weeks this stops being a reminder and starts being a loss.
+        severity: bucketDays <= 14 ? 'warning' : 'info',
+        title: `${usd(credit.remainingValueCents)} ${credit.airlineCode} credit expires in ${daysLeft} day(s)`,
+        body:
+          `Issued ${day(credit.issuedOn)}, expires ${day(credit.expiresOn)}. ` +
+          (credit.providerCreditId
+            ? 'The booking agent will apply it automatically to a matching itinerary.'
+            : 'It is not redeemable through our booking provider — book with the airline directly to use it.'),
+        dedupeKey: `credit:${credit.id}:expiry:${bucketDays}:${userId}`,
+      });
     }
   }
-  return sent;
+
+  // `creditsExpiringSoon` states the current bucket for every live credit in the
+  // org, which is what makes absence meaningful: a credit that gets spent, or
+  // one whose bucket has tightened from 90 days to 60, drops out of this list
+  // and the row it left behind is closed rather than left standing beside its
+  // own successor.
+  return syncConditionAlerts(db, { orgId, source: 'credit', writes, now });
 }

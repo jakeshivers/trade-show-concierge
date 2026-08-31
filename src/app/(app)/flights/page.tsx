@@ -150,8 +150,9 @@ export default async function FlightBoardPage() {
               <p className="mt-3 text-xs text-text-muted">
                 These are written to the alerts table by the nightly sweep, keyed to the standing
                 they report rather than to the arrival estimate — so an estimate drifting four
-                minutes either way all evening is not four pieces of news. There is no feed screen
-                yet (step 17); <code>pnpm flights</code> is how a person reads them today.
+                minutes either way all evening is not four pieces of news. Each traveler reads their
+                own on the <a className="underline hover:no-underline" href="/alerts">alerts
+                feed</a>; a delay that comes back inside the buffer resolves itself there.
               </p>
             </Card>
           )}
