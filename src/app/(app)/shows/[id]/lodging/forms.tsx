@@ -13,7 +13,13 @@ import { Button } from '../../../_components/ui';
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from '@/lib/lodging/edit';
 import type { LodgingEntry } from '@/lib/lodging/store';
 import type { FormState } from '../../../_components/form';
-import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
+import {
+  Message,
+  QuietSubmit,
+  Submit,
+  ZonedDateTime,
+  controlClass,
+} from '../../../_components/form-ui';
 
 /**
  * The lodging tab's controls.
@@ -27,22 +33,6 @@ import { Message, QuietSubmit, Submit, controlClass } from '../../../_components
 
 /** The one input class string, from `_components/form-ui.tsx`. */
 const inputClass = controlClass('compact');
-
-function local(d: Date | null, timeZone: string): { date: string; time: string } {
-  if (!d) return { date: '', time: '' };
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)!.value;
-  const hour = get('hour') === '24' ? '00' : get('hour');
-  return { date: `${get('year')}-${get('month')}-${get('day')}`, time: `${hour}:${get('minute')}` };
-}
 
 function Fields({
   action,
@@ -63,10 +53,6 @@ function Fields({
   lodging?: LodgingEntry['lodging'];
   submitLabel: string;
 }) {
-  const checkIn = local(lodging?.checkIn ?? null, timezone);
-  const checkOut = local(lodging?.checkOut ?? null, timezone);
-  const cutoff = local(lodging?.roomBlockCutoff ?? null, timezone);
-
   return (
     <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
@@ -91,47 +77,41 @@ function Fields({
         className={`${inputClass} min-w-56`}
       />
       <input name="phone" defaultValue={lodging?.phone ?? ''} placeholder="Phone" className={inputClass} />
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        in
-        <input type="date" name="checkInOn" defaultValue={checkIn.date} className={inputClass} />
-        <input
-          type="time"
-          name="checkInAt"
-          defaultValue={checkIn.time || DEFAULT_CHECK_IN}
-          className={inputClass}
-        />
-      </label>
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        out
-        <input type="date" name="checkOutOn" defaultValue={checkOut.date} className={inputClass} />
-        <input
-          type="time"
-          name="checkOutAt"
-          defaultValue={checkOut.time || DEFAULT_CHECK_OUT}
-          className={inputClass}
-        />
-      </label>
+      <ZonedDateTime
+        label="in"
+        dateName="checkInOn"
+        timeName="checkInAt"
+        instant={lodging?.checkIn}
+        timeZone={timezone}
+        defaultTime={DEFAULT_CHECK_IN}
+      />
+      <ZonedDateTime
+        label="out"
+        dateName="checkOutOn"
+        timeName="checkOutAt"
+        instant={lodging?.checkOut}
+        timeZone={timezone}
+        defaultTime={DEFAULT_CHECK_OUT}
+      />
       <input
         name="nightlyRate"
         defaultValue={lodging?.nightlyRateCents != null ? (lodging.nightlyRateCents / 100).toFixed(2) : ''}
         placeholder="Rate, e.g. 289.00"
         className={inputClass}
       />
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        room block closes
-        <input
-          type="date"
-          name="roomBlockCutoffOn"
-          defaultValue={cutoff.date}
-          className={inputClass}
-        />
-        <input
-          type="time"
-          name="roomBlockCutoffAt"
-          defaultValue={cutoff.time || '17:00'}
-          className={inputClass}
-        />
-      </label>
+      {/*
+        The only editable copy of this date in the app. It derives a row in the
+        deadline register (lodging/store.ts), and the register refuses to edit it
+        there — two editable copies of one date is how the date gets missed.
+      */}
+      <ZonedDateTime
+        label="room block closes"
+        dateName="roomBlockCutoffOn"
+        timeName="roomBlockCutoffAt"
+        instant={lodging?.roomBlockCutoff}
+        timeZone={timezone}
+        defaultTime="17:00"
+      />
       <select
         name="costCenterId"
         required
@@ -149,7 +129,6 @@ function Fields({
       <Button type="submit" disabled={pending}>
         {submitLabel}
       </Button>
-      <Message state={state} />
       <Message state={state} />
     </form>
   );

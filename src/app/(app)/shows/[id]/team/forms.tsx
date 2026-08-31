@@ -23,7 +23,13 @@ import { Button } from '../../../_components/ui';
 import { ATTENDEE_STATUSES, SIDE_EVENT_KINDS } from '@/lib/team/edit';
 import type { RosterEntry, ShiftEntry, SideEventEntry } from '@/lib/team/store';
 import type { FormState } from '../../../_components/form';
-import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
+import {
+  Message,
+  QuietSubmit,
+  Submit,
+  ZonedDateTime,
+  controlClass,
+} from '../../../_components/form-ui';
 
 /**
  * The writable team tab.
@@ -73,40 +79,24 @@ function WindowFields({
   timezone: string;
   attendee: { arrivesOn: Date | null; departsOn: Date | null };
 }) {
-  const asLocal = (d: Date | null) =>
-    d ? { date: iso(d, timezone).slice(0, 10), time: iso(d, timezone).slice(11, 16) } : { date: '', time: '' };
-  const a = asLocal(attendee.arrivesOn);
-  const b = asLocal(attendee.departsOn);
   return (
     <>
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        lands
-        <input type="date" name="arrivesOn" defaultValue={a.date} className={inputClass} />
-        <input type="time" name="arrivesAt" defaultValue={a.time} className={inputClass} />
-      </label>
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        leaves
-        <input type="date" name="departsOn" defaultValue={b.date} className={inputClass} />
-        <input type="time" name="departsAt" defaultValue={b.time} className={inputClass} />
-      </label>
+      <ZonedDateTime
+        label="lands"
+        dateName="arrivesOn"
+        timeName="arrivesAt"
+        instant={attendee.arrivesOn}
+        timeZone={timezone}
+      />
+      <ZonedDateTime
+        label="leaves"
+        dateName="departsOn"
+        timeName="departsAt"
+        instant={attendee.departsOn}
+        timeZone={timezone}
+      />
     </>
   );
-}
-
-/** Local wall-clock rendering, so the inputs mean what the show's city means. */
-function iso(d: Date, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)!.value;
-  const hour = get('hour') === '24' ? '00' : get('hour');
-  return `${get('year')}-${get('month')}-${get('day')}T${hour}:${get('minute')}`;
 }
 
 function AnswerForm({
@@ -219,20 +209,11 @@ export function InviteForm({
           ))}
         </select>
         <input name="role" required placeholder="Role, e.g. Technical demos" className={inputClass} />
-        <label className="flex items-center gap-1 text-xs text-zinc-500">
-          lands
-          <input type="date" name="arrivesOn" className={inputClass} />
-          <input type="time" name="arrivesAt" className={inputClass} />
-        </label>
-        <label className="flex items-center gap-1 text-xs text-zinc-500">
-          leaves
-          <input type="date" name="departsOn" className={inputClass} />
-          <input type="time" name="departsAt" className={inputClass} />
-        </label>
+        <ZonedDateTime label="lands" dateName="arrivesOn" timeName="arrivesAt" timeZone={timezone} />
+        <ZonedDateTime label="leaves" dateName="departsOn" timeName="departsAt" timeZone={timezone} />
         <Button type="submit" disabled={pending}>
           Invite
         </Button>
-        <Message state={state} />
         <Message state={state} />
       </form>
       <p className="mt-2 text-xs text-zinc-500">
@@ -378,16 +359,8 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
       <summary className="cursor-pointer text-sm font-medium">Add a booth shift</summary>
       <form action={action} className="mt-3 flex flex-wrap items-end gap-2">
         <input type="hidden" name="showId" value={showId} />
-        <label className="flex items-center gap-1 text-xs text-zinc-500">
-          from
-          <input type="date" name="startsOn" required className={inputClass} />
-          <input type="time" name="startsAt" required className={inputClass} />
-        </label>
-        <label className="flex items-center gap-1 text-xs text-zinc-500">
-          to
-          <input type="date" name="endsOn" required className={inputClass} />
-          <input type="time" name="endsAt" required className={inputClass} />
-        </label>
+        <ZonedDateTime label="from" dateName="startsOn" timeName="startsAt" timeZone={timezone} required />
+        <ZonedDateTime label="to" dateName="endsOn" timeName="endsAt" timeZone={timezone} required />
         <label className="flex items-center gap-1 text-xs text-zinc-500">
           staff needed
           <input
@@ -403,7 +376,6 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
         <Button type="submit" disabled={pending}>
           Add shift
         </Button>
-        <Message state={state} />
         <Message state={state} />
       </form>
       <p className="mt-2 text-xs text-zinc-500">Times are {timezone} — the show&rsquo;s zone.</p>
@@ -421,18 +393,26 @@ export function EditShiftForm({
   entry: ShiftEntry;
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(updateShift, {});
-  const from = iso(entry.startsAt, timezone);
-  const to = iso(entry.endsAt, timezone);
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-zinc-500">Edit this shift</summary>
       <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="shiftId" value={entry.shiftId} />
-        <input type="date" name="startsOn" defaultValue={from.slice(0, 10)} className={inputClass} />
-        <input type="time" name="startsAt" defaultValue={from.slice(11, 16)} className={inputClass} />
-        <input type="date" name="endsOn" defaultValue={to.slice(0, 10)} className={inputClass} />
-        <input type="time" name="endsAt" defaultValue={to.slice(11, 16)} className={inputClass} />
+        <ZonedDateTime
+          label="from"
+          dateName="startsOn"
+          timeName="startsAt"
+          instant={entry.startsAt}
+          timeZone={timezone}
+        />
+        <ZonedDateTime
+          label="to"
+          dateName="endsOn"
+          timeName="endsAt"
+          instant={entry.endsAt}
+          timeZone={timezone}
+        />
         <input
           type="number"
           name="targetStaff"
@@ -613,8 +593,6 @@ function Fields({
   event?: SideEventEntry['event'];
   submitLabel: string;
 }) {
-  const from = event ? iso(event.startsAt, timezone) : null;
-  const to = event?.endsAt ? iso(event.endsAt, timezone) : null;
   return (
     <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
@@ -639,16 +617,21 @@ function Fields({
         placeholder="Where"
         className={inputClass}
       />
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        from
-        <input type="date" name="startsOn" required defaultValue={from?.slice(0, 10)} className={inputClass} />
-        <input type="time" name="startsAt" required defaultValue={from?.slice(11, 16)} className={inputClass} />
-      </label>
-      <label className="flex items-center gap-1 text-xs text-zinc-500">
-        to
-        <input type="date" name="endsOn" defaultValue={to?.slice(0, 10) ?? ''} className={inputClass} />
-        <input type="time" name="endsAt" defaultValue={to?.slice(11, 16) ?? ''} className={inputClass} />
-      </label>
+      <ZonedDateTime
+        label="from"
+        dateName="startsOn"
+        timeName="startsAt"
+        instant={event?.startsAt}
+        timeZone={timezone}
+        required
+      />
+      <ZonedDateTime
+        label="to"
+        dateName="endsOn"
+        timeName="endsAt"
+        instant={event?.endsAt}
+        timeZone={timezone}
+      />
       <input
         type="number"
         name="capacity"
@@ -682,7 +665,6 @@ function Fields({
       <Button type="submit" disabled={pending}>
         {submitLabel}
       </Button>
-      <Message state={state} />
       <Message state={state} />
     </form>
   );

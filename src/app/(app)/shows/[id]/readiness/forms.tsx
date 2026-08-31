@@ -14,6 +14,7 @@ import type { ChecklistEntry } from '@/lib/readiness/store';
 import type { ChecklistTemplate } from '@/lib/readiness/templates';
 import type { FormState } from '../../../_components/form';
 import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
+import { zonedDateInput } from '@/lib/datetime/zoned';
 
 /**
  * The writable half of the readiness tab.
@@ -194,7 +195,7 @@ export function EditTaskForm({
           />
         </Field>
         <Field label="Due">
-          <input type="date" name="dueOn" defaultValue={dateInput(task.dueOn, timezone)} className={INPUT} />
+          <input type="date" name="dueOn" defaultValue={zonedDateInput(task.dueOn, timezone)} className={INPUT} />
         </Field>
         <Field label="Owner">
           <select name="assigneeId" defaultValue={task.assigneeId ?? ''} className={INPUT}>
@@ -301,19 +302,3 @@ function Field({
   );
 }
 
-/**
- * A `<input type="date">` wants `YYYY-MM-DD` in the *show's* zone, not the
- * browser's. `toISOString().slice(0,10)` on a 5pm-Pacific due date returns
- * tomorrow, and the round trip through the form would silently move every
- * deadline a day.
- */
-function dateInput(d: Date | null, timeZone: string): string {
-  if (!d) return '';
-  // en-CA formats as YYYY-MM-DD, which is what the input wants.
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(d);
-}

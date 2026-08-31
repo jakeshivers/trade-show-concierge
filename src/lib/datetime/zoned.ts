@@ -150,3 +150,37 @@ export function calendarDaysBetween(from: Date, to: Date, timeZone: string): num
   };
   return Math.round((dayOf(to) - dayOf(from)) / 86_400_000);
 }
+
+/* ------------------------- what a form input wants ------------------------- */
+
+/**
+ * The wall-clock strings `<input type="date">`, `<input type="time">` and
+ * `<input type="datetime-local">` want, read in `timeZone`.
+ *
+ * These live here, next to `instantToZoned` and covered by its tests, because
+ * the view layer had reimplemented them **four times** — `iso` on the team tab,
+ * `local` on lodging, `dateInput` on the checklist, `localPart` on the deadline
+ * register — each a hand-rolled `Intl.formatToParts` call, and none of them
+ * tested. Two of the four were written hours apart in the same step.
+ *
+ * That is not a tidiness problem. It is the browser-zone bug this whole module
+ * exists to prevent, reimplemented in the one layer where nothing was watching:
+ * `toISOString().slice(0, 10)` on a 5pm-Pacific due date returns *tomorrow*, so
+ * a round trip through the edit form silently moves the deadline a day. A
+ * deadline that moves a day is the exact failure the §5a engine is for.
+ *
+ * All three derive from `instantToZoned`, so there is one `Intl` call site in
+ * the codebase and one place for the hour-"24" workaround to be wrong.
+ */
+export function zonedDateInput(instant: Date | null | undefined, timeZone: string): string {
+  return instant ? instantToZoned(instant, timeZone).slice(0, 10) : '';
+}
+
+export function zonedTimeInput(instant: Date | null | undefined, timeZone: string): string {
+  return instant ? instantToZoned(instant, timeZone).slice(11, 16) : '';
+}
+
+/** `"YYYY-MM-DDTHH:MM"` — what `datetime-local` reads and writes. */
+export function zonedDateTimeInput(instant: Date | null | undefined, timeZone: string): string {
+  return instant ? instantToZoned(instant, timeZone).slice(0, 16) : '';
+}

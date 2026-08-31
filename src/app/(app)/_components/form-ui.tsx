@@ -1,3 +1,4 @@
+import { zonedDateInput, zonedTimeInput } from '@/lib/datetime/zoned';
 import { cn } from './cn';
 import type { FormState } from './form';
 
@@ -177,4 +178,71 @@ export function QuietSubmit({
       {pending && busy ? busy : children}
     </button>
   );
+}
+
+/**
+ * A date and a time input for one instant, read in one zone, labelled with that
+ * zone.
+ *
+ * The formatting is `zonedDateInput` / `zonedTimeInput` from
+ * `lib/datetime/zoned.ts` — where it is tested — and this component exists so
+ * the view layer stops rewriting it. Four hand-rolled copies preceded it, none
+ * covered by a test, in a codebase whose whole position on dates is that
+ * `new Date()` and `toISOString()` are how a flight time or a deadline silently
+ * moves. `src/lib/datetime` was never the layer with that bug; `src/app` was.
+ *
+ * The zone label is not decoration either. These fields are read in the *show's*
+ * zone, not the reader's, so an unlabelled pair of boxes on a Chicago show asks
+ * a person in Berlin a question with two plausible answers.
+ */
+export function ZonedDateTime({
+  label,
+  dateName,
+  timeName,
+  instant,
+  timeZone,
+  required,
+  defaultTime,
+}: {
+  label?: string;
+  dateName: string;
+  timeName: string;
+  /** The current value, or null for a blank (new) row. */
+  instant?: Date | null;
+  timeZone: string;
+  required?: boolean;
+  /** Used only when there is no instant — e.g. a hotel's default check-in. */
+  defaultTime?: string;
+}) {
+  const date = zonedDateInput(instant, timeZone);
+  const time = zonedTimeInput(instant, timeZone);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 text-xs text-zinc-500">
+      {label}
+      <Input type="date" name={dateName} required={required} defaultValue={date} />
+      <Input type="time" name={timeName} required={required} defaultValue={time || defaultTime} />
+      <abbr title={timeZone} className="no-underline">
+        {zoneAbbreviation(timeZone, instant)}
+      </abbr>
+    </span>
+  );
+}
+
+/**
+ * "CST", "JST" — the short name for the zone, not the reader's.
+ *
+ * Read *at the instant being edited*, not at now: a shift in July is CDT and one
+ * in January is CST, and a label that says CST beside a July date is a small lie
+ * of exactly the kind this app spends its datetime module avoiding. A blank row
+ * has no instant to read, so it falls back to today.
+ */
+function zoneAbbreviation(timeZone: string, at?: Date | null): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone, timeZoneName: 'short' })
+      .formatToParts(at ?? new Date())
+      .find((p) => p.type === 'timeZoneName');
+    return parts?.value ?? timeZone;
+  } catch {
+    return timeZone;
+  }
 }

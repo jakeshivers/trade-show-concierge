@@ -13,6 +13,7 @@ import { DEADLINE_KINDS, MIN_REASON } from '@/lib/deadlines/edit';
 import type { RegisterEntry } from '@/lib/deadlines/store';
 import type { FormState } from '../../../_components/form';
 import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
+import { zonedDateInput, zonedTimeInput } from '@/lib/datetime/zoned';
 
 /**
  * The writable register.
@@ -303,7 +304,7 @@ function Fields({
           type="date"
           name="dueDate"
           required
-          defaultValue={deadline ? localPart(deadline.dueAt, timezone, 'date') : ''}
+          defaultValue={deadline ? zonedDateInput(deadline.dueAt, timezone) : ''}
           className={INPUT}
         />
       </Field>
@@ -315,7 +316,7 @@ function Fields({
           type="time"
           name="dueTime"
           required
-          defaultValue={deadline ? localPart(deadline.dueAt, timezone, 'time') : '17:00'}
+          defaultValue={deadline ? zonedTimeInput(deadline.dueAt, timezone) : '17:00'}
           className={INPUT}
         />
       </Field>
@@ -378,12 +379,3 @@ function Field({
  * `toISOString()` on a 4pm-Pacific cutoff hands the form 23:00 the same day —
  * and saving that back would move every deadline seven hours on each edit.
  */
-function localPart(d: Date, timeZone: string, part: 'date' | 'time'): string {
-  const fmt = new Intl.DateTimeFormat('en-CA', {
-    timeZone,
-    ...(part === 'date'
-      ? { year: 'numeric' as const, month: '2-digit' as const, day: '2-digit' as const }
-      : { hour: '2-digit' as const, minute: '2-digit' as const, hourCycle: 'h23' as const }),
-  });
-  return fmt.format(d);
-}

@@ -6,6 +6,9 @@ import {
   shiftDaysPreservingLocalTime,
   calendarDaysBetween,
   ZonedTimeError,
+  zonedDateInput,
+  zonedDateTimeInput,
+  zonedTimeInput,
 } from './zoned';
 
 describe('zonedToInstant', () => {
@@ -110,5 +113,46 @@ describe('calendarDaysBetween', () => {
     const from = zonedToInstant('2026-06-08T09:00:00', 'America/Detroit');
     const to = shiftDaysPreservingLocalTime(from, 364, 'America/Detroit');
     expect(calendarDaysBetween(from, to, 'America/Detroit')).toBe(364);
+  });
+});
+
+describe('form input formatting', () => {
+  it('renders the date the show is in, not the one the server is in', () => {
+    // 5pm in Los Angeles on the 3rd is already the 4th in UTC. Every one of the
+    // four hand-rolled helpers this replaced existed because
+    // `toISOString().slice(0, 10)` gets this wrong, and getting it wrong moves
+    // a deadline a day each time the edit form is opened and saved.
+    const due = zonedToInstant('2027-02-03T17:00:00', 'America/Los_Angeles');
+    expect(due.toISOString().slice(0, 10)).toBe('2027-02-04');
+    expect(zonedDateInput(due, 'America/Los_Angeles')).toBe('2027-02-03');
+    expect(zonedTimeInput(due, 'America/Los_Angeles')).toBe('17:00');
+    expect(zonedDateTimeInput(due, 'America/Los_Angeles')).toBe('2027-02-03T17:00');
+  });
+
+  it('renders midnight as 00:00, never 24:00', () => {
+    // Intl under hour12:false emits hour "24" for midnight in some ICU builds,
+    // and `<input type="time">` silently rejects it — the field comes up blank
+    // and saving it back clears the time.
+    const midnight = zonedToInstant('2027-05-01T00:00:00', 'America/Chicago');
+    expect(zonedTimeInput(midnight, 'America/Chicago')).toBe('00:00');
+    expect(zonedDateInput(midnight, 'America/Chicago')).toBe('2027-05-01');
+  });
+
+  it('reads one instant differently in two zones', () => {
+    const t = zonedToInstant('2027-03-15T08:00:00', 'America/New_York');
+    expect(zonedDateTimeInput(t, 'America/New_York')).toBe('2027-03-15T08:00');
+    expect(zonedDateTimeInput(t, 'Asia/Tokyo')).toBe('2027-03-15T21:00');
+  });
+
+  it('is empty for a null instant rather than throwing or inventing today', () => {
+    expect(zonedDateInput(null, 'UTC')).toBe('');
+    expect(zonedTimeInput(undefined, 'UTC')).toBe('');
+    expect(zonedDateTimeInput(null, 'UTC')).toBe('');
+  });
+
+  it('round-trips through zonedToInstant', () => {
+    const t = zonedToInstant('2026-11-01T01:30:00', 'America/Denver');
+    const back = zonedToInstant(`${zonedDateTimeInput(t, 'America/Denver')}:00`, 'America/Denver');
+    expect(back.getTime()).toBe(t.getTime());
   });
 });
