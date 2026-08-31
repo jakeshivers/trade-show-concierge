@@ -86,13 +86,13 @@ async function actorFor(email: string): Promise<Actor> {
 }
 
 let priya: Actor;
-let dana: Actor;
+let shelley: Actor;
 let reeseId: string;
 let automate: typeof s.shows.$inferSelect;
 
 beforeAll(async () => {
   priya = await actorFor('priya@northwindrobotics.test');
-  dana = await actorFor('dana@northwindrobotics.test');
+  shelley = await actorFor('shelley@northwindrobotics.test');
   const reese = await db.query.users.findFirst({
     where: eq(s.users.email, 'reese@northwindrobotics.test'),
   });
@@ -126,7 +126,7 @@ async function submitDomestic(deps: AgentDeps, key: string, travelerId?: string)
       latestArrival: automate.moveInAt!,
       idempotencyKey: key,
     },
-    travelerId ? dana : priya,
+    travelerId ? shelley : priya,
     deps,
   );
 }
@@ -228,7 +228,7 @@ describe('live purchase behind the flag', () => {
 
     // Reese has no date of birth. An airline needs one; we do not invent it.
     const request = await submitDomestic(deps, 'live-no-dob', reeseId);
-    await expect(runAgent(request.id, deps, dana)).rejects.toThrow(MissingTravelerDetailsError);
+    await expect(runAgent(request.id, deps, shelley)).rejects.toThrow(MissingTravelerDetailsError);
 
     expect(spy.purchases).toHaveLength(0);
     const after = await db.query.travelRequests.findFirst({
@@ -246,7 +246,7 @@ describe('live purchase behind the flag', () => {
     const alerts = await db.select().from(s.alerts).where(eq(s.alerts.orgId, priya.orgId));
     const recipients = alerts.map((a) => a.userId);
     expect(recipients).toContain(priya.userId);
-    expect(recipients).toContain(dana.userId);
+    expect(recipients).toContain(shelley.userId);
     // Rail 6 runs in dry run too, so its first exercise is not a real purchase.
     expect(alerts.every((a) => a.title.startsWith('[dry run]'))).toBe(true);
   });
@@ -271,7 +271,7 @@ describe('the kill switch', () => {
   it('queues an otherwise auto-approved request instead of booking it', async () => {
     const clock = new Clock(new Date());
     const deps = depsFor(clock);
-    await haltPurchasing(priya.orgId, dana, 'Fare feed looked wrong at 09:12', db, clock.now);
+    await haltPurchasing(priya.orgId, shelley, 'Fare feed looked wrong at 09:12', db, clock.now);
 
     const request = await submitDomestic(deps, 'halted-run');
     const outcome = await runAgent(request.id, deps, priya);
@@ -295,7 +295,7 @@ describe('the kill switch', () => {
   it('halts dry runs too, so the switch is exercised on the path we run daily', async () => {
     const clock = new Clock(new Date());
     const deps = depsFor(clock, { live: false });
-    await haltPurchasing(priya.orgId, dana, 'Testing the rail', db, clock.now);
+    await haltPurchasing(priya.orgId, shelley, 'Testing the rail', db, clock.now);
     const request = await submitDomestic(deps, 'halted-dry-run');
     expect((await runAgent(request.id, deps, priya)).status).toBe('pending_approval');
   });
@@ -306,12 +306,12 @@ describe('the kill switch', () => {
     const request = await submitDomestic(deps, 'halt-mid-approval');
     await runAgent(request.id, deps, priya);
     // Nothing to approve — it auto-booked. Use a halted run instead.
-    await haltPurchasing(priya.orgId, dana, 'Incident 4471', db, clock.now);
+    await haltPurchasing(priya.orgId, shelley, 'Incident 4471', db, clock.now);
 
     const second = await submitDomestic(deps, 'halt-then-approve');
     await runAgent(second.id, deps, priya);
 
-    await expect(approveRequest(second.id, dana, deps)).rejects.toThrow(PurchasingHaltedError);
+    await expect(approveRequest(second.id, shelley, deps)).rejects.toThrow(PurchasingHaltedError);
     expect(await db.select().from(s.approvals)).toHaveLength(0);
     const after = await db.query.travelRequests.findFirst({
       where: eq(s.travelRequests.id, second.id),
@@ -322,9 +322,9 @@ describe('the kill switch', () => {
   it('books again once an admin resumes, and keeps both toggles on the record', async () => {
     const clock = new Clock(new Date());
     const deps = depsFor(clock);
-    await haltPurchasing(priya.orgId, dana, 'Incident 4471', db, clock.now);
+    await haltPurchasing(priya.orgId, shelley, 'Incident 4471', db, clock.now);
     clock.advanceMinutes(30);
-    await resumePurchasing(priya.orgId, dana, 'Incident 4471 closed, feed verified', db, clock.now);
+    await resumePurchasing(priya.orgId, shelley, 'Incident 4471 closed, feed verified', db, clock.now);
 
     expect((await purchasingStatus(priya.orgId, db)).halted).toBe(false);
 
@@ -334,12 +334,12 @@ describe('the kill switch', () => {
     const history = await db.select().from(s.bookingControls);
     expect(history.map((h) => h.purchasingHalted)).toEqual([true, false]);
     // Who turned it back on is the question that gets asked afterwards.
-    expect(history[1].actorId).toBe(dana.userId);
+    expect(history[1].actorId).toBe(shelley.userId);
   });
 
   it('is an admin control, and demands a reason in both directions', async () => {
     await expect(haltPurchasing(priya.orgId, priya, 'because', db)).rejects.toThrow(ForbiddenError);
-    await expect(haltPurchasing(priya.orgId, dana, '   ', db)).rejects.toThrow(/reason is required/);
+    await expect(haltPurchasing(priya.orgId, shelley, '   ', db)).rejects.toThrow(/reason is required/);
   });
 });
 
@@ -387,13 +387,13 @@ describe('the audit trail, surfaced', () => {
         latestArrival: new Date(clock.now().getTime() + 47 * DAY),
         idempotencyKey: 'audit-reprice',
       },
-      dana,
+      shelley,
       deps,
     );
-    await runAgent(request.id, deps, dana);
+    await runAgent(request.id, deps, shelley);
     // Long enough that the offer is a corpse by the time the approver looks.
     clock.advanceMinutes(120);
-    // Marcus approves: Dana raised it, and nobody approves their own request.
+    // Marcus approves: Shelley raised it, and nobody approves their own request.
     await approveRequest(request.id, await actorFor('marcus@northwindrobotics.test'), deps);
 
     const trail = await getAuditTrail(request.id, db);

@@ -394,7 +394,7 @@ pnpm lint
 ```
 
 `DEV_ACTOR_EMAIL` in `.env.local` selects the acting user whenever Clerk is not
-configured. Seeded roles: `dana@` admin, `marcus@` travel_manager, `priya@` member.
+configured. Seeded roles: `shelley@` admin, `marcus@` travel_manager, `priya@` member.
 Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 
 ## Layout

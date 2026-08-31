@@ -104,8 +104,8 @@ async function main() {
     .values([
       {
         orgId: org.id,
-        email: 'dana@northwindrobotics.test',
-        fullName: 'Dana Whitfield',
+        email: 'shelley@northwindrobotics.test',
+        fullName: 'Shelley Shivers',
         title: 'Director, Field Marketing',
         role: 'admin',
         costCenterId: mkt.id,
@@ -182,7 +182,7 @@ async function main() {
       },
     ])
     .returning();
-  const [dana, marcus, priya, tomas, reese, ingrid] = people;
+  const [shelley, marcus, priya, tomas, reese, ingrid] = people;
 
   console.log('· shows');
   const [automate, medtech, packexpo, roboticsSummit] = await db
@@ -277,7 +277,7 @@ async function main() {
       decision: 'proposed',
       rationale:
         'Our largest source of qualified automotive and logistics leads two years running.',
-      decidedById: dana.id,
+      decidedById: shelley.id,
       decidedAt: at(-210),
     },
     {
@@ -285,7 +285,7 @@ async function main() {
       decision: 'committed',
       rationale:
         'Committed the 20x20 island. 2024 sourced $2.1M pipeline against $138k all-in; the island pays for itself at half that.',
-      decidedById: dana.id,
+      decidedById: shelley.id,
       decidedAt: at(-200),
     },
     {
@@ -301,7 +301,7 @@ async function main() {
       decision: 'committed',
       rationale:
         'Committed a 10x20 inline. Smaller bet than Automate, and the first year is a read on whether the audience converts.',
-      decidedById: dana.id,
+      decidedById: shelley.id,
       decidedAt: at(-52),
     },
     {
@@ -325,7 +325,7 @@ async function main() {
       decision: 'declined',
       rationale:
         'Declined: booth space rose 40% year over year and 2025 sourced $190k pipeline against $61k all-in — the worst ratio on the calendar. Revisit if we ship the developer SDK.',
-      decidedById: dana.id,
+      decidedById: shelley.id,
       decidedAt: at(-88),
     },
   ]);
@@ -360,7 +360,7 @@ async function main() {
       dueAt: at(38, 16),
       penaltyEstimateCents: 90_000,
       penaltyNote: 'Direct-to-show shipping plus off-target drayage if missed.',
-      ownerId: dana.id,
+      ownerId: shelley.id,
       confirmedAt: now,
     },
     {
@@ -465,12 +465,12 @@ async function main() {
   });
 
   await db.insert(s.showTasks).values([
-    task(automate.id, 'Sign booth space contract', 'legal', 'complete', dana.id, -40, 3, 0),
+    task(automate.id, 'Sign booth space contract', 'legal', 'complete', shelley.id, -40, 3, 0),
     task(automate.id, 'Confirm booth design & graphics', 'booth', 'complete', reese.id, -14, 3, 1),
     task(automate.id, 'Order show services (electrical, carpet, AV)', 'booth', 'in_progress', marcus.id, 26, 3, 2),
     task(automate.id, 'Book staff travel', 'travel', 'in_progress', marcus.id, 30, 3, 3),
     task(automate.id, 'Reserve hotel room block', 'lodging', 'complete', marcus.id, -8, 2, 4),
-    task(automate.id, 'Ship booth crate to advance warehouse', 'shipping', 'not_started', dana.id, 38, 3, 5),
+    task(automate.id, 'Ship booth crate to advance warehouse', 'shipping', 'not_started', shelley.id, 38, 3, 5),
     task(automate.id, 'Print new datasheets & case studies', 'collateral', 'in_progress', reese.id, 20, 2, 6),
     task(automate.id, 'Order branded swag', 'collateral', 'not_started', reese.id, 25, 1, 7),
     task(automate.id, 'Register booth staff badges', 'staffing', 'not_started', reese.id, 31, 2, 8),
@@ -490,7 +490,7 @@ async function main() {
     task(automate.id, 'Book customer dinner venue', 'marketing', 'in_progress', ingrid.id, 28, 1, 12),
     task(automate.id, 'Confirm lead capture app & licenses', 'follow_up', 'not_started', reese.id, 30, 3, 13),
     task(automate.id, 'Set post-show follow-up SLA with sales', 'follow_up', 'not_started', ingrid.id, 40, 2, 14),
-    task(automate.id, 'Reconcile show budget', 'budget', 'not_started', dana.id, 60, 1, 15),
+    task(automate.id, 'Reconcile show budget', 'budget', 'not_started', shelley.id, 60, 1, 15),
     task(
       automate.id,
       'Order branded lanyards for the whole show',
@@ -513,15 +513,15 @@ async function main() {
    * through `setTaskStatus`, so the seed exercises the real gate too.
    */
   console.log('· medtech checklist (real template applier)');
-  const danaActor: Actor = {
-    userId: dana.id,
-    orgId: dana.orgId,
-    email: dana.email,
-    fullName: dana.fullName,
-    role: dana.role,
-    costCenterId: dana.costCenterId,
+  const shelleyActor: Actor = {
+    userId: shelley.id,
+    orgId: shelley.orgId,
+    email: shelley.email,
+    fullName: shelley.fullName,
+    role: shelley.role,
+    costCenterId: shelley.costCenterId,
   };
-  await applyTemplate(danaActor, medtech.id, 'standard-exhibitor', now, db);
+  await applyTemplate(shelleyActor, medtech.id, 'standard-exhibitor', now, db);
 
   const medtechTasks = await db
     .select()
@@ -530,11 +530,11 @@ async function main() {
   const byKey = (key: string) =>
     medtechTasks.find((t) => t.templateKey === `standard-exhibitor:${key}`)!;
 
-  await setTaskStatus(danaActor, byKey('contract').id, 'complete', null, now, db);
-  await setTaskStatus(danaActor, byKey('budget-approved').id, 'complete', null, now, db);
-  await setTaskStatus(danaActor, byKey('goals').id, 'in_progress', null, now, db);
+  await setTaskStatus(shelleyActor, byKey('contract').id, 'complete', null, now, db);
+  await setTaskStatus(shelleyActor, byKey('budget-approved').id, 'complete', null, now, db);
+  await setTaskStatus(shelleyActor, byKey('goals').id, 'in_progress', null, now, db);
   await setTaskStatus(
-    danaActor,
+    shelleyActor,
     byKey('booth-design').id,
     'blocked',
     'New brand guidelines land in April; designing against the old ones would be thrown away.',
@@ -546,8 +546,8 @@ async function main() {
   // is what the screen should show. Only the ones somebody has actually picked up
   // get an owner.
   for (const [key, owner] of [
-    ['contract', dana],
-    ['budget-approved', dana],
+    ['contract', shelley],
+    ['budget-approved', shelley],
     ['goals', ingrid],
     ['booth-design', reese],
     ['room-block', marcus],
@@ -561,12 +561,12 @@ async function main() {
 
   console.log('· attendees');
   await db.insert(s.showAttendees).values([
-    { showId: automate.id, userId: dana.id, role: 'Show lead', status: 'confirmed', arrivesOn: at(50, 11), departsOn: at(55, 19) },
+    { showId: automate.id, userId: shelley.id, role: 'Show lead', status: 'confirmed', arrivesOn: at(50, 11), departsOn: at(55, 19) },
     { showId: automate.id, userId: priya.id, role: 'Technical demos', status: 'confirmed', arrivesOn: at(51, 14), departsOn: at(55, 18) },
     { showId: automate.id, userId: tomas.id, role: 'Technical demos', status: 'confirmed', arrivesOn: at(51, 16), departsOn: at(55, 18) },
     { showId: automate.id, userId: reese.id, role: 'Booth staff', status: 'confirmed', arrivesOn: at(50, 13), departsOn: at(55, 20) },
     { showId: automate.id, userId: ingrid.id, role: 'Executive', status: 'invited', arrivesOn: at(52, 8), departsOn: at(53, 19) },
-    { showId: medtech.id, userId: dana.id, role: 'Show lead', status: 'confirmed' },
+    { showId: medtech.id, userId: shelley.id, role: 'Show lead', status: 'confirmed' },
     { showId: medtech.id, userId: priya.id, role: 'Technical demos', status: 'invited' },
   ]);
 
@@ -585,11 +585,11 @@ async function main() {
     { shiftId: shifts[0].id, userId: reese.id },
     { shiftId: shifts[0].id, userId: ingrid.id },
     { shiftId: shifts[1].id, userId: tomas.id },
-    { shiftId: shifts[1].id, userId: dana.id },
+    { shiftId: shifts[1].id, userId: shelley.id },
     { shiftId: shifts[2].id, userId: priya.id },
     { shiftId: shifts[2].id, userId: tomas.id },
     { shiftId: shifts[3].id, userId: reese.id },
-    { shiftId: shifts[3].id, userId: dana.id },
+    { shiftId: shifts[3].id, userId: shelley.id },
   ]);
 
   console.log('· lodging');
@@ -608,7 +608,7 @@ async function main() {
     })
     .returning();
   await db.insert(s.lodgingGuests).values([
-    { lodgingId: hotel.id, userId: dana.id },
+    { lodgingId: hotel.id, userId: shelley.id },
     { lodgingId: hotel.id, userId: priya.id },
     { lodgingId: hotel.id, userId: tomas.id },
     { lodgingId: hotel.id, userId: reese.id },
@@ -631,7 +631,7 @@ async function main() {
     .returning();
   await db.insert(s.sideEventRsvps).values([
     { sideEventId: dinner.id, userId: ingrid.id, status: 'accepted' },
-    { sideEventId: dinner.id, userId: dana.id, status: 'accepted' },
+    { sideEventId: dinner.id, userId: shelley.id, status: 'accepted' },
     { sideEventId: dinner.id, guestName: 'Alicia Ferrer', guestCompany: 'Grantham Automotive', status: 'accepted' },
     { sideEventId: dinner.id, guestName: 'Ken Ogawa', guestCompany: 'Lakeside Packaging', status: 'invited' },
   ]);
@@ -697,7 +697,7 @@ async function main() {
     },
     {
       showId: automate.id,
-      userId: dana.id,
+      userId: shelley.id,
       airlineCode: 'AA',
       airlineName: 'American Airlines',
       flightNumber: '318',

@@ -94,7 +94,7 @@ Over the auto-approve band, it escalates — and then the hard case:
 ━━ 2. Over the auto-approve band → escalated, offer dies, re-priced on approval ━━
 
     escalate           offers_found → pending_approval  $1,284.90 is above the $1,200 auto-approve threshold
-    approval           ·                                dana@ approved up to $1284.90 — the offer had expired, re-searching
+    approval           ·                                shelley@ approved up to $1284.90 — the offer had expired, re-searching
     re_search          pending_approval → searching     Re-searching against the approved ceiling of $1284.90
     offers_found       searching → offers_found         Re-search found off_…Intl at $1284.90
     reprice_accepted   ·                                Re-priced at $1284.90, within the approved $1284.90
@@ -176,7 +176,7 @@ pnpm test              # 231 tests; no keys, no network, no browser
 ```
 
 `DEV_ACTOR_EMAIL` in `.env.local` selects the acting user whenever Clerk is not
-configured. Seeded roles: `dana@` admin, `marcus@` travel manager, `priya@` member. Set
+configured. Seeded roles: `shelley@` admin, `marcus@` travel manager, `priya@` member. Set
 both Clerk keys and the same seam serves real sessions instead — and stops consulting
 `DEV_ACTOR_EMAIL` entirely, because a dev fallback that survives into a configured
 deployment is a back door.

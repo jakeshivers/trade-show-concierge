@@ -176,8 +176,8 @@ async function scenarioApprovalAfterExpiry() {
 
   // The offer had a 30-minute life and the approver went to lunch.
   clock.advanceMinutes(120);
-  const dana = await actorFor('dana@northwindrobotics.test');
-  const approved = await approveRequest(request.id, dana, deps(clock));
+  const shelley = await actorFor('shelley@northwindrobotics.test');
+  const approved = await approveRequest(request.id, shelley, deps(clock));
 
   console.log();
   await trace(request.id);
@@ -266,14 +266,14 @@ async function scenarioKillSwitch() {
   console.log('\n━━ 5. Kill switch — an admin halts purchasing, and nothing is bought or lost ━━\n');
   const clock = new Clock(new Date());
   const d = deps(clock);
-  const dana = await actorFor('dana@northwindrobotics.test');
+  const shelley = await actorFor('shelley@northwindrobotics.test');
   const priya = await actorFor('priya@northwindrobotics.test');
   const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
   if (!show?.moveInAt) throw new Error('Seed is missing Automate 2026 move-in time');
   const day = 86_400_000;
 
-  await haltPurchasing(dana.orgId, dana, 'Fare feed looked wrong at 09:12', db, clock.now);
-  console.log('    dana@ halted purchasing: "Fare feed looked wrong at 09:12"');
+  await haltPurchasing(shelley.orgId, shelley, 'Fare feed looked wrong at 09:12', db, clock.now);
+  console.log('    shelley@ halted purchasing: "Fare feed looked wrong at 09:12"');
 
   const request = await submitTravelRequest(
     {
@@ -297,8 +297,8 @@ async function scenarioKillSwitch() {
   await trace(request.id);
 
   clock.advanceMinutes(30);
-  await resumePurchasing(dana.orgId, dana, 'Feed verified against the carrier', db, clock.now);
-  console.log('\n    dana@ resumed purchasing; the queued request is approved normally');
+  await resumePurchasing(shelley.orgId, shelley, 'Feed verified against the carrier', db, clock.now);
+  console.log('\n    shelley@ resumed purchasing; the queued request is approved normally');
 
   const marcus = await actorFor('marcus@northwindrobotics.test');
   const booked = await approveRequest(request.id, marcus, deps(clock));
@@ -318,7 +318,7 @@ async function scenarioCreditFirst() {
   const clock = new Clock(new Date());
   const d = deps(clock);
   const marcus = await actorFor('marcus@northwindrobotics.test');
-  const dana = await actorFor('dana@northwindrobotics.test');
+  const shelley = await actorFor('shelley@northwindrobotics.test');
   const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
   const tomas = await db.query.users.findFirst({
     where: eq(s.users.email, 'tomas@northwindrobotics.test'),
@@ -353,7 +353,7 @@ async function scenarioCreditFirst() {
   await runAgent(request.id, d, marcus);
   // The same request the auto-book scenario waved through, escalated purely
   // because the traveler is holding money the org would otherwise re-spend.
-  const approved = await approveRequest(request.id, dana, d);
+  const approved = await approveRequest(request.id, shelley, d);
   await trace(request.id);
 
   const alerts = await db

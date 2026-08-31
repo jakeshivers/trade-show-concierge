@@ -142,7 +142,7 @@ function NoDevActor() {
         <code>.env.local</code> — and it is unset, or names nobody in the database.
       </p>
       <p>
-        Seeded accounts: <code>dana@northwindrobotics.test</code> (admin),{' '}
+        Seeded accounts: <code>shelley@northwindrobotics.test</code> (admin),{' '}
         <code>marcus@northwindrobotics.test</code> (travel manager),{' '}
         <code>priya@northwindrobotics.test</code> (member). Run <code>pnpm db:reset</code> if
         the database is empty.

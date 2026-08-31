@@ -56,9 +56,9 @@ describe('seed', () => {
 
 describe('getActor seam', () => {
   it('resolves a seeded dev actor', async () => {
-    process.env.DEV_ACTOR_EMAIL = 'dana@northwindrobotics.test';
+    process.env.DEV_ACTOR_EMAIL = 'shelley@northwindrobotics.test';
     const actor = await getActor();
-    expect(actor.fullName).toBe('Dana Whitfield');
+    expect(actor.fullName).toBe('Shelley Shivers');
     expect(actor.role).toBe('admin');
     expect(isAdmin(actor)).toBe(true);
   });
@@ -95,7 +95,7 @@ describe('separation of duties', () => {
   });
 
   it('never lets an impersonating admin approve', async () => {
-    process.env.DEV_ACTOR_EMAIL = 'dana@northwindrobotics.test';
+    process.env.DEV_ACTOR_EMAIL = 'shelley@northwindrobotics.test';
     const admin = await getActor();
     expect(canApproveRequestFor(admin, member.userId)).toBe(true);
 

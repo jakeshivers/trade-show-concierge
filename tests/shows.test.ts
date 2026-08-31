@@ -34,17 +34,17 @@ async function actorFor(email: string): Promise<Actor> {
   return getActor();
 }
 
-let dana: Actor;
+let shelley: Actor;
 let marcus: Actor;
 let priya: Actor;
 let automateId: string;
 
 beforeAll(async () => {
-  dana = await actorFor('dana@northwindrobotics.test');
+  shelley = await actorFor('shelley@northwindrobotics.test');
   marcus = await actorFor('marcus@northwindrobotics.test');
   priya = await actorFor('priya@northwindrobotics.test');
 
-  const shows = await listShows(dana);
+  const shows = await listShows(shelley);
   automateId = shows.find((sh) => sh.name === 'Automate 2026')!.id;
 });
 
@@ -65,7 +65,7 @@ describe('listShows', () => {
   });
 
   it('scores readiness from the tasks, not from the status column', async () => {
-    const shows = await listShows(dana);
+    const shows = await listShows(shelley);
     const automate = shows.find((sh) => sh.id === automateId)!;
     expect(automate.taskCount).toBeGreaterThan(0);
     // A breakdown, not a bare number, as of step 10 — see lib/readiness/score.ts.
@@ -88,7 +88,7 @@ describe('show detail visibility', () => {
     expect(detail.travelNarrowed).toBe(true);
     expect(detail.flights.length).toBeGreaterThan(0);
     expect(detail.flights.every((f) => f.traveler.id === priya.userId)).toBe(true);
-    expect(seesTraveler(priya, dana.userId)).toBe(false);
+    expect(seesTraveler(priya, shelley.userId)).toBe(false);
   });
 
   it('still shows a member the show-wide planning facts', async () => {
@@ -113,7 +113,7 @@ describe('show detail visibility', () => {
       })
       .returning();
 
-    await expect(getShowDetail(dana, foreign.id)).rejects.toThrow(NotFoundError);
+    await expect(getShowDetail(shelley, foreign.id)).rejects.toThrow(NotFoundError);
     await db.delete(s.organizations).where(eq(s.organizations.id, other.id));
   });
 });
@@ -158,7 +158,7 @@ describe('intake', () => {
   });
 
   it('lets an admin commit a prospect and keeps the reasoning', async () => {
-    const { id } = await createProspect(dana, {
+    const { id } = await createProspect(shelley, {
       name: 'Commitable Show 2027',
       startsOn: '2027-09-01',
       endsOn: '2027-09-03',
@@ -167,16 +167,16 @@ describe('intake', () => {
     });
     created.push(id);
 
-    await decideShow(dana, id, 'committed', 'Budget approved out of the field marketing line.');
+    await decideShow(shelley, id, 'committed', 'Budget approved out of the field marketing line.');
     const show = await db.query.shows.findFirst({ where: eq(s.shows.id, id) });
     expect(show!.status).toBe('committed');
 
-    const decisions = await listDecisions(dana, id);
+    const decisions = await listDecisions(shelley, id);
     expect(decisions.map((d) => d.decision.decision)).toEqual(['committed', 'proposed']);
   });
 
   it('keeps a declined show rather than deleting it', async () => {
-    const { id } = await createProspect(dana, {
+    const { id } = await createProspect(shelley, {
       name: 'Declinable Show 2027',
       startsOn: '2027-10-01',
       endsOn: '2027-10-03',
@@ -186,7 +186,7 @@ describe('intake', () => {
     created.push(id);
 
     await decideShow(
-      dana,
+      shelley,
       id,
       'declined',
       'Booth space doubled and last year sourced almost nothing. Revisit in 2029.',
@@ -195,13 +195,13 @@ describe('intake', () => {
     const show = await db.query.shows.findFirst({ where: eq(s.shows.id, id) });
     expect(show).toBeDefined();
     expect(show!.status).toBe('cancelled');
-    const [latest] = await listDecisions(dana, id);
+    const [latest] = await listDecisions(shelley, id);
     expect(latest.decision.decision).toBe('declined');
     expect(latest.decision.rationale).toContain('sourced almost nothing');
   });
 
   it('will not let a travel manager decide, or an admin decide without a reason', async () => {
-    const { id } = await createProspect(dana, {
+    const { id } = await createProspect(shelley, {
       name: 'Guarded Show 2027',
       startsOn: '2027-11-01',
       endsOn: '2027-11-03',
@@ -213,12 +213,12 @@ describe('intake', () => {
     await expect(decideShow(marcus, id, 'committed', 'A perfectly good reason string.')).rejects.toThrow(
       ForbiddenError,
     );
-    await expect(decideShow(dana, id, 'committed', 'ok')).rejects.toThrow(ForbiddenError);
+    await expect(decideShow(shelley, id, 'committed', 'ok')).rejects.toThrow(ForbiddenError);
   });
 
   it('refuses to re-decide a show that is already underway', async () => {
     await expect(
-      decideShow(dana, automateId, 'declined', 'Changed our minds about the whole thing.'),
+      decideShow(shelley, automateId, 'declined', 'Changed our minds about the whole thing.'),
     ).rejects.toThrow(IntakeError);
   });
 });

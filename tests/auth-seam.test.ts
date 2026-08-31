@@ -35,7 +35,7 @@ vi.mock('@clerk/nextjs/server', () => ({
 }));
 
 const db = getDb();
-const ADMIN = 'dana@northwindrobotics.test';
+const ADMIN = 'shelley@northwindrobotics.test';
 const MEMBER = 'priya@northwindrobotics.test';
 
 async function userByEmail(email: string) {
@@ -110,12 +110,12 @@ describe('which side of the seam is live', () => {
 describe('mapping a Clerk session onto a provisioned user', () => {
   it('links by verified email on first sign-in and by id thereafter', async () => {
     useClerk();
-    signedInAs('user_clerk_dana', ADMIN);
+    signedInAs('user_clerk_shelley', ADMIN);
 
     const actor = await getActor();
     expect(actor.email).toBe(ADMIN);
     // The link is written once...
-    expect((await userByEmail(ADMIN)).clerkUserId).toBe('user_clerk_dana');
+    expect((await userByEmail(ADMIN)).clerkUserId).toBe('user_clerk_shelley');
 
     // ...and the second request is an id lookup: no Backend API call at all.
     getUser.mockReset();
@@ -143,7 +143,7 @@ describe('mapping a Clerk session onto a provisioned user', () => {
 
   it('refuses a second Clerk account claiming an already-linked user', async () => {
     useClerk();
-    signedInAs('user_clerk_dana', ADMIN);
+    signedInAs('user_clerk_shelley', ADMIN);
     await getActor();
 
     signedInAs('user_clerk_impostor', ADMIN);
@@ -154,7 +154,7 @@ describe('mapping a Clerk session onto a provisioned user', () => {
 describe('the login-method gate at the seam', () => {
   it('costs an unrestricted org nothing', async () => {
     useClerk();
-    signedInAs('user_clerk_dana', ADMIN);
+    signedInAs('user_clerk_shelley', ADMIN);
     await getActor();
     getUser.mockClear();
 

@@ -38,7 +38,7 @@ function source(overrides: Partial<CloneSource> = {}): CloneSource {
         title: 'Sign booth space contract',
         description: null,
         category: 'legal',
-        assigneeId: 'user-dana',
+        assigneeId: 'user-shelley',
         dueOn: at('2026-04-20T17:00:00'),
         weight: 3,
         sortOrder: 0,

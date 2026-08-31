@@ -40,7 +40,7 @@ async function actorFor(email: string): Promise<Actor> {
   return getActor();
 }
 
-let dana: Actor;
+let shelley: Actor;
 let marcus: Actor;
 let priya: Actor;
 
@@ -53,7 +53,7 @@ const deps = (at: Date): AgentDeps => ({
 });
 
 beforeAll(async () => {
-  dana = await actorFor('dana@northwindrobotics.test');
+  shelley = await actorFor('shelley@northwindrobotics.test');
   marcus = await actorFor('marcus@northwindrobotics.test');
   priya = await actorFor('priya@northwindrobotics.test');
 
@@ -140,14 +140,14 @@ describe('listRequests — visibility', () => {
   });
 
   it('filters by status when asked', async () => {
-    const waiting = await listRequests(dana, { scope: 'all', statuses: ['pending_approval'] }, db);
+    const waiting = await listRequests(shelley, { scope: 'all', statuses: ['pending_approval'] }, db);
     for (const r of waiting) expect(r.status).toBe('pending_approval');
   });
 });
 
 describe('the standing of each offer travels with the row', () => {
   it('marks the seeded escalated request as expired and therefore a ceiling', async () => {
-    const queue = await approvalsQueue(dana, db);
+    const queue = await approvalsQueue(shelley, db);
     const lhr = queue.find((r) => r.destinationAirport === 'LHR');
     expect(lhr, 'the fixtures leave one request awaiting approval').toBeDefined();
 
@@ -159,15 +159,15 @@ describe('the standing of each offer travels with the row', () => {
   });
 
   it('reports an age measured from one instant, not from the clock at render', async () => {
-    const rows = await listRequests(dana, { scope: 'all' }, db);
+    const rows = await listRequests(shelley, { scope: 'all' }, db);
     for (const r of rows) expect(r.ageMs).toBeGreaterThanOrEqual(0);
   });
 });
 
 describe('loadRequest — org scoping', () => {
   it('loads a request the actor may see', async () => {
-    const [first] = await listRequests(dana, { scope: 'all' }, db);
-    const loaded = await loadRequest(dana, first.id, db);
+    const [first] = await listRequests(shelley, { scope: 'all' }, db);
+    const loaded = await loadRequest(shelley, first.id, db);
     expect(loaded.request.id).toBe(first.id);
   });
 
@@ -183,7 +183,7 @@ describe('loadRequest — org scoping', () => {
 
   it('refuses an id that is not in this workspace', async () => {
     await expect(
-      loadRequest(dana, '00000000-0000-0000-0000-000000000000', db),
+      loadRequest(shelley, '00000000-0000-0000-0000-000000000000', db),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

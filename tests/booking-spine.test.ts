@@ -54,14 +54,14 @@ async function actorFor(email: string): Promise<Actor> {
 
 let priya: Actor;
 let marcus: Actor;
-let dana: Actor;
+let shelley: Actor;
 let ingridId: string;
 let automate: typeof s.shows.$inferSelect;
 
 beforeAll(async () => {
   priya = await actorFor('priya@northwindrobotics.test');
   marcus = await actorFor('marcus@northwindrobotics.test');
-  dana = await actorFor('dana@northwindrobotics.test');
+  shelley = await actorFor('shelley@northwindrobotics.test');
 
   const ingrid = await db.query.users.findFirst({
     where: eq(s.users.email, 'ingrid@northwindrobotics.test'),
@@ -298,7 +298,7 @@ describe('over the band: escalation and approval', () => {
 
   it('enforces separation of duties — you cannot approve what you asked for', async () => {
     const clock = new Clock(new Date());
-    // Only the premium-economy fare is on offer, so Dana's own request has to
+    // Only the premium-economy fare is on offer, so Shelley's own request has to
     // go to somebody for a decision.
     const { holdableOffer } = await import('@/lib/integrations/flights/duffel/fixtures');
     const deps = depsFor(clock, new RecordedFlightProvider({ now: clock.now, payloads: [holdableOffer] }));
@@ -312,13 +312,13 @@ describe('over the band: escalation and approval', () => {
         latestArrival: automate.moveInAt!,
         idempotencyKey: 'esc-2',
       },
-      dana,
+      shelley,
       deps,
     );
-    const escalated = await runAgent(request.id, deps, dana);
+    const escalated = await runAgent(request.id, deps, shelley);
     expect(escalated.status).toBe('pending_approval');
 
-    await expect(approveRequest(request.id, dana, deps)).rejects.toThrow(ForbiddenError);
+    await expect(approveRequest(request.id, shelley, deps)).rejects.toThrow(ForbiddenError);
   });
 
   it('books on approval while the offer is still alive', async () => {
@@ -328,7 +328,7 @@ describe('over the band: escalation and approval', () => {
     await runAgent(request.id, deps, marcus);
 
     clock.advanceMinutes(5);
-    const approved = await approveRequest(request.id, dana, depsFor(clock));
+    const approved = await approveRequest(request.id, shelley, depsFor(clock));
 
     expect(approved.status).toBe('ticketed');
     const [approval] = await db
@@ -346,7 +346,7 @@ describe('over the band: escalation and approval', () => {
     const request = await submitInternational(clock, deps, 'esc-4');
     await runAgent(request.id, deps, marcus);
 
-    const rejected = await rejectRequest(request.id, dana, 'Take the Q3 trip instead', deps);
+    const rejected = await rejectRequest(request.id, shelley, 'Take the Q3 trip instead', deps);
     expect(rejected.status).toBe('rejected');
 
     const [approval] = await db
@@ -394,7 +394,7 @@ describe('the offer dies while the approver sleeps', () => {
 
     // Duffel offers live about thirty minutes. Approval queues live overnight.
     clock.advanceMinutes(120);
-    const approved = await approveRequest(request.id, dana, depsFor(clock));
+    const approved = await approveRequest(request.id, shelley, depsFor(clock));
 
     expect(approved.status).toBe('ticketed');
     const [approval] = await db
@@ -431,7 +431,7 @@ describe('the offer dies while the approver sleeps', () => {
     await runAgent(request.id, depsFor(clock, provider), marcus);
 
     clock.advanceMinutes(120);
-    const outcome = await approveRequest(request.id, dana, depsFor(clock, provider));
+    const outcome = await approveRequest(request.id, shelley, depsFor(clock, provider));
 
     // The approval was for an amount, not for an offer id — and $1,499 is not
     // the $1,284.90 anyone signed off on.
@@ -457,7 +457,7 @@ describe('the offer dies while the approver sleeps', () => {
     await runAgent(request.id, depsFor(clock, provider), marcus);
 
     clock.advanceMinutes(120);
-    const outcome = await approveRequest(request.id, dana, depsFor(clock, provider));
+    const outcome = await approveRequest(request.id, shelley, depsFor(clock, provider));
 
     expect(outcome.status).toBe('ticketed');
     expect(outcome.booking?.chargedCents).toBe(110_000);
@@ -506,7 +506,7 @@ describe('safety rails', () => {
 
     try {
       clock.advanceMinutes(5);
-      await expect(approveRequest(request.id, dana, depsFor(clock))).rejects.toThrow(
+      await expect(approveRequest(request.id, shelley, depsFor(clock))).rejects.toThrow(
         HardCeilingError,
       );
       expect(await db.select().from(s.bookings)).toHaveLength(0);

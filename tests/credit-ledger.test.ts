@@ -91,7 +91,7 @@ async function actorFor(email: string): Promise<Actor> {
   return getActor();
 }
 
-let dana: Actor;
+let shelley: Actor;
 let marcus: Actor;
 let priya: Actor;
 let tomasId: string;
@@ -99,10 +99,10 @@ let orgId: string;
 let automate: typeof s.shows.$inferSelect;
 
 beforeAll(async () => {
-  dana = await actorFor('dana@northwindrobotics.test');
+  shelley = await actorFor('shelley@northwindrobotics.test');
   marcus = await actorFor('marcus@northwindrobotics.test');
   priya = await actorFor('priya@northwindrobotics.test');
-  orgId = dana.orgId;
+  orgId = shelley.orgId;
   const tomas = await db.query.users.findFirst({
     where: eq(s.users.email, 'tomas@northwindrobotics.test'),
   });
@@ -197,7 +197,7 @@ async function submitForTomas(deps: AgentDeps, key: string) {
       latestArrival: automate.moveInAt!,
       idempotencyKey: key,
     },
-    // Marcus books it, Dana approves it: an approver may not sign off on a
+    // Marcus books it, Shelley approves it: an approver may not sign off on a
     // request they raised themselves.
     marcus,
     deps,
@@ -269,7 +269,7 @@ describe('the agent checks the pool before spending', () => {
     const clock = new Clock(new Date());
     const request = await submitForTomas(depsFor(clock), 'cr-audit');
     await runAgent(request.id, depsFor(clock), marcus);
-    await approveRequest(request.id, dana, depsFor(clock));
+    await approveRequest(request.id, shelley, depsFor(clock));
 
     const check = await db.query.agentRuns.findFirst({
       where: and(eq(s.agentRuns.travelRequestId, request.id), eq(s.agentRuns.step, 'credit_check')),
@@ -287,7 +287,7 @@ describe('the agent checks the pool before spending', () => {
     const clock = new Clock(new Date());
     const request = await submitForTomas(depsFor(clock), 'cr-alert');
     await runAgent(request.id, depsFor(clock), marcus);
-    await approveRequest(request.id, dana, depsFor(clock));
+    await approveRequest(request.id, shelley, depsFor(clock));
 
     const alerts = await db.select().from(s.alerts);
     const unreachable = alerts.filter((a) => a.dedupeKey.includes(':unreachable:'));
@@ -300,7 +300,7 @@ describe('the agent checks the pool before spending', () => {
     const clock = new Clock(new Date());
     const request = await submitForTomas(depsFor(clock), 'cr-dryrun');
     await runAgent(request.id, depsFor(clock), marcus);
-    await approveRequest(request.id, dana, depsFor(clock));
+    await approveRequest(request.id, shelley, depsFor(clock));
 
     const entries = await db
       .select()
@@ -347,7 +347,7 @@ describe('settling the ledger against a real purchase', () => {
 
     const request = await submitForTomas(deps, 'cr-live');
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
+    await approveRequest(request.id, shelley, deps);
 
     expect(spy.purchases[0].creditIds).toEqual(['acr_dl_redeemable']);
 
@@ -378,7 +378,7 @@ describe('settling the ledger against a real purchase', () => {
 
     const request = await submitForTomas(deps, 'cr-partial');
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
+    await approveRequest(request.id, shelley, deps);
 
     const dl = await db.query.ticketCredits.findFirst({
       where: eq(s.ticketCredits.airlineCode, 'DL'),
@@ -394,7 +394,7 @@ describe('settling the ledger against a real purchase', () => {
 
     const request = await submitForTomas(deps, 'cr-discrepancy');
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
+    await approveRequest(request.id, shelley, deps);
 
     expect(await stepsOf(request.id)).toContain('credit_discrepancy');
     const dl = await db.query.ticketCredits.findFirst({
@@ -411,7 +411,7 @@ describe('settling the ledger against a real purchase', () => {
 
     const request = await submitForTomas(deps, 'cr-audit-trail');
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
+    await approveRequest(request.id, shelley, deps);
 
     const { getAuditTrail, renderAuditTrail } = await import('@/lib/travel/audit');
     const trail = await getAuditTrail(request.id, db);
@@ -427,8 +427,8 @@ describe('settling the ledger against a real purchase', () => {
 
     const request = await submitForTomas(deps, 'cr-cancel');
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
-    await cancelRequest(request.id, dana, 'show pulled', deps);
+    await approveRequest(request.id, shelley, deps);
+    await cancelRequest(request.id, shelley, 'show pulled', deps);
 
     const dl = await db.query.ticketCredits.findFirst({
       where: eq(s.ticketCredits.airlineCode, 'DL'),
@@ -487,7 +487,7 @@ describe('issuing a credit from a cancelled ticket', () => {
     const deps = depsFor(clock, { live: true, provider: spy });
     const request = await submitForTomas(deps, `issue-${Math.random()}`);
     await runAgent(request.id, deps, marcus);
-    await approveRequest(request.id, dana, deps);
+    await approveRequest(request.id, shelley, deps);
     return (await db.query.bookings.findFirst({
       where: eq(s.bookings.travelRequestId, request.id),
     }))!;
