@@ -1,7 +1,13 @@
 # UI rework — the case, the plan, and the one decision it needs
 
-**Status:** approved, not started · **Written:** after step 12 (2026-08-30) ·
-**Updated:** 2026-08-31 with the foundation survey and the scope call · **Gates:** nothing
+**Status:** tranches 1–4 shipped · **Written:** after step 12 (2026-08-30) ·
+**Updated:** 2026-08-31 with the foundation survey, the scope call, and the results of
+tranches 1–4 · **Gates:** nothing
+
+> **Where this stands.** Tranches 1–4 (the plumbing plus the §2a defect) are committed and
+> verified: `pnpm typecheck && lint && test` green at 441 tests, `pnpm smoke` 17/17.
+> Tranches 5–8 (tokens, the shell, the component vocabulary, the sweep) are the visual half
+> and have not started. §10 records what the work found that this plan did not predict.
 
 > **Decision made (2026-08-31): option B — the plumbing tranches *and* a visual pass.**
 > Brief: "modern, bright colors, easy to navigate." §4 below argued for deferring the
@@ -359,3 +365,69 @@ here and belongs in its own commit with its own reasoning. A refactor that quiet
 what a screen permits is indistinguishable from a bug six months later, and this app's
 permission split (`readiness/access.ts`, `deadlines/access.ts`, `team/access.ts` — the same
 line found three times from three directions) is the part least safe to disturb by accident.
+
+
+---
+
+## 10. What tranches 1–4 found that this document did not predict
+
+Written as they landed, because each one corrects a measurement in §2.
+
+**1. `FormState`'s drift had a third victim, and "verbatim" duplication was not
+verbatim.** Two of the helpers that looked identical across five files were not.
+`travel/actions.ts`'s `asFormError` carries an extra branch that renders any `Error` with a
+message — the booking agent throws bare `Error`s for real, explainable conditions — and
+folding it into the shared helper silently would have made four other screens swallow their
+next genuine bug. Its `str` trims and the other four do not, which matters because an
+airport code with a trailing space is a failed search. Both are kept, named, with the reason
+at the definition. **Read a "verbatim" copy twice before deleting it.**
+
+**2. `refresh` should not be shared, and §3 was wrong to list it.** Each tab's revalidation
+set differs in load-bearing ways — lodging revalidates the deadline register because a room
+block cutoff owns a row in it, team revalidates lodging because un-staffing moves a room
+assignment. A shared version would take the paths as an argument, which is `revalidatePath`.
+
+**3. `Field` was duplicated too, and had already drifted in a way that matters.**
+`shows/new` renders the hint *above* the control and `travel/new` *below* it. Not cosmetic:
+several hints carry the only warning a person gets about something this codebase treats as
+a correctness rule ("deadlines are read in the show's local time, not yours"), and a
+warning printed under the box you have already typed in is decoration. The shared `Field`
+puts the hint first.
+
+**4. §2b undercounted the date helper. There were four copies, not two.** `iso` (team),
+`local` (lodging), `dateInput` (checklist), `localPart` (deadline register) — four
+hand-rolled `Intl.formatToParts` calls, none tested. `lib/datetime/zoned.ts` now owns
+`zonedDateInput` / `zonedTimeInput` / `zonedDateTimeInput`, all derived from
+`instantToZoned`, with five tests including one that asserts the `toISOString().slice(0,10)`
+failure directly so the reason cannot be refactored away by somebody who reads the helpers
+as trivial. `<ZonedDateTime>` labels itself with the zone, read **at the instant being
+edited** rather than at now — a shift in July is CDT and one in January is CST.
+
+**5. The smoke check had to stop asking the database which travel request exists.**
+`limit(1)` off `travel_requests` is not the same set as what `/travel` links to, because
+`travelerScope` narrows the queue to the acting user unless they can approve. The script
+404'd intermittently on a row that was correctly refused. A smoke check that fails on
+correct authorization is one people learn to ignore, which would have made the whole safety
+net worthless by tranche 8. It now reads the id out of the approvals queue.
+
+**6. The §2a defect has a second half, in `src/lib`, and it is still open.** ← *needs a call*
+
+`RosterEntry.isSelf` and the separate "Record Tomás's answer" control fix what the *screen*
+claimed. But the ground rule says: *"Only the person confirms their own attendance …
+Coverage counts confirmations, so one typed on somebody's behalf is hearsay inside a
+staffing number."* The store honours the first half — `respondToInvitation` stamps
+`responded_at` only when `attendee.userId === actor.userId`. **`standingFor` never reads
+`responded_at`.** It branches on `attendeeStatus !== 'confirmed'` alone
+(`src/lib/team/coverage.ts:126`), so a status of `confirmed` typed by an admin — through the
+proxy control, or through the roster Edit form, which also carries a status select — yields
+"Confirmed and in town" and **counts toward booth coverage**, with `responded_at` still
+null recording that the subject never answered.
+
+So the hearsay the ground rule forbids does reach the staffing number today. It was not
+caused by this work and is not fixed by it.
+
+It is left open deliberately, because it is a domain decision rather than a refactor: making
+`standingFor` require `responded_at` adds a fifth `Standing` kind ("recorded by somebody
+else, not confirmed by them"), changes coverage numbers on existing data, and touches
+`SCOPE.md` §5e and the seed. That belongs in its own step with its own argument, not inside
+a UI tranche whose one rule is that behaviour does not change.

@@ -1102,3 +1102,23 @@ the benefit of the model without the setup cost blocking the spine.
     that gets more expensive with every step and the only one that makes step 13 cheaper.
     A visual pass is worth deferring past steps 13, 16 and especially 19 (the offline PWA),
     which is a change to how the client works rather than a reskin.
+
+    **Update 2026-08-31 — tranches 1–4 shipped.** One `FormState` and one set of form
+    helpers; one input / message / submit vocabulary in `_components/form-ui.tsx`; the
+    zone→input formatting moved into `lib/datetime/zoned.ts` where it is finally tested
+    (there were **four** hand-rolled copies, not the two this was scoped against);
+    `team/forms.tsx` split along the three cards the page renders; and the §2a defect fixed
+    — an admin no longer gets a first-person "I'm going" form on every colleague's row.
+    `pnpm smoke` is new and checks all 17 routes render. Tranches 5–8 (the visual half) are
+    not started. `UI-REWORK.md` §10 lists what the work found that the plan did not predict.
+
+12. **Should booth coverage count a confirmation the subject never made?** Found while
+    fixing §11.11's roster defect, and **not fixed** because it is a domain call, not a
+    refactor. §5e and the ground rules both say a confirmation typed on somebody's behalf is
+    hearsay inside a staffing number, and `respondToInvitation` honours that — it stamps
+    `responded_at` only when the subject is the actor. But `standingFor`
+    (`src/lib/team/coverage.ts:126`) branches on `attendeeStatus !== 'confirmed'` alone and
+    never reads `responded_at`, so an admin-typed `confirmed` renders as "Confirmed and in
+    town" and counts. Requiring `responded_at` would add a fifth `Standing` kind ("recorded
+    by somebody else"), move coverage numbers on existing data, and touch the seed — its own
+    step, with its own argument. `UI-REWORK.md` §10 item 6.

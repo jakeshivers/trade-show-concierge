@@ -56,7 +56,7 @@ know the difference between money at risk and money already spent; and team & lo
 writable roster whose booth coverage refuses to count anybody who has not confirmed or is
 not in town, cross-show double-booking compared on travel windows, side events with guest
 lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
-clock. 431 tests, no keys required.
+clock. 441 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -296,15 +296,59 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Open alongside the build order (approved, not started):** `UI-REWORK.md` — the app layer has grown by
-copy-paste since step 8 (correctly; `ui.tsx` said to wait for ten screens, and there are
-now 16). Step 12 produced the fourth and fifth copies and duplicated one zone-formatting
-helper twice within itself, which is the signal. It gates nothing and can be done before or
-after step 13, but it gets more expensive every step and it carries one real defect — the
-roster offers an admin a first-person "I'm going" form on every colleague's row. Needs a
-scope call; see `SCOPE.md` §11.11. **Resolved 2026-08-31: option B — consolidation plus a
-full visual pass.** The foundation survey in its §6 is the part that would be expensive to
-re-derive.
+**Open alongside the build order — `UI-REWORK.md`, tranches 1–4 done, 5–8 not started.**
+Option B was chosen (consolidation *plus* a full visual pass; brief "modern, bright colors,
+easy to navigate"). The plumbing half has shipped:
+
+- **`_components/form.ts`** — one `FormState` (`{ error?, ok? }`) plus `formErrorFrom`,
+  `optional`, `str`. It had been declared in five files and drifted into three shapes.
+  Dependency-free on purpose: client components import the type, so it must not pull
+  `next/cache`. `refresh` is deliberately **not** shared — each tab's revalidation set
+  differs in load-bearing ways.
+- **`_components/form-ui.tsx`** — `Input`/`Select`/`Textarea` (two named densities,
+  `compact` for a control inside a list row and `comfortable` for a page that is a form),
+  `Field`, `Message`, `Submit`, `QuietSubmit`, `ZonedDateTime`. `useActionState` stays at
+  all 42 call sites; only the markup around it is shared. `_components/cn.ts` is the
+  `clsx` + `tailwind-merge` pair that was already installed and unused.
+- **`lib/datetime/zoned.ts`** gained `zonedDateInput` / `zonedTimeInput` /
+  `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
+- **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
+  `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
+- **`pnpm smoke`** fetches all 17 routes against a running `pnpm dev` and checks 200 plus
+  a phrase only present once the page resolved its data.
+
+The §6 foundation survey (Tailwind v4 CSS-first, **no config file**, the `@theme inline`
+trap that breaks runtime dark mode, `lucide-react` installed and unused, `globals.css`
+still boilerplate with an Arial rule fighting Geist) is the part that would be expensive to
+re-derive, and tranche 5 depends on it. §10 is what tranches 1–4 found that the plan did
+not predict.
+
+**The four corrections tranches 1–4 turned up:**
+
+1. **"Verbatim" duplication was not verbatim, twice.** `travel/actions.ts`'s `asFormError`
+   carries an extra branch that renders any `Error` with a message — the booking agent
+   throws bare `Error`s for real explainable conditions — and its `str` trims where the
+   other four do not, which matters because an airport code with a trailing space is a
+   failed search. Folding either in silently would have made four other screens swallow
+   their next genuine bug. Both are kept and named. Read a "verbatim" copy twice before
+   deleting it.
+2. **The date helper had four copies, not the two the plan counted**, and none was tested.
+   `src/lib/datetime` was never the layer with the browser-zone bug; `src/app` was, four
+   times over, in the one place nothing was watching. `toISOString().slice(0, 10)` on a
+   5pm-Pacific due date returns *tomorrow*, so a round trip through the edit form moves the
+   deadline a day — the exact failure the §5a engine exists to prevent, arriving through
+   the form that edits it.
+3. **The §2a defect was one control serving two different acts.** The permission
+   (`mayRespond` = own row *or* an approver) was right and did not change; the framing was
+   wrong. Answering for yourself and recording what a colleague told you are different
+   acts, and a component given only a boolean cannot tell them apart. `RosterEntry.isSelf`
+   plus a separate third-person "Record Tomás's answer" control is the fix.
+4. **That defect has a second half, in `src/lib`, and it is still open.**
+   `standingFor` (`src/lib/team/coverage.ts:126`) branches on `attendeeStatus` alone and
+   never reads `responded_at`, so a `confirmed` typed by an admin still counts toward booth
+   coverage — the hearsay the ground rule forbids. Not fixed here: it adds a fifth
+   `Standing` kind, moves coverage numbers on existing data, and is a domain call rather
+   than a refactor. `SCOPE.md` §11.12.
 
 **Next:** step 13 — flight tracking (`SCOPE.md` §10 Phase C): a status provider behind the
 usual interface, a flight board, and delay alerts read against the show's move-in time. The
@@ -522,6 +566,7 @@ pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
+pnpm smoke        # fetch all 17 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -541,6 +586,10 @@ src/app/(app)/travel/        the request list, the form, the audit trail as a pa
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
+src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatting),
+                              form.ts (one FormState + FormData helpers, dependency-free),
+                              form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts
+src/app/(app)/shows/[id]/team/  roster-forms · shift-forms · side-event-forms, one per card
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
