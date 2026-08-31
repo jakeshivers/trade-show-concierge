@@ -15,6 +15,7 @@
     "booking:audit": "tsx scripts/booking-audit.ts",
     "credits": "tsx scripts/credits.ts",
     "deadlines": "tsx scripts/deadlines.ts",
+    "roster": "tsx scripts/team.ts",
     "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",
     "test": "vitest run",
     "test:watch": "vitest",

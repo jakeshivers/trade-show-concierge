@@ -37,7 +37,7 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
 
-**Done:** steps 1–11 — local Postgres + schema + `getActor()` seam; the policy engine;
+**Done:** steps 1–12 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
 request state machine with dry-run booking end to end; live purchasing behind the flag
 with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
@@ -45,9 +45,12 @@ to the seam with per-org login-method control and a first app shell; the plannin
 core — show list, show detail tabs, My Itinerary, cloning, and intake; the travel
 request UI with the approvals queue; readiness — a writable checklist, templates,
 scoring that refuses to call an unplanned show ready, and a portfolio ranked on pace;
-and the service manual deadline engine — a writable register and escalating alerts that
-know the difference between money at risk and money already spent. 387 tests, no keys
-required.
+the service manual deadline engine — a writable register and escalating alerts that
+know the difference between money at risk and money already spent; and team & lodging — a
+writable roster whose booth coverage refuses to count anybody who has not confirmed or is
+not in town, cross-show double-booking compared on travel windows, side events with guest
+lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
+clock. 431 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -57,6 +60,65 @@ that output before reading the code; it is the fastest way to understand the spi
 `pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
 `pnpm credits` prints the credit ledger, and `pnpm deadlines` prints the deadline register
 with the alerts the engine would send tonight, in the words it would send them.
+`pnpm roster` prints booth coverage across every show — every shift's target beside what it
+can *actually* field, the people it cannot count and why, and the shifts a naive roster
+count would have called full.
+
+**What step 12 added, and where:** `src/lib/team/` and `src/lib/lodging/`, split the way
+everything since step 8 has been. `team/coverage.ts` is pure and holds the whole argument:
+`standingFor` says whether one assigned person can actually work one slot (on the roster,
+confirmed, in town), `coverageFor` reports `assignedCount` beside `effectiveCount` and
+flags a shift **overstated** when a roster count would have called it full, and
+`planPersonalClashes` catches the booth shift that runs into the dinner. `team/conflicts.ts`
+is cross-show double-booking, compared on `arrives_on → departs_on` and marked `possible`
+rather than `certain` where it had to fall back to show dates. `team/edit.ts` is pure
+validation plus `describeDetachment` — the sentence naming what un-staffing somebody does
+*not* cancel. `team/access.ts` is the staff-vs-answer split. `lodging/edit.ts` refuses a
+cutoff that falls inside the stay; `lodging/store.ts` is where a cutoff derives its register
+row. Schema: `show_attendees.responded_at` + `updated_at`, `booth_shifts.updated_at`,
+`lodgings.cost_center_id` + `updated_at`, `side_events.cost_center_id` + `updated_at`,
+`show_deadlines.lodging_id` (unique), and a unique index on `(side_event_id, user_id)`.
+Screens: `/shows/[id]/team` is writable — invite, answer, re-window, shifts, assignment,
+check-in, side events, guest lists — and `/shows/[id]/lodging` is a new sixth tab.
+`pnpm roster` is the coverage model without a screen. The seed builds all of it **through
+the real stores**, and grew a fifth show (Sensors Converge, overlapping Automate) so both
+conflict cases are live.
+
+**The four corrections step 12 turned up:**
+
+1. **A roster count lies about the future the way a presence count reports the past.** §4
+   already keeps `booth_shift` and `shift_presence` apart because rostered ≠ present. There
+   is a third state in front of both: *assigned* is not *able to be there*. "3 of 3
+   assigned" counts rows in `shift_assignments`, and any of those three can be somebody who
+   never accepted, somebody who declined the show, somebody not on the roster at all, or
+   somebody whose flight lands after the shift starts — each a hole that renders as a
+   filled slot, and a filled slot is the one thing nobody looks at again. Coverage counts
+   who can actually stand there, and `overstated` names the shifts the naive count would
+   have reassured you about. An *unknown* travel window is not absence: plenty of people
+   drive, and flagging every unrecorded window flags the whole roster, which is the same as
+   flagging nobody. `SCOPE.md` §5e.
+2. **Because coverage counts confirmations, the confirmation has to come from the person.**
+   A `confirmed` typed by whoever built the roster is hearsay inside a staffing number. So
+   staffing only ever *invites*, `responded_at` records that the subject answered for
+   themselves, and answering an invitation plus setting your own travel window is the one
+   control a Member gets on the tab. Step 10's split — reporting is not a privilege,
+   changing the plan is — arriving from a third direction. `SCOPE.md` §3.
+3. **A double-booking is between travel windows, not between show dates.** Comparing show
+   dates flags the person who works one show Monday–Tuesday and the next Thursday–Friday —
+   the ordinary busy quarter — and a warning that fires on the normal case is one nobody
+   reads. But a *missing* window is not a clear either, and most rosters are half-empty of
+   arrival dates. So the comparison is the window, falling back to show dates where one is
+   absent, and that finding is `possible`, not `certain`, and says which side it guessed.
+   `SCOPE.md` §5e.
+4. **The room block cutoff must not get a second clock.** §4 makes it first-class because
+   missing it is among the most expensive routine mistakes — which is a description of the
+   engine step 11 built. A warning banner on the lodging screen would have been a weaker
+   copy on a different schedule, and the two would disagree, with the screen you were not
+   looking at holding the version you needed. So a cutoff **owns** a register row; the date
+   is edited on the hotel record and refused in the register. Two properties fell out of
+   the composition rather than being designed: moving the cutoff withdraws the deadline's
+   confirmation, and a derived row arrives unowned, which the engine escalates rather than
+   addressing to nobody. `SCOPE.md` §5e.
 
 **What step 11 added, and where:** `src/lib/deadlines/` — the service manual deadline
 engine, split the way the spine and the planning core are. `alerts.ts` is pure and holds
@@ -228,18 +290,22 @@ still standing: a login-method restriction is enforced at sign-in and we are not
 at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
 It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
 
-**Next:** step 12 — team & lodging (`SCOPE.md` §10 Phase B): attendees, booth shifts and
-the conflicts between them, hotels, room blocks, and side events. The show detail Team and
-Logistics tabs are still read-only and say so where the controls would be.
+**Next:** step 13 — flight tracking (`SCOPE.md` §10 Phase C): a status provider behind the
+usual interface, a flight board, and delay alerts read against the show's move-in time. The
+show detail Logistics tab is the last read-only one, and says so where the controls would
+be.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 (an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
 built — but its *seam* is, and is exercised: `raw_request_text` and
 `constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
 parse, and `availableActions` already surfaces the confirmation step. What is missing is
-only the parser. The readiness tab and its deadline register are both writable as of steps
-10 and 11; team and lodging (step 12) and shipment tracking (step 14) are still read-only,
-each saying so where the interaction would be rather than showing a dead button.
+only the parser. The readiness tab, its deadline register, the team tab and lodging are all
+writable as of steps 10–12; Logistics — shipment tracking (step 14) and chain of custody
+(step 15) — is the last read-only tab, and says so where the interaction would be rather
+than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
+future and `shift_presence` is a record of what happened, so the check-in control appears on
+a shift once it has run rather than inviting somebody to pre-record their own attendance.
 **Deadline alerts land in the `alerts` table and nowhere else** — there is no feed screen
 (step 16) and no transport (step 20), so `pnpm deadlines` is how a person reads them
 today. The row is the durable record that the notification was owed; a transport added
@@ -362,6 +428,24 @@ where `clerk.ts` reads it.
 - **Marking a deadline "does not apply" is an edit, not a status.** It takes money out of
   the show's exposure, so it needs a written reason and the authority to change the plan —
   the same rule `skipped` needed, reached from an unrelated direction.
+- **Assigned is not staffed, and staffed is not present.** Booth coverage counts people who
+  are on the roster, have confirmed, and are in town for the whole slot; a shift that is
+  fully assigned and still short is flagged **overstated**, because that is the one figure
+  nobody would have gone looking for. An unknown travel window is unknown, not absent.
+  `src/lib/team/coverage.ts`.
+- **Only the person confirms their own attendance.** Staffing a show invites;
+  `show_attendees.responded_at` records that the subject answered. Coverage counts
+  confirmations, so one typed on somebody's behalf is hearsay inside a staffing number.
+- **A double-booking is between travel windows, not between show dates** — and where a
+  window is missing the finding is `possible`, never `certain`, and says which side it had
+  to guess. `src/lib/team/conflicts.ts`.
+- **Un-staffing somebody cancels nothing outside this app.** The ticket is with the airline
+  and the room is with the hotel. The store names what is attached and refuses once; the
+  second press carries the acknowledgement. Same rule as cancelling a ticketed request.
+- **A room block cutoff owns a deadline register row; it never gets a second clock.**
+  `show_deadlines.lodging_id` is the link, the date is editable only on the lodging record,
+  and moving it withdraws the deadline's confirmation. Two editable copies of one date is
+  how the date gets missed. `src/lib/lodging/store.ts`, `SCOPE.md` §5e.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -387,6 +471,8 @@ pnpm credits <id>     # one credit's ledger, entry by entry
 pnpm credits --sweep  # write off what expired, warn about what will
 pnpm deadlines        # the deadline register, its exposure, and tonight's alerts
 pnpm deadlines --sweep # write those alerts; run twice, nothing is written the second time
+pnpm roster           # booth coverage everywhere: target, assigned, who can actually work it
+pnpm roster <show id> # one show, shift by shift
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
@@ -405,6 +491,8 @@ src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
+src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
+src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
@@ -414,6 +502,12 @@ src/lib/deadlines/            the §5a engine — alerts.ts (pure: thresholds, a
                               tense, dedupe-by-date, the one exposure model), edit.ts
                               (local time of day, the written reason), access.ts, store.ts
                               (org-scoped rows + the sweep)
+src/lib/team/                 the roster — coverage.ts (pure: assigned vs. able to be
+                              there, `overstated`, personal clashes), conflicts.ts
+                              (cross-show, on travel windows, certain vs. possible),
+                              edit.ts, access.ts, store.ts
+src/lib/lodging/              hotels, room assignments, and the cutoff that derives a
+                              deadline register row rather than a second clock
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)

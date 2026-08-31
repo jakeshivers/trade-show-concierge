@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getChecklist } from '@/lib/readiness/store';
 import { getRegister } from '@/lib/deadlines/store';
@@ -151,6 +152,7 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                     <Badge>{d.kind.replace(/_/g, ' ')}</Badge>
                     {d.status === 'complete' && <Badge tone="good">ordered</Badge>}
                     {d.status === 'not_applicable' && <Badge>does not apply</Badge>}
+                    {d.lodgingId && <Badge tone="info">from a room block</Badge>}
                     {d.status === 'open' && (
                       <>
                         {missed && <Badge tone="bad">missed</Badge>}
@@ -171,6 +173,17 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                     </span>
                   </div>
 
+                  {d.lodgingId && (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      Derived from a hotel&rsquo;s room block cutoff, so its date lives on the{' '}
+                      <Link href={`/shows/${id}/lodging`} className="underline">
+                        Lodging tab
+                      </Link>{' '}
+                      and is edited only there — two editable copies of one date is how the date
+                      gets missed. Its owner, penalty estimate and completion are ordinary register
+                      facts.
+                    </p>
+                  )}
                   {d.penaltyNote && <p className="mt-1 text-xs text-zinc-500">{d.penaltyNote}</p>}
                   {d.statusNote && (
                     <p className="mt-1 text-xs text-amber-800 dark:text-amber-300">

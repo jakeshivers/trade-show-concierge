@@ -136,13 +136,26 @@ second group despite looking like the first**, because a skipped task leaves the
 denominator, so letting a task's owner skip it lets anyone raise the show's score by
 declaring their own work unnecessary. `src/lib/readiness/access.ts`, and §5d.
 
+**The same line, twice more.** Step 11 reached it from the deadline register (anyone may
+report a deadline done; re-dating one, or marking it not-applicable, is changing the plan)
+and step 12 from the roster. On the roster it falls hardest, because booth coverage
+*counts confirmations*: staffing a show, building shifts and assigning people belong to
+whoever runs it, but **answering your own invitation and setting your own arrival and
+departure belong to you** — a `confirmed` somebody else typed on your behalf is hearsay
+inside a staffing number, and §1's "for a Member, this app should be almost invisible" says
+the invitation cannot be answered by email and keyed in later. Recording that you were
+actually at the booth is looser still, for a reason of failure modes: an over-tight gate
+there produces an empty `shift_presence` table, which destroys §4's rostered-versus-present
+insight altogether. `src/lib/team/access.ts`, and §5e.
+
 **Impersonation** (admin support tool) lands post-v1, and only with three rules: the
 session is banner-marked, every action logs *both* identities, and **impersonation can
 never authorize a purchase or approve a travel request**. The separation-of-duties rule
 above is worthless if an admin can simply become the approver.
 
 **Cost centers** are an org-level dimension referenced by `expense`, `flight`,
-`shipment`, `travel_request`, and `travel_policy`. Two reasons they can't wait: financial
+`shipment`, `travel_request`, `travel_policy`, and — as of step 12, which found the gap —
+`lodging` and `side_event`. Two reasons they can't wait: financial
 data is the worst thing to retrofit (a year of reporting is permanently unattributed),
 and because we spend money automatically, a purchase must land in a cost center *at the
 moment of purchase*. It also lets §7 express "Sales Engineering gets a $650 domestic cap,
@@ -194,7 +207,10 @@ Modeling choices worth calling out:
   windows; a crate outside one incurs drayage penalties. Shipping deadlines derive
   from these, not from show dates.
 - **`lodging.room_block_cutoff`** is first-class. Missing the room-block date is among
-  the most common and expensive trade show mistakes.
+  the most common and expensive trade show mistakes — which is what the §5a deadline
+  engine is *for*, so as of step 12 a cutoff owns a register row rather than being warned
+  about separately. `show_deadlines.lodging_id` is that link, unique, and the date is
+  editable only on the lodging record. §5e.
 - **`flight`** stores scheduled *and* live times separately, so "delayed 40 min" is a
   computed diff rather than a mutation that destroys the original plan.
 - **`travel_policy` is versioned, never updated in place.** Every evaluation records
@@ -220,8 +236,11 @@ Modeling choices worth calling out:
   the attribution link. We never try to become the CRM.
 - **`show_deadline` carries a `penalty_estimate`.** A deadline without a dollar figure is
   a nag; one that says "$2,800 surcharge if missed" gets acted on. See §5a.
-- **`booth_shift` and `shift_presence` are separate tables.** Rostered ≠ present. The gap
-  between them is the staffing insight, and collapsing them into one destroys it.
+- **`booth_shift`, `shift_assignment` and `shift_presence` are three tables.** Rostered ≠
+  present, and the gap between them is the staffing insight — but step 12 found a third
+  state in front of both: *assigned* is not *able to be there*. An assignment to somebody
+  who has not accepted the show, or who lands after the shift starts, is a hole that
+  renders as a filled slot. §5e.
 - **`ticket_credit` expiry is per-airline**, not a single constant — carriers range from
   6 to 24 months. See §5b.
 - **`asset_reservation` is a log, not a flag.** Who took the booth, when it came back, what
@@ -478,6 +497,72 @@ on the page, whose value is that it reads the same way week to week. Step 11 cor
 of its columns: penalties behind a deadline that has already passed are reported as
 **incurred**, never as "exposed" or "at risk", because past the date there is nothing left
 to save. §5a, correction 2.
+
+### 5e. Team, coverage and lodging — what "staffed" and "covered" must refuse to mean (step 12)
+
+Four corrections, all of the same family: a count that reassures is worse than no count.
+
+**A roster count lies about the future the way a presence count reports the past.** §4
+already separates `booth_shift` from `shift_presence` — "rostered ≠ present, and the gap
+between them is the staffing insight." Building the roster surfaced a second gap, earlier
+and cheaper than presence: "3 of 3 assigned" is computed from `shift_assignments` alone,
+and any of those three can be somebody who never accepted the invitation, somebody who
+*declined the show*, somebody nobody put on the roster at all, or somebody whose flight
+lands after the shift starts. Each is a hole that renders as a filled slot, and a filled
+slot is the one thing nobody looks at again. So coverage counts people who are on the
+roster, confirmed, and in town for the whole slot; `assignedCount` sits beside
+`effectiveCount` because the gap between them is the work list; and a shift that is fully
+assigned and still short is flagged **overstated**, which is the only figure on the page
+nobody would have gone looking for. An *unknown* travel window is not absence — plenty of
+people drive, and treating it as a hole would flag the entire roster, which is the same as
+flagging nobody. `src/lib/team/coverage.ts`.
+
+**Confirmation has to come from the person, or coverage is counting hearsay.** Because the
+model counts confirmations, a `confirmed` typed in by whoever built the roster is a number
+standing in for a conversation nobody had. So staffing a show only ever *invites*;
+`show_attendees.responded_at` records that the subject answered for themselves; and
+answering an invitation, along with setting your own arrival and departure, is the one
+control on the tab a Member gets. That is `readiness/access.ts`'s split — reporting is not
+a privilege, changing the plan is — reached from a third direction, and §1's "for a Member,
+this app should be almost invisible" is what settles it.
+
+**A double-booking is between travel windows, not between show dates.** The obvious
+implementation flags anyone staffed on two shows whose dates overlap, and it is wrong in
+both directions. Two three-day shows in the same week are not a conflict for somebody at
+one Monday–Tuesday and the other Thursday–Friday, which is an ordinary way to work a busy
+quarter — and a warning that fires on the normal case is one nobody reads. But a *missing*
+window is not an absence of conflict either; most rosters are half-empty of arrival dates,
+and a strict window comparison silently clears exactly the rows nobody has planned yet. So
+the comparison is `arrives_on → departs_on`, falling back to the show's dates where a
+window is missing, and the finding is marked `possible` rather than `certain` and says
+which side it had to guess. `declined` and `waitlist` are not commitments and a cancelled
+show conflicts with nothing. `src/lib/team/conflicts.ts`.
+
+**One date, one editable home: the room block cutoff belongs to the deadline engine.**
+§4 makes `lodging.room_block_cutoff` first-class because missing it is among the most
+expensive routine mistakes in this business — which is a description of the engine §5a
+already built, with thresholds, an audience, a tense, a dedupe key that voids itself when
+the date moves, and an exposure model. Building a room-block warning on the lodging screen
+would have been a second, weaker copy of all of that, on a different schedule, and the two
+would have disagreed: whichever screen the person was not looking at would hold the
+version they needed. So a lodging row with a cutoff **owns** a register row
+(`show_deadlines.lodging_id`, unique). The date is edited on the hotel record and refused
+in the register; the owner, the penalty estimate and completion stay register facts. Two
+properties fall out of the composition rather than being designed: moving the cutoff moves
+the deadline, which withdraws its confirmation, and a derived row arrives unowned, which
+the engine escalates to the show runners instead of addressing to nobody. Room block rows
+carry **no penalty estimate** — blowing a block does not bill a surcharge, it drops the
+party to walk-up rates in a city that is sold out that week, and §5a's rule is that an
+unpriced, unconfirmed date is chased as a date and never quoted as an amount.
+`src/lib/lodging/store.ts`.
+
+**And un-staffing somebody cancels nothing outside this app** — the same shape as §6d's
+cancel correction, answered the same way. Taking a person off a show is allowed, because
+people drop off shows constantly; doing it without seeing that a ticket in their name is
+still with the airline is not. The store names what is attached and refuses once; the
+second press carries the acknowledgement. Their shift assignments and RSVPs *are* dropped,
+because an assignment for somebody not on the show is precisely the phantom the coverage
+model has to special-case.
 
 ---
 
@@ -927,7 +1012,23 @@ invert phases A and C.
       `pnpm deadlines --sweep` writes them. The seed grows an unconfirmed, an unowned and a
       missed deadline so all four cases are live, and produces its alerts by **running the
       real sweep**. Four corrections folded into §5a above. 387 tests.
-- [ ] **12.** Team & lodging — attendees, booth shifts, conflicts, hotels, room blocks, side events
+- [x] **12.** **Team & lodging — attendees, booth shifts, coverage, conflicts, hotels, room
+      blocks, side events.** `src/lib/team/` and `src/lib/lodging/`, split the way the spine
+      and the planning core are: `coverage.ts` is pure and holds the argument — rostered is
+      not staffed, and a fully-assigned shift can still be short; `conflicts.ts` is the
+      double-booking model, comparing travel windows rather than show dates and marking a
+      guessed comparison as such; `edit.ts` / `access.ts` / `store.ts` the same shape as
+      steps 10 and 11. Lodging's cutoff **derives a row in the §5a register** rather than
+      growing a second clock — `show_deadlines.lodging_id`, unique, date read-only there.
+      Schema: `show_attendees.responded_at` + `updated_at`, `booth_shifts.updated_at`,
+      `lodgings.cost_center_id` (§4's rule, which lodging had been violating) and
+      `updated_at`, `side_events.cost_center_id` + `updated_at`, a unique index on
+      `(side_event_id, user_id)`. Screens: the Team tab is writable, and Lodging is a new
+      sixth tab. `pnpm roster` is the coverage model without a screen. The seed builds its
+      roster, shifts, hotels and guest lists **through the real stores** — every attendee
+      arrives `invited` and is confirmed by the person themselves — and grew a fifth show
+      overlapping Automate so both the real and the guessed conflict case are live. Four
+      corrections folded into §5e above. 431 tests.
 
 ### Phase C — logistics, telemetry & ROI
 

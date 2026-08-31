@@ -3,6 +3,7 @@ import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { zonedToInstant } from '@/lib/datetime/zoned';
+import { optionalDecimalToCents } from '@/lib/money/decimal';
 import { NotFoundError } from '@/lib/shows/store';
 import {
   canCompleteDeadline,
@@ -185,6 +186,7 @@ export async function editDeadline(
 ): Promise<void> {
   if (!canEditDeadlines(actor)) throw new ForbiddenError('edit a service manual deadline');
   const { deadline, show } = await requireDeadline(actor, deadlineId, db);
+  if (deadline.lodgingId) throw new DeadlineError(DERIVED_IS_READ_ONLY);
   const valid = validateDeadline(draft);
   const dueAt = dueInstant(valid.dueDate, valid.dueTime, show.timezone);
 
@@ -289,8 +291,49 @@ export async function deleteDeadline(
 ): Promise<void> {
   if (!canEditDeadlines(actor)) throw new ForbiddenError('delete a service manual deadline');
   const { deadline } = await requireDeadline(actor, deadlineId, db);
+  if (deadline.lodgingId) throw new DeadlineError(DERIVED_IS_READ_ONLY);
   await db.delete(s.showDeadlines).where(eq(s.showDeadlines.id, deadline.id));
 }
+
+/**
+ * A derived row's *date* belongs to the record it came from; everything else
+ * belongs to the register.
+ *
+ * Step 12 introduced the first of these — a lodging row's room block cutoff owns
+ * a deadline (`lodging/store.ts`). The date has exactly one editable home, or the
+ * two copies drift and whichever screen you are not looking at holds the version
+ * you needed. But ownership and a penalty estimate are register facts: an unowned
+ * deadline escalates (`alerts.ts`, correction 3), and somebody who has priced
+ * what a blown room block actually costs should be able to say so here.
+ */
+export async function editDerivedDeadline(
+  actor: Actor,
+  deadlineId: string,
+  fields: { ownerId?: string | null; penaltyEstimate?: string | null; penaltyNote?: string | null },
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canEditDeadlines(actor)) throw new ForbiddenError('edit a service manual deadline');
+  const { deadline } = await requireDeadline(actor, deadlineId, db);
+  if (!deadline.lodgingId) {
+    throw new DeadlineError('That deadline is an ordinary register row — edit it in full.');
+  }
+
+  await db
+    .update(s.showDeadlines)
+    .set({
+      ownerId: fields.ownerId?.trim() || null,
+      penaltyEstimateCents: optionalDecimalToCents(fields.penaltyEstimate ?? null),
+      penaltyNote: fields.penaltyNote?.trim() || deadline.penaltyNote,
+      updatedAt: now,
+    })
+    .where(eq(s.showDeadlines.id, deadline.id));
+}
+
+const DERIVED_IS_READ_ONLY =
+  'This deadline is derived from a room block cutoff on the show’s lodging, so its date and ' +
+  'title live there — edit the hotel record and this row follows. Two editable copies of one ' +
+  'date is how the date gets missed. Its owner and penalty estimate are still yours to set.';
 
 /* ---------------------------------- sweep ---------------------------------- */
 

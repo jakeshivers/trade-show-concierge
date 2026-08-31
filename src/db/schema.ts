@@ -459,6 +459,13 @@ export const showAttendees = pgTable(
     arrivesOn: timestamp('arrives_on', { withTimezone: true }),
     departsOn: timestamp('departs_on', { withTimezone: true }),
     notes: text('notes'),
+    /**
+     * Set when the person themselves answered, as opposed to being pencilled in
+     * by whoever built the roster. Coverage counts a *confirmed* attendee; this
+     * is how we tell a real yes from an optimistic one. See lib/team/coverage.ts.
+     */
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('show_attendees_unique').on(t.showId, t.userId)],
 );
@@ -479,9 +486,20 @@ export const lodgings = pgTable(
     checkIn: timestamp('check_in', { withTimezone: true }),
     checkOut: timestamp('check_out', { withTimezone: true }),
     nightlyRateCents: integer('nightly_rate_cents'),
-    // Room block cutoff dates are a classic missed deadline.
+    /**
+     * Room block cutoff dates are a classic missed deadline — which is exactly
+     * what `show_deadlines` and its engine are for. Rather than growing a second
+     * clock beside the first, a lodging row with a cutoff *owns* a deadline row
+     * (`show_deadlines.lodging_id`), and this column stays the single place the
+     * date is edited. See lib/lodging/store.ts.
+     */
     roomBlockCutoff: timestamp('room_block_cutoff', { withTimezone: true }),
     notes: text('notes'),
+    /** Non-negotiable: every financial row carries a cost center at creation. */
+    costCenterId: uuid('cost_center_id')
+      .notNull()
+      .references(() => costCenters.id, { onDelete: 'restrict' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('lodgings_show_idx').on(t.showId)],
 );
@@ -1076,10 +1094,22 @@ export const showDeadlines = pgTable(
     extractedFromDocument: boolean('extracted_from_document').notNull().default(false),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * Set when this row is *derived* from a lodging record's room block cutoff
+     * rather than typed into the register. The date then belongs to the lodging
+     * row and cannot be edited here — two editable copies of one date is how the
+     * date gets missed. Everything else (owner, penalty, completion) is ordinary.
+     */
+    lodgingId: uuid('lodging_id').references(() => lodgings.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('show_deadlines_show_due_idx').on(t.showId, t.dueAt)],
+  (t) => [
+    index('show_deadlines_show_due_idx').on(t.showId, t.dueAt),
+    // One deadline per room block, ever. The upsert in lib/lodging/store.ts
+    // leans on this rather than on remembering to look first.
+    uniqueIndex('show_deadlines_lodging_unique').on(t.lodgingId),
+  ],
 );
 
 /* ------------------------------- booth shifts ------------------------------ */
@@ -1096,6 +1126,7 @@ export const boothShifts = pgTable(
     // Coverage target: how many staff this slot needs.
     targetStaff: integer('target_staff').notNull().default(2),
     notes: text('notes'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('booth_shifts_show_idx').on(t.showId, t.startsAt)],
 );
@@ -1152,6 +1183,11 @@ export const sideEvents = pgTable(
     budgetCents: integer('budget_cents'),
     hostId: uuid('host_id').references(() => users.id, { onDelete: 'set null' }),
     notes: text('notes'),
+    /** A dinner budget is money somebody gets charged for; §4's rule applies. */
+    costCenterId: uuid('cost_center_id')
+      .notNull()
+      .references(() => costCenters.id, { onDelete: 'restrict' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('side_events_show_idx').on(t.showId, t.startsAt)],
 );
@@ -1170,7 +1206,12 @@ export const sideEventRsvps = pgTable(
     guestCompany: text('guest_company'),
     status: rsvpStatusEnum('status').notNull().default('invited'),
   },
-  (t) => [index('side_event_rsvps_event_idx').on(t.sideEventId)],
+  (t) => [
+    index('side_event_rsvps_event_idx').on(t.sideEventId),
+    // Postgres treats NULLs as distinct, so this constrains internal invitees
+    // without collapsing every external guest into one row.
+    uniqueIndex('side_event_rsvps_user_unique').on(t.sideEventId, t.userId),
+  ],
 );
 
 /* ---------------------------- assets & collateral -------------------------- */

@@ -14,6 +14,16 @@ import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded
 import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel/agent';
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
 import { sweepDeadlineAlerts } from '../src/lib/deadlines/store';
+import { instantToZoned } from '../src/lib/datetime/zoned';
+import {
+  addAttendee,
+  addRsvp,
+  addShift,
+  addSideEvent,
+  assignToShift,
+  respondToInvitation,
+} from '../src/lib/team/store';
+import { addLodging, assignRoom } from '../src/lib/lodging/store';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -184,8 +194,17 @@ async function main() {
     .returning();
   const [shelley, marcus, priya, tomas, reese, ingrid] = people;
 
+  const actorFor = (u: (typeof people)[number]): Actor => ({
+    userId: u.id,
+    orgId: u.orgId,
+    email: u.email,
+    fullName: u.fullName,
+    role: u.role,
+    costCenterId: u.costCenterId,
+  });
+
   console.log('· shows');
-  const [automate, medtech, packexpo, roboticsSummit] = await db
+  const [automate, medtech, packexpo, sensors, roboticsSummit] = await db
     .insert(s.shows)
     .values([
       {
@@ -247,6 +266,30 @@ async function main() {
         boothSize: '10x20',
         budgetCents: 7_800_000,
         goals: 'Adjacent-market test: packaging automation buyers.',
+      },
+      {
+        // Overlaps Automate by two days, deliberately: cross-show double-booking
+        // (§5, "Team & shifts") cannot be demonstrated on a calendar where no two
+        // shows are ever in the same week, and the interesting half of the model
+        // is the person who is at both and is *fine*, because their travel
+        // windows do not touch. See src/lib/team/conflicts.ts.
+        orgId: org.id,
+        name: 'Sensors Converge 2026',
+        status: 'committed',
+        venueName: 'Santa Clara Convention Center',
+        city: 'Santa Clara',
+        region: 'CA',
+        country: 'US',
+        airportCode: 'SJC',
+        timezone: 'America/Los_Angeles',
+        startsOn: at(53, 9),
+        endsOn: at(56, 16),
+        moveInAt: at(52, 8),
+        moveOutAt: at(56, 18),
+        boothNumber: '1142',
+        boothSize: '10x10',
+        budgetCents: 2_900_000,
+        goals: 'Component-buyer reach; 35 qualified leads.',
       },
       {
         // Declined, and still here. The value of the intake record is entirely in
@@ -559,82 +602,205 @@ async function main() {
       .where(eq(s.showTasks.id, byKey(key).id));
   }
 
-  console.log('· attendees');
-  await db.insert(s.showAttendees).values([
-    { showId: automate.id, userId: shelley.id, role: 'Show lead', status: 'confirmed', arrivesOn: at(50, 11), departsOn: at(55, 19) },
-    { showId: automate.id, userId: priya.id, role: 'Technical demos', status: 'confirmed', arrivesOn: at(51, 14), departsOn: at(55, 18) },
-    { showId: automate.id, userId: tomas.id, role: 'Technical demos', status: 'confirmed', arrivesOn: at(51, 16), departsOn: at(55, 18) },
-    { showId: automate.id, userId: reese.id, role: 'Booth staff', status: 'confirmed', arrivesOn: at(50, 13), departsOn: at(55, 20) },
-    { showId: automate.id, userId: ingrid.id, role: 'Executive', status: 'invited', arrivesOn: at(52, 8), departsOn: at(53, 19) },
-    { showId: medtech.id, userId: shelley.id, role: 'Show lead', status: 'confirmed' },
-    { showId: medtech.id, userId: priya.id, role: 'Technical demos', status: 'invited' },
-  ]);
+  // Everything below runs through `src/lib/team` and `src/lib/lodging` rather
+  // than inserting rows, for the rule step 9 set and steps 10 and 11 kept: seed
+  // data that skips the pipeline is evidence for a screen that the pipeline
+  // would never have produced. Here it buys three specific things — every
+  // roster row arrives `invited` because only the person themselves confirms
+  // (`respondedAt`), the room block cutoff gets its derived deadline from the
+  // real sync rather than from a hand-typed register row, and the coverage
+  // model is exercised against a roster it did not help build.
+  const localOn = (d: Date, tz: string) => instantToZoned(d, tz).slice(0, 10);
+  const localAt = (d: Date, tz: string) => instantToZoned(d, tz).slice(11, 16);
+  const admin = actorFor(shelley);
+  const DTW = automate.timezone;
+  const SJC = sensors.timezone;
 
-  console.log('· booth shifts');
-  const shifts = await db
-    .insert(s.boothShifts)
-    .values([
-      { showId: automate.id, startsAt: at(52, 9), endsAt: at(52, 13), targetStaff: 3 },
-      { showId: automate.id, startsAt: at(52, 13), endsAt: at(52, 17), targetStaff: 3 },
-      { showId: automate.id, startsAt: at(53, 9), endsAt: at(53, 13), targetStaff: 2 },
-      { showId: automate.id, startsAt: at(53, 13), endsAt: at(53, 17), targetStaff: 2 },
-    ])
-    .returning();
-  await db.insert(s.shiftAssignments).values([
-    { shiftId: shifts[0].id, userId: priya.id },
-    { shiftId: shifts[0].id, userId: reese.id },
-    { shiftId: shifts[0].id, userId: ingrid.id },
-    { shiftId: shifts[1].id, userId: tomas.id },
-    { shiftId: shifts[1].id, userId: shelley.id },
-    { shiftId: shifts[2].id, userId: priya.id },
-    { shiftId: shifts[2].id, userId: tomas.id },
-    { shiftId: shifts[3].id, userId: reese.id },
-    { shiftId: shifts[3].id, userId: shelley.id },
-  ]);
+  console.log('\u00b7 attendees (invited by the lead, answered by the person)');
+  const invite = async (
+    show: typeof automate,
+    user: (typeof people)[number],
+    role: string,
+    window?: { from: Date; to: Date },
+  ) => {
+    const tz = show.timezone;
+    const { id } = await addAttendee(admin, show.id, {
+      userId: user.id,
+      role,
+      status: 'invited',
+      ...(window
+        ? {
+            arrivesOn: localOn(window.from, tz),
+            arrivesAt: localAt(window.from, tz),
+            departsOn: localOn(window.to, tz),
+            departsAt: localAt(window.to, tz),
+          }
+        : {}),
+    });
+    return id;
+  };
 
-  console.log('· lodging');
-  const [hotel] = await db
-    .insert(s.lodgings)
-    .values({
-      showId: automate.id,
-      hotelName: 'Detroit Foundation Hotel',
-      address: '250 W Larned St, Detroit, MI 48226',
-      phone: '+1-313-800-5500',
-      confirmationCode: 'NWR-4471902',
-      checkIn: at(50, 15),
-      checkOut: at(55, 11),
-      nightlyRateCents: 28_900,
-      roomBlockCutoff: at(22, 17),
-    })
-    .returning();
-  await db.insert(s.lodgingGuests).values([
-    { lodgingId: hotel.id, userId: shelley.id },
-    { lodgingId: hotel.id, userId: priya.id },
-    { lodgingId: hotel.id, userId: tomas.id },
-    { lodgingId: hotel.id, userId: reese.id },
-  ]);
+  /** The person answers for themselves — which is what makes `confirmed` a fact. */
+  const accept = async (
+    attendeeId: string,
+    user: (typeof people)[number],
+    show: typeof automate,
+    window: { from: Date; to: Date },
+  ) => {
+    const tz = show.timezone;
+    await respondToInvitation(actorFor(user), attendeeId, 'confirmed', {
+      arrivesOn: localOn(window.from, tz),
+      arrivesAt: localAt(window.from, tz),
+      departsOn: localOn(window.to, tz),
+      departsAt: localAt(window.to, tz),
+    });
+  };
 
-  console.log('· side events');
-  const [dinner] = await db
-    .insert(s.sideEvents)
-    .values({
-      showId: automate.id,
-      kind: 'dinner',
-      name: 'Customer & prospect dinner',
-      location: 'Prime + Proper, Detroit',
-      startsAt: at(52, 19),
-      endsAt: at(52, 22),
-      capacity: 18,
-      budgetCents: 450_000,
-      hostId: ingrid.id,
-    })
-    .returning();
-  await db.insert(s.sideEventRsvps).values([
-    { sideEventId: dinner.id, userId: ingrid.id, status: 'accepted' },
-    { sideEventId: dinner.id, userId: shelley.id, status: 'accepted' },
-    { sideEventId: dinner.id, guestName: 'Alicia Ferrer', guestCompany: 'Grantham Automotive', status: 'accepted' },
-    { sideEventId: dinner.id, guestName: 'Ken Ogawa', guestCompany: 'Lakeside Packaging', status: 'invited' },
-  ]);
+  const automateWindows = {
+    shelley: { from: at(50, 11), to: at(55, 19) },
+    priya: { from: at(51, 14), to: at(55, 18) },
+    tomas: { from: at(51, 16), to: at(53, 8) },
+    reese: { from: at(52, 13), to: at(55, 20) },
+  };
+
+  const aShelley = await invite(automate, shelley, 'Show lead');
+  await accept(aShelley, shelley, automate, automateWindows.shelley);
+  const aPriya = await invite(automate, priya, 'Technical demos');
+  await accept(aPriya, priya, automate, automateWindows.priya);
+  const aTomas = await invite(automate, tomas, 'Technical demos');
+  await accept(aTomas, tomas, automate, automateWindows.tomas);
+  // Reese lands at 1pm on the first show day — after the morning shift they are
+  // rostered on starts. A roster count calls that shift full; `coverage.ts` does
+  // not, and the difference is the whole argument of step 12.
+  const aReese = await invite(automate, reese, 'Booth staff');
+  await accept(aReese, reese, automate, automateWindows.reese);
+  // Ingrid never answers. She stays `invited` — pencilled in, and counted by
+  // nothing, which is why she is also on a shift below.
+  await invite(automate, ingrid, 'Executive', { from: at(52, 8), to: at(53, 19) });
+
+  const mShelley = await invite(medtech, shelley, 'Show lead');
+  await accept(mShelley, shelley, medtech, { from: at(117, 12), to: at(120, 18) });
+  await invite(medtech, priya, 'Technical demos');
+
+  // Sensors Converge overlaps Automate. Tomas leaves Detroit before it starts,
+  // so he is not double-booked and must not be flagged. Priya has no travel
+  // window here at all, so the model can only compare show dates and says so.
+  const sTomas = await invite(sensors, tomas, 'Technical demos');
+  await accept(sTomas, tomas, sensors, { from: at(53, 15), to: at(56, 18) });
+  const sPriya = await invite(sensors, priya, 'Technical demos');
+  await respondToInvitation(actorFor(priya), sPriya, 'confirmed', {});
+
+  console.log('\u00b7 booth shifts and coverage');
+  const shiftAt = async (show: typeof automate, from: Date, to: Date, targetStaff: number) => {
+    const tz = show.timezone;
+    const { id } = await addShift(admin, show.id, {
+      startsOn: localOn(from, tz),
+      startsAt: localAt(from, tz),
+      endsOn: localOn(to, tz),
+      endsAt: localAt(to, tz),
+      targetStaff,
+    });
+    return id;
+  };
+
+  const shifts = [
+    await shiftAt(automate, at(52, 9), at(52, 13), 3),
+    await shiftAt(automate, at(52, 13), at(52, 17), 3),
+    await shiftAt(automate, at(53, 9), at(53, 13), 2),
+    await shiftAt(automate, at(53, 13), at(53, 17), 2),
+  ];
+
+  for (const [shiftId, userId] of [
+    // Three assigned against a target of three — and one of them (Ingrid) never
+    // accepted the invitation, so the shift reads as full and is not.
+    [shifts[0], priya.id],
+    [shifts[0], reese.id],
+    [shifts[0], ingrid.id],
+    [shifts[1], tomas.id],
+    [shifts[1], shelley.id],
+    [shifts[2], priya.id],
+    // Tomas flies to Santa Clara on the morning of day 53; this assignment is a
+    // hole the roster hides.
+    [shifts[2], tomas.id],
+    [shifts[3], reese.id],
+    [shifts[3], shelley.id],
+  ] as const) {
+    await assignToShift(admin, shiftId, userId);
+  }
+
+  console.log('\u00b7 lodging (its room block cutoff derives a deadline)');
+  const { id: hotelId } = await addLodging(admin, automate.id, {
+    hotelName: 'Detroit Foundation Hotel',
+    address: '250 W Larned St, Detroit, MI 48226',
+    phone: '+1-313-800-5500',
+    confirmationCode: 'NWR-4471902',
+    checkInOn: localOn(at(50, 15), DTW),
+    checkInAt: localAt(at(50, 15), DTW),
+    checkOutOn: localOn(at(55, 11), DTW),
+    checkOutAt: localAt(at(55, 11), DTW),
+    nightlyRate: '289.00',
+    roomBlockCutoffOn: localOn(at(22, 17), DTW),
+    roomBlockCutoffAt: localAt(at(22, 17), DTW),
+    costCenterId: mkt.id,
+  });
+  for (const u of [shelley, priya, tomas, reese]) {
+    await assignRoom(admin, hotelId, u.id);
+  }
+
+  const { id: sensorsHotelId } = await addLodging(admin, sensors.id, {
+    hotelName: 'Hyatt Regency Santa Clara',
+    address: '5101 Great America Pkwy, Santa Clara, CA 95054',
+    confirmationCode: 'NWR-5518844',
+    checkInOn: localOn(at(53, 15), SJC),
+    checkInAt: localAt(at(53, 15), SJC),
+    checkOutOn: localOn(at(56, 11), SJC),
+    checkOutAt: localAt(at(56, 11), SJC),
+    nightlyRate: '312.00',
+    // Already past. The derived deadline lands in the engine's past tense —
+    // "missed", to the show runners, not "at risk" to nobody.
+    roomBlockCutoffOn: localOn(at(-4, 17), SJC),
+    roomBlockCutoffAt: localAt(at(-4, 17), SJC),
+    costCenterId: se.id,
+  });
+  await assignRoom(admin, sensorsHotelId, tomas.id);
+
+  console.log('\u00b7 side events and guest lists');
+  const { id: dinnerId } = await addSideEvent(admin, automate.id, {
+    name: 'Customer & prospect dinner',
+    kind: 'dinner',
+    location: 'Prime + Proper, Detroit',
+    startsOn: localOn(at(52, 19), DTW),
+    startsAt: localAt(at(52, 19), DTW),
+    endsOn: localOn(at(52, 22), DTW),
+    endsAt: localAt(at(52, 22), DTW),
+    capacity: 18,
+    budget: '4500.00',
+    hostId: ingrid.id,
+    costCenterId: exec.id,
+  });
+  for (const rsvp of [
+    { userId: ingrid.id, status: 'accepted' },
+    { userId: shelley.id, status: 'accepted' },
+    { guestName: 'Alicia Ferrer', guestCompany: 'Grantham Automotive', status: 'accepted' },
+    { guestName: 'Ken Ogawa', guestCompany: 'Lakeside Packaging', status: 'invited' },
+  ] as const) {
+    await addRsvp(admin, dinnerId, rsvp);
+  }
+
+  // A demo that overlaps the afternoon booth shift Tomas is on: the everyday
+  // double-booking, made by two people who were each looking at one screen.
+  const { id: demoId } = await addSideEvent(admin, automate.id, {
+    name: 'Partner integration demo',
+    kind: 'demo',
+    location: 'Huntington Place, room 251',
+    startsOn: localOn(at(52, 15), DTW),
+    startsAt: localAt(at(52, 15), DTW),
+    endsOn: localOn(at(52, 16), DTW),
+    endsAt: localAt(at(52, 16), DTW),
+    hostId: priya.id,
+    costCenterId: se.id,
+  });
+  await addRsvp(admin, demoId, { userId: tomas.id, status: 'accepted' });
 
   console.log('· assets & collateral');
   const assetRows = await db
@@ -858,15 +1024,6 @@ async function main() {
    */
   console.log('· travel requests (real agent runs against the recorded provider)');
 
-  const actorFor = (u: (typeof people)[number]): Actor => ({
-    userId: u.id,
-    orgId: u.orgId,
-    email: u.email,
-    fullName: u.fullName,
-    role: u.role,
-    costCenterId: u.costCenterId,
-  });
-
   const agentDeps = (nowAt: Date): AgentDeps => ({
     db,
     provider: new RecordedFlightProvider({ now: () => nowAt }),
@@ -962,7 +1119,7 @@ async function main() {
   const counts = {
     users: people.length,
     deadlineAlerts: swept.written,
-    shows: 4,
+    shows: 5,
     costCenters: costCenters.length,
     policyLayers: 3,
     assets: assetRows.length,

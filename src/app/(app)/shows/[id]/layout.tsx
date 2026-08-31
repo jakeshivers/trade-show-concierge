@@ -15,15 +15,16 @@ import {
  * Show detail — the header and its tabs.
  *
  * The tabs are real routes rather than client state so a link to a show's
- * deadlines is a link to a show's deadlines. Steps 9–12 make each tab editable;
- * step 8 makes them legible, and none of them promise an action that does not
- * exist yet.
+ * deadlines is a link to a show's deadlines. Steps 9–12 made each of them
+ * editable in turn; Logistics is the last one still read-only, and says so where
+ * its controls would be. None of them promise an action that does not exist yet.
  */
 
 const TABS = [
   { segment: '', label: 'Overview' },
   { segment: 'readiness', label: 'Readiness' },
   { segment: 'team', label: 'Team' },
+  { segment: 'lodging', label: 'Lodging' },
   { segment: 'travel', label: 'Travel' },
   { segment: 'logistics', label: 'Logistics' },
 ];

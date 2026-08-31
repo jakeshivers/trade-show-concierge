@@ -63,7 +63,10 @@ export function DeadlineRow({
         <ConfirmControl showId={showId} deadlineId={d.id} confirmed={d.confirmedAt !== null} />
       )}
 
-      {may.edit && (
+      {/* A derived row's date and title belong to the record it came from, so the
+          full editor is not offered for one. `editDeadline` refuses it server-side
+          either way; this is so the screen does not promise the refusal. */}
+      {may.edit && !d.lodgingId && (
         <EditDeadline showId={showId} timezone={timezone} entry={entry} people={people} />
       )}
     </div>
