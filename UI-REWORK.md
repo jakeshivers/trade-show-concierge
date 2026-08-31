@@ -1,6 +1,14 @@
 # UI rework — the case, the plan, and the one decision it needs
 
-**Status:** proposed, not started · **Written:** after step 12 (2026-08-30) · **Gates:** nothing
+**Status:** approved, not started · **Written:** after step 12 (2026-08-30) ·
+**Updated:** 2026-08-31 with the foundation survey and the scope call · **Gates:** nothing
+
+> **Decision made (2026-08-31): option B — the plumbing tranches *and* a visual pass.**
+> Brief: "modern, bright colors, easy to navigate." §4 below argued for deferring the
+> visual half; that argument was heard and overruled, and it is kept unedited because
+> parts of it stay true and should be designed *around* rather than forgotten. §6 is the
+> foundation survey done at decision time; §7 is what the research changed. Step 12.5
+> (verifying Duffel and Clerk) was taken first and is complete through Part A.
 
 This is the pickup document for a piece of work that is *not* in `SCOPE.md` §10's build
 order, because it is not a feature. It is the consolidation the app layer has been
@@ -148,7 +156,11 @@ the place nobody wants to open.
 
 ---
 
-## 4. What this deliberately does **not** do
+## 4. What this originally deferred — kept, because half of it still holds
+
+**Superseded as policy by the decision above; preserved as argument.** The visual pass is
+now in scope. What stays true is the *timing risk* it names, and the answer is to design so
+that steps 13/16/19 extend the system rather than contradict it — see §7.
 
 No visual redesign — no typography pass, no density system, no dashboard rework, no nav
 restructure. That is a real and separate job, and it is worth *waiting* on, for a reason
@@ -165,11 +177,16 @@ this document should be honest about rather than pretending the two are the same
 The tranches above are all invariant to that. They are plumbing, and plumbing done early is
 cheaper; visual design done early is done twice.
 
+*Standing where it landed:* the tranches come first regardless, because a redesign touches
+every form anyway — so the consolidation stops being separate work and becomes the surface
+the new visual language is applied to. Doing it the other way means restyling six copies of
+the same input and then deleting five of them.
+
 ---
 
-## 5. The decision this needs
+## 5. ~~The decision this needs~~ — resolved 2026-08-31: **option B**
 
-Recorded as `SCOPE.md` §11 item 11. The options, with what each costs:
+Recorded as `SCOPE.md` §11 item 11. Kept for the record; the options, with what each cost:
 
 | Option | Scope | Note |
 |---|---|---|
@@ -184,9 +201,142 @@ only one that makes step 13's screens cheaper rather than more of the same.
 
 ---
 
-## 6. How to verify it, and why that is enough
+## 6. The foundation survey (2026-08-31)
 
-**All 431 tests are pure** — no DOM, no rendering, no database. None of them touch
+Done at decision time, because the visual half depends entirely on what is already there
+and none of this was written down. **Every finding below was surprising in a useful
+direction.**
+
+### 6a. Three dependencies are installed and completely unused
+
+```
+lucide-react     ^1.37.0   ← zero icon usage anywhere in src/app
+clsx             ^2.1.1    ← no cn() helper exists
+tailwind-merge   ^3.6.0    ← ditto
+```
+
+The app renders **no icons at all** today. So a modern, dense, navigable UI — icon rail,
+status glyphs, affordances on buttons — needs **no new packages**, which removes the main
+objection to doing this work at all. `clsx` + `tailwind-merge` is exactly the standard
+`cn()` pair, already paid for.
+
+### 6b. Tailwind **v4**, CSS-first — and there is no config file
+
+`tailwindcss: ^4` with `@tailwindcss/postcss`. **No `tailwind.config.*` exists** and none
+should be created; v4 moved theming into CSS via `@theme`. Anyone reaching for a JS config
+out of habit will be confused for an hour.
+
+### 6c. The dark-mode trap, which is the single most expensive thing to get wrong
+
+`globals.css` currently uses **`@theme inline`**. Per the v4 guidance, `@theme inline`
+**bakes values at build time and breaks runtime theme switching.** The working pattern is
+two-stage:
+
+```css
+:root  { --brand: 62% 0.19 256; }        /* raw channels, light */
+.dark  { --brand: 72% 0.16 256; }        /* same names, dark */
+@theme { --color-brand: oklch(var(--brand)); }   /* NOT inline */
+```
+
+Discovering this after building the palette means rebuilding the palette. It is written
+here so that does not happen.
+
+Related, and worth fixing in the same pass: **OKLCH** is the modern choice for the scale
+(perceptually uniform, so a 10-step ramp is visually even rather than bunching in the
+mid-tones) — which matters a lot for "bright colors" that must stay legible at small sizes.
+
+### 6d. `globals.css` is still Next.js boilerplate
+
+The entire file is two color tokens plus a stray rule:
+
+```css
+body { font-family: Arial, Helvetica, sans-serif; }
+```
+
+…which fights the Geist font `layout.tsx` loads via `next/font`. The Tailwind `font-sans`
+class on `<body>` currently wins on specificity, so the app *looks* right by accident. This
+file is not a foundation to extend; it is boilerplate to replace.
+
+Fonts themselves are fine and already wired: `Geist` and `Geist_Mono` via `next/font/google`
+exposing `--font-geist-sans` / `--font-geist-mono`.
+
+### 6e. Dark mode has no toggle
+
+It is `prefers-color-scheme` only. Every screen is already written with `dark:` variants, so
+the work is a token swap plus a control — not a re-authoring.
+
+---
+
+## 7. What the navigation research changed
+
+The brief was "easy to navigate," and the current nav is a **flat horizontal bar with 7
+entries** that grows by one per screen — `/`, `/shows`, `/readiness`, `/itinerary`,
+`/travel`, `/travel/approvals`, `/settings/security`, with steps 13–18 each adding more.
+
+Current practice for exactly this product shape — data-dense B2B with many sub-modules — is
+a **collapsible left sidebar at 240–280px with a 64px collapsed icon rail**, because it
+scales vertically as sections are added instead of cramming a horizontal bar. That directly
+answers the objection §4 raised ("it needs restructuring *once*, against the final set"):
+a sidebar **is** the structure that absorbs steps 13–18 without another restructure, so
+building it now is what makes it a one-time job rather than the reason to defer.
+
+Two more findings that fit this app specifically:
+
+- **Right-align financial columns and make dense list headers sticky.** This app is full of
+  money columns (fares, penalties, nightly rates, exposure) and long scrolling registers.
+- **Active state needs real contrast, not a subtle shift** — orientation inside a deep nav
+  is the thing dense products get wrong. Relevant here because show detail already has six
+  tabs nested under a nav entry.
+
+Deliberately *not* adopting: drag-and-drop rearrangeable dashboard widgets, which the
+sources push as a 2026 trend. This app has one dashboard and a strong point of view about
+what belongs on it; user-arrangeable widgets would dilute that and is a feature, not a
+redesign.
+
+### Sources
+
+- [SaaS UI/UX design best practices 2026](https://www.theskinsfactory.com/uiux-design-blog/saas-ui-ux-design-best-practices-2026)
+- [Anatomy of high-performance SaaS dashboard design](https://www.saasframe.io/blog/the-anatomy-of-high-performance-saas-dashboard-design-2026-trends-patterns)
+- [Dashboard design patterns 2026](https://artofstyleframe.com/blog/dashboard-design-patterns-web-apps/)
+- [Design system tokens with Tailwind v4 `@theme inline`](https://kuray.dev/blog/ui-ux-design/design-system-tailwind-v4-semantic-tokens-072025)
+- [Tailwind v4 practical guide — CSS-first tokens, dark mode, a11y](https://tomodahinata.com/en/blog/tailwind-css-v4-css-first-design-tokens-production-guide)
+- [Theming in Tailwind v4: multiple color schemes](https://medium.com/@sir.raminyavari/theming-in-tailwind-css-v4-support-multiple-color-schemes-and-dark-mode-ba97aead5c14)
+
+---
+
+## 8. Revised order of work
+
+Tranches 1–4 from §3 are unchanged and still come first — a redesign restyles every form,
+so consolidating them first means styling one input rather than six. The visual work then
+layers on:
+
+**Tranche 5 — tokens.** Replace `globals.css` wholesale: OKLCH semantic scales
+(`surface`, `text`, `border`, `brand`, plus the four existing tones good/warn/bad/info) in
+the two-stage `:root` / `.dark` + non-inline `@theme` pattern from §6c. Add `cn()` over the
+already-installed `clsx` + `tailwind-merge`. Delete the Arial rule.
+
+**Tranche 6 — the shell.** Collapsible left sidebar with icon rail, replacing the flat top
+nav. Group the 7 entries (Plan / Travel / Settings) so steps 13–18 have somewhere to land.
+Add the dark-mode toggle §6e is missing.
+
+**Tranche 7 — the component vocabulary.** Extend `ui.tsx` from 190 lines to a real set:
+`Card` with density variants, `Table` with sticky headers and right-aligned money,
+`Badge`/`Tone` on the new tokens, `Button` variants, `EmptyState`, and lucide icons
+throughout.
+
+**Tranche 8 — the sweep.** Apply across all 16 routes, screen by screen, verifying each
+renders. `/` and `/readiness` carry the most visual weight and should go last, once the
+vocabulary has been proven on the simpler screens.
+
+**One rule that does not change:** the §2a defect fix is still its own commit with its own
+reasoning, not folded into a restyle. A behaviour change hidden inside a 2,000-line visual
+diff is invisible to review.
+
+---
+
+## 9. How to verify it, and why that is enough
+
+**All 436 tests are pure** — no DOM, no rendering, no database. None of them touch
 `src/app/`. That is a genuine safety net for this work and a genuine gap in it, and both
 facts matter:
 
@@ -200,7 +350,7 @@ facts matter:
 Also run, unchanged and expected green:
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test    # 431, no keys
+pnpm typecheck && pnpm lint && pnpm test    # 436 passed, 11 skipped, no keys
 pnpm roster && pnpm deadlines               # the two CLIs that read what these screens show
 ```
 

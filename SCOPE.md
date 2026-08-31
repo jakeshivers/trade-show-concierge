@@ -1090,7 +1090,9 @@ the benefit of the model without the setup cost blocking the spine.
    it shapes what "workspace" means in the data model.
 10. **Data residency.** Lead PII plus EU shows may require EU hosting. Competitors lead
     with it. Decide before step 17, since it constrains hosting at step 20.
-11. **How wide should the UI rework go, and when?** `src/app/` has been growing by
+11. ~~**How wide should the UI rework go, and when?**~~ — **resolved 2026-08-31: option B**,
+    the consolidation *and* a full visual pass, brief "modern, bright colors, easy to
+    navigate". Not started; step 12.5 (verifying Duffel and Clerk) was taken first. `src/app/` has been growing by
     copy-paste since step 8 — deliberately, because the shape was still being discovered,
     and `ui.tsx` said so in its header. Step 12 tipped it: five drifted copies of
     `FormState`, 42 hand-wired form call sites, and one zone-formatting helper written
