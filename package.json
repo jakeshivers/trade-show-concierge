@@ -17,6 +17,7 @@
     "deadlines": "tsx scripts/deadlines.ts",
     "roster": "tsx scripts/team.ts",
     "flights": "tsx scripts/flights.ts",
+    "shipping": "tsx scripts/shipping.ts",
     "smoke": "tsx scripts/smoke.ts",
     "duffel:capture": "tsx scripts/duffel-capture.ts",
     "clerk:verify": "tsx scripts/clerk-verify.ts",

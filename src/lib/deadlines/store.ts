@@ -348,7 +348,7 @@ export type SweepResult = {
  *
  * Written to `alerts` rather than to email, for the reason `travel/notify.ts`
  * gives: the row is the durable record that the notification was owed, and a
- * transport added later cannot erase it. Step 16 builds the feed; step 20 adds
+ * transport added later cannot erase it. Step 17 builds the feed; step 21 adds
  * Slack behind this same call.
  *
  * `onConflictDoNothing().returning()` and counting what came back, not what was

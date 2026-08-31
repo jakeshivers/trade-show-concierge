@@ -172,7 +172,7 @@ No visual redesign — no typography pass, no density system, no dashboard rewor
 restructure. That is a real and separate job, and it is worth *waiting* on, for a reason
 this document should be honest about rather than pretending the two are the same size:
 
-- **Step 13** (flight tracking) and **step 16** (the alerts feed) each add screens, and an
+- **Step 13** (flight tracking) and **step 17** (the alerts feed) each add screens, and an
   alerts feed in particular is a new layout primitive, not another table.
 - **Step 19** is an offline day-of PWA. That is a genuine change to how the client works —
   not a reskin — and it is the first screen with a hostile environment (show-floor wifi) and

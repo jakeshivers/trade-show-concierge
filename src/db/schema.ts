@@ -101,10 +101,39 @@ export const shipmentStatusEnum = pgEnum('shipment_status', [
   'label_created',
   'in_transit',
   'out_for_delivery',
+  /**
+   * The carrier put it on a dock. **Not the same as received** — see
+   * `shipments.received_at`, and `src/lib/shipping/status.ts` for why the
+   * distinction is the most expensive one in this table.
+   */
   'delivered',
   'exception',
   'returned',
   'cancelled',
+  /**
+   * The provider has a record and cannot currently say. Step 13's rule, applied
+   * to a second tracker: not knowing is not the same as fine, and it is what a
+   * row nobody has refreshed silently claims to be.
+   */
+  'unknown',
+]);
+
+/**
+ * Where an outbound crate is consigned, which decides what "on time" means.
+ *
+ * These are not shipping addresses under different names; they are two
+ * different *rules*. An advance warehouse has a **cutoff**: it accepts freight
+ * for weeks and stops on a published date, and arriving early is the whole
+ * point. Show-site receiving has a **window**: the dock opens when move-in
+ * opens, and a crate that turns up two days early is refused, stored at the
+ * carrier's rate, or sent back — which is a failure a deadline model cannot
+ * express, because it is on the wrong side of the date. §5g.
+ */
+export const shipmentConsignmentEnum = pgEnum('shipment_consignment', [
+  'advance_warehouse',
+  'show_site',
+  /** A return leg: the crate is coming back to us, not going to a floor. */
+  'office',
 ]);
 
 export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
@@ -658,18 +687,64 @@ export const shipments = pgTable(
       .references(() => shows.id, { onDelete: 'cascade' }),
     description: text('description').notNull(),
     direction: shipmentDirectionEnum('direction').notNull().default('outbound'),
+    consignment: shipmentConsignmentEnum('consignment').notNull().default('advance_warehouse'),
     carrier: carrierEnum('carrier').notNull(),
     trackingNumber: text('tracking_number'),
     status: shipmentStatusEnum('status').notNull().default('draft'),
+
+    /**
+     * Who chases this crate.
+     *
+     * Nullable, and that is the interesting case rather than the tidy one. §5a
+     * learned it on deadlines: an alert addressed to an owner, on a row with no
+     * owner, reaches nobody — silently, and on precisely the row most likely to
+     * be missed. Unownedness escalates to the show's runners and is named as the
+     * thing to fix first. §5g.
+     */
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
 
     fromAddress: jsonb('from_address').$type<Address>(),
     toAddress: jsonb('to_address').$type<Address>(),
 
     // Show floors have hard receiving windows; missing them costs drayage fees.
     mustArriveBy: timestamp('must_arrive_by', { withTimezone: true }),
+    /**
+     * The other edge of the window, and the one a deadline model cannot hold.
+     *
+     * Show-site receiving does not open until move-in does. A crate that arrives
+     * before this is not early, it is refused — held by the carrier at its own
+     * rate, or returned. Null for an advance warehouse, which accepts freight
+     * for weeks and only has a far edge. `src/lib/shipping/status.ts`.
+     */
+    receivingOpensAt: timestamp('receiving_opens_at', { withTimezone: true }),
     shippedAt: timestamp('shipped_at', { withTimezone: true }),
     estimatedDelivery: timestamp('estimated_delivery', { withTimezone: true }),
+    /**
+     * What the carrier promised when the label was made, kept beside what it
+     * says now.
+     *
+     * The flights rule ("scheduled times are immutable") reaching shipping. A
+     * single `estimated_delivery` column overwritten on every poll cannot answer
+     * the only question worth asking — *has the carrier moved its own promise?*
+     * — because the promise is gone. Without it every late crate looks like it
+     * was always going to be late, and nobody can tell a slipping shipment from
+     * one that was booked too tight in the first place.
+     */
+    promisedDelivery: timestamp('promised_delivery', { withTimezone: true }),
+    estimateChangedAt: timestamp('estimate_changed_at', { withTimezone: true }),
     deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+    /**
+     * When a person said the crate is actually *here*.
+     *
+     * `delivered_at` is the carrier's claim that it reached a dock. Between that
+     * dock and the booth sits drayage — a separate contractor, on its own
+     * schedule, that this app cannot see. The single most expensive thing this
+     * table could do is let "delivered" render as done while the crate sits in a
+     * marshalling yard and the booth stands empty. Only a person sets this, the
+     * way only the subject sets `show_attendees.responded_at`.
+     */
+    receivedAt: timestamp('received_at', { withTimezone: true }),
+    receivedById: uuid('received_by_id').references(() => users.id, { onDelete: 'set null' }),
 
     pieces: integer('pieces').notNull().default(1),
     weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
@@ -681,8 +756,11 @@ export const shipments = pgTable(
     }),
     notes: text('notes'),
 
+    /** Which tracking provider produced the readings on this row. */
+    trackingProvider: text('tracking_provider'),
     lastCheckedAt: timestamp('last_checked_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('shipments_show_idx').on(t.showId),
@@ -690,6 +768,22 @@ export const shipments = pgTable(
   ],
 );
 
+/**
+ * The carrier's scan history — append-only, and the thing `shipments.status` is
+ * a projection of.
+ *
+ * The same shape as `ticket_credit_entries` under a credit balance: the events
+ * are the facts and the status column is a rollup of them, so "where has this
+ * crate actually been" stays answerable after somebody corrects the status by
+ * hand.
+ *
+ * `fingerprint` is why re-polling does not double the timeline. A tracker
+ * returns its *whole* history on every call, not the delta, so an append with no
+ * identity turns a nightly sweep into a timeline that grows by its own length
+ * every night. Carriers do not issue stable event ids, so the fingerprint is
+ * derived from the scan itself — `normalize.ts` builds it — and the unique index
+ * is what makes the claim true rather than intended.
+ */
 export const shipmentEvents = pgTable(
   'shipment_events',
   {
@@ -701,8 +795,16 @@ export const shipmentEvents = pgTable(
     status: text('status').notNull(),
     message: text('message').notNull(),
     location: text('location'),
+    /** Which provider reported this scan. `manual` when a person typed it. */
+    source: text('source').notNull().default('manual'),
+    /** Stable identity for one scan, so re-polling appends nothing. */
+    fingerprint: text('fingerprint').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('shipment_events_shipment_idx').on(t.shipmentId, t.occurredAt)],
+  (t) => [
+    index('shipment_events_shipment_idx').on(t.shipmentId, t.occurredAt),
+    uniqueIndex('shipment_events_fingerprint_idx').on(t.shipmentId, t.fingerprint),
+  ],
 );
 
 /* --------------------------------- alerts ---------------------------------- */

@@ -58,7 +58,10 @@ not in town, cross-show double-booking compared on travel windows, side events w
 lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
 clock; and flight tracking — a status provider behind the usual interface, a board ordered
 by what is wrong rather than by what leaves next, and delay alerts that only speak when a
-delay costs the arrival buffer the ticket was approved under. 489 tests, no keys required.
+delay costs the arrival buffer the ticket was approved under; and shipping — an EasyPost
+adapter behind the usual interface, an event timeline that a nightly poll cannot double,
+and a receiving *window* with two edges, because freight that arrives before a show-site
+dock opens is refused rather than early. 571 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -71,7 +74,9 @@ with the alerts the engine would send tonight, in the words it would send them.
 `pnpm roster` prints booth coverage across every show — every shift's target beside what it
 can *actually* field, the people it cannot count and why, and the shifts a naive roster
 count would have called full. `pnpm flights` prints the flight board and what the alert
-engine would say tonight — which, on most legs, is nothing.
+engine would say tonight — which, on most legs, is nothing. `pnpm shipping` prints every
+crate worst-first, the receiving window each is judged against, and the one alert that has
+no shipment behind it: a show that moved out with freight and nothing recorded coming back.
 
 **What step 12 added, and where:** `src/lib/team/` and `src/lib/lodging/`, split the way
 everything since step 8 has been. `team/coverage.ts` is pure and holds the whole argument:
@@ -317,7 +322,7 @@ is still next. The plumbing half:
   `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
 - **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
   `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all 17 routes against a running `pnpm dev` and checks 200 plus
+- **`pnpm smoke`** fetches all 19 routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
 And the visual half:
@@ -375,6 +380,91 @@ themes now. `UI-REWORK.md` §10 and §11 are the long version.
    real answer that a two-way toggle silently destroys the first time it is pressed, after
    which the app stops tracking a laptop that switches at sunset with nothing on screen
    saying so.
+
+**What step 14 added, and where:** `src/lib/integrations/shipping/` — the third integration
+behind an interface, in the shape the first two settled on. `types.ts` is the provider
+contract and it decides nothing; `easypost/` is EasyPost Tracker v2 (wire / normalize /
+client, written to the published schema and **never run against a live key**, which its
+header says in the same words AeroAPI's does); `recorded/` replays EasyPost-shaped payloads
+through the *real* normalizer, projecting a recorded **shape** onto the crate's actual
+transit window and handing back only the scans that have already happened — so a replay
+can never show a crate delivered on the day its label was printed, and `stalled`, whose
+entire content is the *absence* of recent scans, stays distinguishable from `on_time`. Its
+scan locations are roles ("Origin hub", "Destination facility"), not cities, because a
+replay knows the shape of a journey and nothing about the route.
+`shipping/provider.ts` selects between them with **no fallback**.
+
+`src/lib/shipping/` is the model, split the way everything since step 8 has been.
+`status.ts` is pure and holds the argument: the two-edged `windowVerdict` (with `too_early`
+as a real standing), `stallOf`, `freshnessOf` / `effectiveStatus`, and `reconcile`, which
+captures the carrier's promise *once* so `brokenSincePromise` can ever be true.
+`alerts.ts` is pure, mostly decides to say nothing, and carries `planReturnGapAlert` — the
+one planner in the product that fires on an absence. `board.ts` orders by what is wrong
+rather than by what is due, and counts `unreceived` as a live figure. `access.ts` is the
+split worth arguing about: confirming a crate reached the booth is available to **anybody**.
+`edit.ts` refuses a show-site row with no dock-opening time and refuses to guess an advance
+warehouse cutoff. `store.ts` is the only file touching rows: org-scoped through the show
+(the mirror of flights, which scopes through the traveler because its show is nullable),
+the sweep, and the append-only timeline.
+
+Schema: `shipments.consignment`, `receiving_opens_at`, `owner_id`, `received_at` +
+`received_by_id`, `promised_delivery`, `estimate_changed_at`, `tracking_provider`,
+`updated_at`, plus an `unknown` status; `shipment_events.source` + `fingerprint` with a
+unique index on `(shipment_id, fingerprint)`. Screens: `/shipping` in the nav, and the
+show's **Logistics tab is writable** — it was the last read-only one. `_present.tsx` is the
+shipment vocabulary both screens render through, because the moment two screens draw a
+crate they can disagree about what `too_early` looks like and nothing would catch it.
+`pnpm shipping` / `pnpm shipping --sync` is the engine without a screen.
+
+**The seed grew two shows, and that was a finding rather than a convenience.** Every seeded
+show was fifty or more days out, which means no crate on the calendar had plausibly
+shipped — the recorded provider correctly returned pre-transit trackers with no scans, and
+a shipping feature seeded against that calendar would have had an empty timeline on every
+row. What was missing was somewhere for freight to *be*. So there is now a **live** show
+(move-in this morning: a crate delivered to a dock that nobody has confirmed at the booth,
+one that missed show-site receiving outright, and one that has simply gone quiet) and a
+**prior-year** show that moved out seven weeks ago with outbound freight and nothing
+recorded coming back. Both sweeps are real.
+
+**The five corrections step 14 turned up:**
+
+1. **A crate has a window, not a deadline, and early is a failure too.** A flight cannot
+   land too soon; freight can, and the two consignments are two different *rules* wearing
+   the same date. An advance warehouse holds freight for weeks and closes on a published
+   cutoff. Show-site receiving does not open until move-in, and a crate that turns up two
+   days early is refused, held at the carrier's rate, or sent back — which every status
+   column in every payload calls `delivered`. A deadline-only model calls that crate
+   "clear, with fifty hours spare", right up until the dock turns the truck around. Also:
+   an advance-warehouse cutoff must never be prefilled from move-in, because it is one to
+   three weeks earlier and a wrong-by-a-fortnight date that looks right is worse than a
+   blank one. `SCOPE.md` §5g.
+2. **Delivered is not received, and only a person can close that gap.** The carrier signed
+   for a dock. Drayage — a separate contractor, on its own schedule, invisible to this app —
+   moves it from there to the booth. Rendering `delivered` as done is how a booth stands
+   empty on the first morning with every screen in the product showing green. `received_at`
+   is a person's word, the way `show_attendees.responded_at` is, and confirming it is
+   available to **anybody**: the person who finds the crate is whoever is in the booth at
+   7am, and a confirmation only a manager can give never gets given.
+3. **Silence is the failure mode, and nothing in the payload reports it.** A stalled crate
+   is still being promised for Thursday and still reads `in_transit`; there has just been no
+   scan since Tuesday. So the absence of scans is what raises it — with a threshold generous
+   enough for LTL freight, which really does scan once a day, tightening as the deadline
+   closes. This is also why the sweep plans alerts against *every* shipment rather than only
+   the ones that changed: an engine that speaks on transitions is structurally incapable of
+   reporting a stall, which is the failure with no transition in it.
+4. **§5f's rule about the leg home inverts.** A delayed flight home says nothing, because it
+   is somebody's evening. A return crate is the leg that actually goes missing, and it
+   surfaces a quarter later when the booth is not there for the next show and the claim
+   window has closed. So the sharpest alert here has **no shipment row behind it at all**:
+   a show that moved out, had outbound freight, and has nothing recorded coming back.
+5. **A poll returns the whole timeline, not a delta — and one small bug proved the general
+   rule.** Carriers issue no stable event ids, so a fingerprint is derived from the scan
+   (instant, phase, location — deliberately *not* the message, since carriers reword scan
+   text between polls) and a unique index makes the claim true rather than intended. The
+   bug: `expectedArrival` trusted `estimated_delivery` on a shipment with **no tracking
+   number**, so a crate nobody had handed to a carrier was reported as *"will miss the
+   receiving deadline"* — a confident claim about a truck, sourced from nothing, that hid
+   the actual problem, which is that there is no truck.
 
 **What step 13 added, and where:** `src/lib/integrations/flightstatus/` — the second
 integration behind an interface, in the shape the first one settled on. `types.ts` is the
@@ -451,25 +541,36 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 14 — shipping (`SCOPE.md` §10 Phase C): an EasyPost adapter behind the usual
-interface, tracking, an event timeline, and the "will this land before move-in?" check that
-is the crate's version of the arrival buffer. The show detail Logistics tab is the last
-read-only one, and says so where the controls would be.
+**Next:** step 15 — the **conversational assistant** (`SCOPE.md` §10, inserted at 15; the
+old 15–21 shifted up by one). A chat agent that answers questions across the workspace and
+**drafts** travel and lodging requests for a human to commit — read-and-draft only, never a
+purchase, because §6a's rule stands: the LLM parses and narrates, the deterministic policy
+engine authorizes. A flight request lands as a `travel_request` in the state machine that
+already exists; the §6a seam is built and exercised and only the parser is missing. A hotel
+request creates a lodging *record*, since §5 keeps hotel booking out of v1.
+
+**The access model is the hard part of step 15, and it is not a prompt.** The agent must get
+no database access of its own: every tool it holds is an existing org-scoped store function,
+called as the asking actor, through the same `access.ts` gates a screen goes through. Then
+"which room is Shelley in" is not refused by a filter a model could be talked around — the
+row is never retrieved, because `travelerScope` narrowed the query before the agent saw
+anything. Adding one tool that queries around the actor is the single thing that would break
+the whole posture.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 (an LLM parsing "Vegas by Tuesday noon, back Thursday night" into constraints) is not
 built — but its *seam* is, and is exercised: `raw_request_text` and
 `constraints_confirmed_at` are in the schema, the agent refuses to search an unconfirmed
 parse, and `availableActions` already surfaces the confirmation step. What is missing is
-only the parser. The readiness tab, its deadline register, the team tab and lodging are all
-writable as of steps 10–12; Logistics — shipment tracking (step 14) and chain of custody
-(step 15) — is the last read-only tab, and says so where the interaction would be rather
-than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
+only the parser. The readiness tab, its deadline register, the team tab, lodging and
+logistics are all writable as of steps 10–14 — **there is no read-only tab left.** What
+Logistics still lacks is chain of custody on the asset reservations (step 16), and it says
+so where those controls would be rather than showing a dead button. **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Deadline and flight alerts land in the `alerts` table and nowhere else** — there is no
-feed screen (step 16) and no transport (step 20), so `pnpm deadlines` and `pnpm flights` are
-how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
+**Deadline, flight and shipment alerts land in the `alerts` table and nowhere else** — there
+is no feed screen (step 17) and no transport (step 21), so `pnpm deadlines`, `pnpm flights`
+and `pnpm shipping` are how a person reads them today. **Nothing rebooks a cancelled flight**, and the alert says so
 rather than implying otherwise: the agent buys against a travel request and the ticket is
 already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
 later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
@@ -480,6 +581,13 @@ live and enforced by the engine today. **Checklist templates are code, not rows*
 is deliberately deferred until the standard list has been used and argued with, which the
 templates card says on the page. The nav still grows one entry per screen
 that exists.
+
+**Two adapters have never met a live key, and say so in their own headers.** The AeroAPI
+flight-status adapter (step 13) and the EasyPost tracking adapter (step 14) are both written
+to published schemas and tested against fixtures we wrote ourselves — the closed loop step
+12.5 named, which proves internal consistency and structurally cannot catch a wrong field
+name. Neither has a capture script yet; `pnpm duffel:capture` is the shape the two of them
+need before either is trusted with a real crate or a real gate.
 
 **Outstanding — and step 12.5 built the tools to close it.** The Duffel adapter is still
 verified only against fixtures and mocked HTTP written to the published v2 schema.
@@ -674,6 +782,46 @@ silently. One key is now `AuthConfigError`.
   `recorded` only when `FLIGHT_STATUS_PROVIDER=recorded` says so, otherwise an error naming
   the variable. The temptation is stronger here than for fares — nobody spends money on a
   delay reading — but the sentence it produces is "your colleague will make move-in".
+- **A crate has a window, not a deadline, and early is a failure too.** An advance
+  warehouse holds freight for weeks and closes on a published cutoff; show-site receiving
+  does not open until move-in, and anything that arrives before a staffed dock is refused,
+  stored at the carrier's rate, or returned — an outcome every status column in every
+  carrier payload calls `delivered`. `shipments.consignment` picks the rule, a show-site
+  row cannot be saved without `receiving_opens_at`, and `too_early` is a real standing.
+  An advance-warehouse cutoff is **never** defaulted from move-in: it is one to three weeks
+  earlier, so a helpful prefill is wrong by a fortnight and looks right.
+  `src/lib/shipping/status.ts`, `SCOPE.md` §5g.
+- **Delivered is the carrier's word; received is a person's.** Between the dock the carrier
+  signed at and the booth sits drayage — a separate contractor on its own schedule that
+  this app cannot see. A delivered crate stays a *live* row until somebody sets
+  `received_at`, and confirming it is available to **anybody**, because the person who finds
+  the crate is whoever is standing in the booth at 7am. A confirmation only a manager can
+  give is one that never gets given, after which every delivered crate stays flagged and the
+  flag stops meaning anything. Same rule as `show_attendees.responded_at`, from a fourth
+  direction.
+- **Silence is the failure mode, and no status field reports it.** A stalled crate has a
+  healthy payload: the carrier is still promising Thursday and there has been no scan since
+  Tuesday. So the *absence* of scans is what raises it, with a threshold generous enough for
+  LTL freight (which really does scan once a day) that tightens near the deadline. A
+  tracking number with no scan at all is a label nobody handed over; a deadline with no
+  tracking number is a plan, not a crate, and the engine says so rather than making a claim
+  about a truck that does not exist.
+- **§5f's rule about the leg home inverts for freight.** A delayed flight home says nothing;
+  a return crate is the one that actually goes missing, and you find out a quarter later
+  when the booth is not there for the next show. So the sharpest alert in the product has
+  **no row behind it**: a show that moved out, had outbound freight, and has nothing
+  recorded coming back. `src/lib/shipping/alerts.ts`.
+- **A shipment alert is keyed to the deadline *and* the standing.** §5a keys on a date
+  because dates move deliberately; §5f keys on the standing because estimates move hourly.
+  Shipping has both in one row, so the key carries both and carries the estimate nowhere.
+- **A carrier's timeline is returned whole on every poll, not as a delta.** So a scan
+  carries a `fingerprint` — instant, phase, location, deliberately *not* the message, since
+  carriers reword scan text between polls — and `(shipment_id, fingerprint)` is unique.
+  Without it a nightly sweep grows the timeline by its own length every night.
+- **The tracking provider is never chosen by falling back either.** EasyPost with a key,
+  `recorded` only when `SHIPMENT_TRACKING_PROVIDER=recorded` says so, otherwise an error
+  naming the variable. The sentence it produces is "the booth will be there before the doors
+  open".
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. Dates shift on the local
@@ -716,11 +864,14 @@ pnpm roster           # booth coverage everywhere: target, assigned, who can act
 pnpm roster <show id> # one show, shift by shift
 pnpm flights          # every tracked leg, worst first, and what the engine would say
 pnpm flights --sync   # ask the status provider, write the changes and the alerts
+pnpm shipping         # every crate, worst first, and what the engine would say
+pnpm shipping <show id>  # one show's freight
+pnpm shipping --sync  # ask the tracking provider, write the scans and the alerts
 pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/ (needs a test key)
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 17 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 19 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -739,8 +890,11 @@ src/app/(app)/travel/        the request list, the form, the audit trail as a pa
                               and the approvals queue
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
+src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
+                              vocabulary both it and the Logistics tab render through
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
+src/app/(app)/shows/[id]/logistics/  writable freight, its event timeline, and receipt
 src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatting),
                               form.ts (one FormState + FormData helpers, dependency-free),
                               form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts
@@ -766,7 +920,14 @@ src/lib/flights/              tracking — status.ts (pure: freshness, the §7 a
                               standing not the estimate), board.ts, access.ts, provider.ts
                               (env → status provider, no fallback), store.ts (rows, the
                               sweep, and materializing a booking into an itinerary)
+src/lib/shipping/             freight — status.ts (pure: the two-edged receiving window,
+                              the stall model, delivered-vs-received, the reconciler),
+                              alerts.ts (pure, and the one alert with no row behind it),
+                              board.ts, access.ts, edit.ts, provider.ts (env → tracking
+                              provider, no fallback), store.ts (rows, the sweep, the
+                              append-only timeline)
 src/lib/integrations/flightstatus/  provider interface + AeroAPI adapter + `recorded` replay
+src/lib/integrations/shipping/      provider interface + EasyPost adapter + `recorded` replay
 src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
                               control (pure gate + versioned policy store)

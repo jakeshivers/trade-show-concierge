@@ -80,7 +80,7 @@ export default async function ShowOverviewPage({ params }: { params: Promise<{ i
               {money(committedCents)}
               <span className="block text-xs text-text-muted">
                 {expenses.length} expense {expenses.length === 1 ? 'line' : 'lines'}. The true-cost
-                rollup that folds in flights, lodging, and shipping lands at step 16.
+                rollup that folds in flights, lodging, and shipping lands at step 17.
               </span>
             </Row>
             <Row label="Open deadlines">

@@ -10,6 +10,7 @@ import {
   Luggage,
   PanelLeftClose,
   PanelLeftOpen,
+  PackageSearch,
   Plane,
   Radar,
   ShieldCheck,
@@ -56,6 +57,7 @@ const GROUPS: Group[] = [
       { href: '/itinerary', label: 'My itinerary', Icon: Luggage },
       { href: '/travel', label: 'Travel', Icon: Plane },
       { href: '/flights', label: 'Flight board', Icon: Radar },
+      { href: '/shipping', label: 'Shipping', Icon: PackageSearch },
       // Everyone has an approvals page; for a Member it is their own requests
       // waiting on somebody else, which is worth an entry — "where has my
       // request got to" is the question the queue exists to answer.

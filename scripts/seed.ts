@@ -26,6 +26,8 @@ import {
   respondToInvitation,
 } from '../src/lib/team/store';
 import { addLodging, assignRoom } from '../src/lib/lodging/store';
+import { addShipment, syncShipmentTracking } from '../src/lib/shipping/store';
+import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -206,7 +208,7 @@ async function main() {
   });
 
   console.log('· shows');
-  const [automate, medtech, packexpo, sensors, roboticsSummit] = await db
+  const [automate, medtech, packexpo, sensors, dmwest, automate2025, roboticsSummit] = await db
     .insert(s.shows)
     .values([
       {
@@ -292,6 +294,58 @@ async function main() {
         boothSize: '10x10',
         budgetCents: 2_900_000,
         goals: 'Component-buyer reach; 35 qualified leads.',
+      },
+      {
+        // A show that is happening *now* — move-in was this morning.
+        //
+        // The seed had no such show, and that turned out to be load-bearing
+        // rather than cosmetic: every other show is fifty days out, so no crate
+        // on this calendar has plausibly shipped, and a shipping feature seeded
+        // against it would have had an empty event timeline on every row. The
+        // recorded provider is right to return no scans for freight that has not
+        // left; what was missing was somewhere for freight to be.
+        orgId: org.id,
+        name: 'Design & Manufacturing West 2026',
+        status: 'live',
+        venueName: 'Anaheim Convention Center',
+        city: 'Anaheim',
+        region: 'CA',
+        country: 'US',
+        airportCode: 'SNA',
+        timezone: 'America/Los_Angeles',
+        startsOn: at(1, 9),
+        endsOn: at(3, 16),
+        moveInAt: at(0, 8),
+        moveOutAt: at(3, 18),
+        boothNumber: '2209',
+        boothSize: '10x20',
+        budgetCents: 4_100_000,
+        goals: 'West-coast manufacturing buyers; 50 qualified leads.',
+      },
+      {
+        // Last year's Detroit show, already over. It exists because step 14's
+        // sharpest alert has no row behind it: freight went out to a show that
+        // has moved out, and nothing is recorded coming back. That cannot be
+        // demonstrated on a calendar where every show is still in the future,
+        // and it is the failure that surfaces a quarter late — which is to say,
+        // exactly now, on this row.
+        orgId: org.id,
+        name: 'Automate 2025',
+        status: 'complete',
+        venueName: 'Huntington Place',
+        city: 'Detroit',
+        region: 'MI',
+        country: 'US',
+        airportCode: 'DTW',
+        timezone: 'America/Detroit',
+        startsOn: at(-48, 9),
+        endsOn: at(-45, 16),
+        moveInAt: at(-50, 8),
+        moveOutAt: at(-45, 17),
+        boothNumber: '4102',
+        boothSize: '20x20',
+        budgetCents: 13_900_000,
+        goals: 'Prior year. Kept as the clone source and the comparison basis.',
       },
       {
         // Declined, and still here. The value of the intake record is entirely in
@@ -617,6 +671,8 @@ async function main() {
   const admin = actorFor(shelley);
   const DTW = automate.timezone;
   const SJC = sensors.timezone;
+  const MSP = medtech.timezone;
+  const SNA = dmwest.timezone;
 
   console.log('\u00b7 attendees (invited by the lead, answered by the person)');
   const invite = async (
@@ -914,6 +970,214 @@ async function main() {
     },
   ]);
 
+  console.log('\u00b7 shipments (built through the real store, tracked by the real sweep)');
+  // The four cases §5g argues about, one crate each — and the fifth case, which
+  // has no crate at all.
+  //
+  // Consignment is the load-bearing field: the same delivery date means opposite
+  // things at an advance warehouse (which holds freight for weeks and closes on
+  // a published date) and at show-site receiving (whose dock does not open until
+  // move-in). Both are here so the screen has to show the difference.
+  await addShipment(
+    admin,
+    automate.id,
+    {
+      description: 'Booth crate 1 of 2 — 20x20 island',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'fedex',
+      // The advance warehouse closes a fortnight before move-in. Defaulting this
+      // to move-in would be wrong by two weeks in the expensive direction and
+      // would look right on every screen — `edit.ts` refuses to guess it.
+      mustArriveOn: localOn(at(36, 16), DTW),
+      mustArriveAt: localAt(at(36, 16), DTW),
+      trackingNumber: '772091144821',
+      ownerId: marcus.id,
+      pieces: '2',
+      weightLb: '1240.00',
+      declaredValue: '84000.00',
+      cost: '2180.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // The carrier will call this on time. Show-site receiving will not: the dock
+  // opens with move-in, and this is expected before it. Every status column in
+  // every payload says success.
+  await addShipment(
+    admin,
+    automate.id,
+    {
+      description: 'Literature & giveaways',
+      direction: 'outbound',
+      consignment: 'show_site',
+      carrier: 'ups',
+      receivingOpensOn: localOn(at(50, 8), DTW),
+      receivingOpensAt: localAt(at(50, 8), DTW),
+      mustArriveOn: localOn(at(50, 18), DTW),
+      mustArriveAt: localAt(at(50, 18), DTW),
+      trackingNumber: '1Z8W4A710390442117',
+      ownerId: priya.id,
+      pieces: '6',
+      weightLb: '310.00',
+      cost: '640.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // Deliberately unowned, and deliberately the one that goes quiet. An alert
+  // addressed to an owner would reach nobody here, which is why unownedness
+  // escalates rather than mutes. §5a's third correction, from a fourth direction.
+  await addShipment(
+    admin,
+    sensors.id,
+    {
+      description: 'Booth crate — 10x10 inline',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'ups',
+      mustArriveOn: localOn(at(40, 16), SJC),
+      mustArriveAt: localAt(at(40, 16), SJC),
+      trackingNumber: '1Z8W4A710390998812',
+      pieces: '1',
+      weightLb: '620.00',
+      cost: '1420.00',
+      costCenterId: se.id,
+    },
+    now,
+    db,
+  );
+
+  // Months out and behaving. The quiet row is not filler: an engine that has
+  // nothing to say about most of the board is the property being demonstrated.
+  await addShipment(
+    admin,
+    medtech.id,
+    {
+      description: 'Booth crate — 10x20 inline',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'fedex',
+      mustArriveOn: localOn(at(104, 16), MSP),
+      mustArriveAt: localAt(at(104, 16), MSP),
+      trackingNumber: '772091277315',
+      ownerId: marcus.id,
+      pieces: '3',
+      weightLb: '740.00',
+      cost: '1960.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // The show that is on right now, which is where freight can actually be in
+  // motion. Both crates below have real scan histories because their transit
+  // windows are in the past — the recorded provider projects a shape onto the
+  // window and hands back only the scans that have already happened.
+  //
+  // This one is the distinction the carrier's own data cannot express: it was
+  // delivered, on time, to the dock — and nobody has said it reached the booth.
+  // Every status column on this row reads success while the booth may be empty.
+  await addShipment(
+    admin,
+    dmwest.id,
+    {
+      description: 'Booth crate — 10x20 inline',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'fedex',
+      mustArriveOn: localOn(at(-12, 16), SNA),
+      mustArriveAt: localAt(at(-12, 16), SNA),
+      trackingNumber: '772044819903',
+      ownerId: marcus.id,
+      pieces: '3',
+      weightLb: '640.00',
+      cost: '1180.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // And this one missed the dock outright: consigned to show-site receiving,
+  // which opened and closed with move-in this morning.
+  await addShipment(
+    admin,
+    dmwest.id,
+    {
+      description: 'Demo unit & spares',
+      direction: 'outbound',
+      consignment: 'show_site',
+      carrier: 'ups',
+      receivingOpensOn: localOn(at(0, 8), SNA),
+      receivingOpensAt: localAt(at(0, 8), SNA),
+      mustArriveOn: localOn(at(0, 18), SNA),
+      mustArriveAt: localAt(at(0, 18), SNA),
+      trackingNumber: '1Z8W4A710391556604',
+      ownerId: priya.id,
+      pieces: '2',
+      weightLb: '190.00',
+      cost: '520.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // The case with no status field behind it. This crate is inside its deadline
+  // on the carrier's own account — it is still promising delivery a day early —
+  // and there has not been a scan since Saturday. Nothing in the payload says
+  // anything is wrong, which is exactly why the silence has to be what raises it.
+  await addShipment(
+    admin,
+    dmwest.id,
+    {
+      description: 'Carpet, furniture & AV rigging',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'ups',
+      mustArriveOn: localOn(at(2, 16), SNA),
+      mustArriveAt: localAt(at(2, 16), SNA),
+      trackingNumber: '1Z8W4A710391772039',
+      ownerId: marcus.id,
+      pieces: '4',
+      weightLb: '880.00',
+      cost: '1340.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
+  // Last year's show. Freight went out; nothing is recorded coming back. This
+  // crate is here so the *absence* of its return leg is a row the engine can
+  // find — the one alert in the product with no shipment behind it.
+  await addShipment(
+    admin,
+    automate2025.id,
+    {
+      description: 'Booth crate 1 of 2 — 20x20 island',
+      direction: 'outbound',
+      consignment: 'advance_warehouse',
+      carrier: 'fedex',
+      mustArriveOn: localOn(at(-64, 16), DTW),
+      mustArriveAt: localAt(at(-64, 16), DTW),
+      trackingNumber: '772088410277',
+      ownerId: marcus.id,
+      pieces: '2',
+      weightLb: '1240.00',
+      cost: '2090.00',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
   console.log('· expenses');
   await db.insert(s.expenses).values([
     { showId: automate.id, category: 'Booth space', description: '20x20 island, Automate 2026', amountCents: 5_600_000, paid: true, costCenterId: mkt.id, incurredOn: at(-40) },
@@ -1175,12 +1439,43 @@ async function main() {
     db,
   );
 
+  // Scans and shipment alerts come out of the real sweep against the `recorded`
+  // provider, for the reason the travel requests come out of the real agent: a
+  // hand-written `shipment_events` row is a carrier scan no carrier ever made,
+  // filed as evidence in the timeline the whole feature rests on. Which recorded
+  // payload each crate replays is pinned so the board tells one story — the
+  // advance-warehouse crate slips past its cutoff, the show-site crate is
+  // "on time" and will be refused at a shut dock, and the unowned one goes quiet.
+  console.log('· shipment tracking (real sweep against the recorded provider)');
+  const shipmentSync = await syncShipmentTracking(
+    org.id,
+    new RecordedTrackingProvider({
+      // Automate is fifty days out: these two have labels and have not moved,
+      // which is what the board should say about them.
+      '772091144821': 'on_time',
+      '1Z8W4A710390442117': 'on_time',
+      // Fifty days out and not yet handed to anybody, so this pin never fires:
+      // the provider returns a pre-transit tracker with no scans, which is the
+      // truthful answer for freight that has not left.
+      '1Z8W4A710390998812': 'on_time',
+      '772091277315': 'on_time',
+      // The live show, where freight is actually somewhere.
+      '772044819903': 'delivered',
+      '1Z8W4A710391556604': 'late',
+      '1Z8W4A710391772039': 'stalled',
+    }),
+    now,
+    db,
+  );
+
   const counts = {
     users: people.length,
     deadlineAlerts: swept.written,
     flightsChecked: flightSync.checked,
     flightAlerts: flightSync.alertsWritten,
-    shows: 5,
+    shipmentScans: shipmentSync.scansAdded,
+    shipmentAlerts: shipmentSync.alertsWritten,
+    shows: 7,
     costCenters: costCenters.length,
     policyLayers: 3,
     assets: assetRows.length,

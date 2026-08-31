@@ -151,7 +151,7 @@ export default async function FlightBoardPage() {
                 These are written to the alerts table by the nightly sweep, keyed to the standing
                 they report rather than to the arrival estimate — so an estimate drifting four
                 minutes either way all evening is not four pieces of news. There is no feed screen
-                yet (step 16); <code>pnpm flights</code> is how a person reads them today.
+                yet (step 17); <code>pnpm flights</code> is how a person reads them today.
               </p>
             </Card>
           )}

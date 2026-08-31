@@ -48,7 +48,7 @@ to be trained to use this, it has failed job 1.
 | Hosting | Deferred until the core works | Nothing is wired to a cloud provider yet. |
 | External APIs | Behind provider interfaces, off by default | Every integration has a `NotConfigured` state. The app runs with zero keys. |
 | Agent decisions | **Deterministic policy engine, LLM only at the edges** | See §6. This is the most important call in the document. |
-| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. §10 step 19. |
+| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. §10 step 20. |
 | Financial dimensions | **Cost centers from day one** | Retrofitting a cost dimension permanently orphans historical spend. §4. |
 
 ---
@@ -205,7 +205,12 @@ Modeling choices worth calling out:
 
 - **`show.move_in_at` / `move_out_at`** bracket the show. Floors have hard receiving
   windows; a crate outside one incurs drayage penalties. Shipping deadlines derive
-  from these, not from show dates.
+  from these, not from show dates — **but never by defaulting to them.** Step 14
+  found the asymmetry: show-site receiving genuinely opens *at* move-in, so
+  `shipments.receiving_opens_at` is that instant and a show-site row cannot be saved
+  without it; an advance-warehouse cutoff is one to three weeks *earlier* and is
+  published in the service manual, so prefilling it from move-in would be wrong by a
+  fortnight in the expensive direction and would look right on every screen. §5g.
 - **`lodging.room_block_cutoff`** is first-class. Missing the room-block date is among
   the most common and expensive trade show mistakes — which is what the §5a deadline
   engine is *for*, so as of step 12 a cutoff owns a register row rather than being warned
@@ -243,6 +248,12 @@ Modeling choices worth calling out:
   renders as a filled slot. §5e.
 - **`ticket_credit` expiry is per-airline**, not a single constant — carriers range from
   6 to 24 months. See §5b.
+- **`shipment.consignment` decides what its dates mean**, and `shipment_events` is
+  append-only with `status` as the projection — the same shape as a credit balance over
+  its entries. `delivered_at` is the carrier's word; `received_at` is a person's, and
+  the gap between them is drayage, which this app does not integrate with and must not
+  pretend to see. `owner_id` is nullable, and unownedness escalates rather than mutes.
+  §5g.
 - **`asset_reservation` is a log, not a flag.** Who took the booth, when it came back, what
   condition — chain of custody, because capital assets get lost between shows.
 - **Every financial row carries `cost_center_id`.** Set at creation, never inferred later.
@@ -270,7 +281,7 @@ Modeling choices worth calling out:
 | **Approvals** | Queue for Travel Managers. Approve/reject with reason, full offer context. |
 | **Ticket credits** ⭐ | Ledger of unused airline credits with per-carrier expiry, expiry alerts, and automatic use by the agent before any new purchase. §5b. |
 | **Cost centers** | Every dollar — flights, lodging, shipping, expenses — carries a cost center. Chargeback/showback reporting; per-cost-center spend caps. |
-| **Shipping** | Outbound and return crates across UPS / USPS / FedEx from one screen, with event history and "will this land before move-in?" checks. |
+| **Shipping** | Outbound and return crates across UPS / USPS / FedEx from one screen, with event history and a receiving-**window** check — which has two edges, because freight that arrives before a show-site dock opens is refused rather than early. Delivered is the carrier's word and received is a person's. §5g. |
 | **Alerts** | One feed: delayed flight, stalled shipment, shipment missing move-in, room-block cutoff, overdue task, request awaiting approval. |
 | **True cost** | Auto-rolled per show from flights, lodging, shipping, booth fees, **booth services** (electrical, carpet, AV, rigging, drayage, I&D labor), expenses. Actuals vs. budget, no spreadsheet. |
 | **Lead & meeting capture** | Log leads and on-site meetings against a show. CSV import **and a REST intake endpoint** so any scanner can feed us; manual entry as the floor. |
@@ -284,7 +295,7 @@ Modeling choices worth calling out:
 - Hotel *booking* (tracking only) · car rental · rail
 - **Native mobile lead-capture app** — a product, not a feature: offline sync, two app
   stores, badge parsing, OCR. We integrate (CSV + REST) in v1 and revisit only if lead
-  data quality proves to be the ROI bottleneck. §10 step 19 covers the day-of PWA instead.
+  data quality proves to be the ROI bottleneck. §10 step 20 covers the day-of PWA instead.
 - **Badge-scanner hardware integration** — vendors differ per show and most export CSV.
 - **Becoming a CRM** — we read pipeline from Salesforce/HubSpot and write the show
   attribution back. Opportunities live there.
@@ -292,7 +303,7 @@ Modeling choices worth calling out:
   logistics thesis that is our actual advantage.
 - Booth design tooling · vendor RFPs · organizer-side tooling (selling booth space)
 - Expense reimbursement, receipts, approvals
-- Native mobile apps (responsive web in v1; offline PWA in v1.5 — §10 step 19)
+- Native mobile apps (responsive web in v1; offline PWA in v1.5 — §10 step 20)
 - Multi-currency conversion (currency stored, never converted)
 
 ### 5a. Service manual deadline engine
@@ -643,6 +654,82 @@ IANA zones are now carried through `Segment` and stored, because Duffel had been
 — leaving no way to say what time a departure is at the airport the traveler is standing
 in.
 
+### 5g. Shipping — what "on time" has to mean when a crate can also be too early (step 14)
+
+The feature reads as "track our shipments", and built that way it is a delivery-date
+column that agrees with the carrier's website. Five things had to be got right instead,
+and three of them are inversions of rules this document already settled elsewhere.
+
+**A crate has a window, not a deadline, and early is a failure too.** A flight cannot land
+too soon. Freight can, and routinely does. These are two different rules wearing the same
+date: an **advance warehouse** accepts freight for weeks and stops on a published cutoff —
+arriving early is the entire point of using one — while **show-site receiving** does not
+open until move-in does, and a crate that turns up two days before a staffed dock is
+refused, held at the carrier's rate, or sent back. Every status column in every carrier
+payload calls that outcome `delivered`. So `shipments.consignment` decides which rule
+applies, a show-site row cannot be saved without the time the dock opens, and `too_early`
+is a real standing rather than an impossible one. The same Tuesday means "held for you" at
+one and "refused" at the other, and a screen that shows only the far edge is confidently
+wrong in the expensive direction. Also: an advance-warehouse cutoff is **not** move-in and
+must never be defaulted to it — warehouses close one to three weeks earlier, so a
+helpfully-prefilled date would be wrong by a fortnight and would look right.
+`src/lib/shipping/status.ts`.
+
+**Delivered is not received, and only a person can close that gap.** The carrier's claim is
+that a dock signed for it. Between that dock and the booth sits **drayage** — a separate
+contractor, on its own schedule, which this app cannot see and does not integrate with.
+The most expensive thing this model could do is render `delivered` as done while the crate
+sits in a marshalling yard and the booth stands empty on the first morning. So
+`shipments.delivered_at` is the carrier's word and `received_at` is a person's, the board
+counts a delivered-but-unconfirmed crate as a **live** row rather than a finished one, and
+the alert fires only once move-in has actually started. This is §5e's hearsay rule reached
+from a fourth direction: the same reason `show_attendees.responded_at` gates a confirmation
+in the coverage count. It is also why confirming receipt is available to **anybody** — the
+person who finds the crate is whoever is standing in the booth at 7am, and a confirmation
+only a manager can give is one that never gets given, after which every delivered crate
+stays flagged and the flag stops meaning anything. `src/lib/shipping/access.ts`.
+
+**Silence is the failure mode, and no status field reports it.** A stalled crate has a
+perfectly healthy payload: the carrier is still promising Thursday, the status still reads
+`in_transit`, and there simply has not been a scan since Tuesday. Nothing anywhere says
+anything is wrong, so the *absence* of scans has to be what raises it — and the threshold
+has to be generous, because long-haul LTL genuinely scans once a day and can sit a weekend
+in a terminal with nothing wrong. It tightens as the deadline approaches, when the same
+silence stops being ordinary. Two neighbouring cases fall out: a tracking number with **no
+scan at all** is a label that was printed and never handed over, which is the commonest way
+an outbound crate misses a show and is invisible because the row looks complete; and a
+shipment with a deadline and **no tracking number** is a plan rather than a crate, which
+the engine says in those words rather than making a claim about a truck that does not
+exist.
+
+**§5f's rule about the leg home inverts.** A delayed flight home says nothing, because it
+is somebody's evening and a feed that cries wolf on the way back is one nobody reads on the
+way there. Freight is the opposite: the **return** crate is the one that actually goes
+missing, and the loss surfaces a quarter later when the booth is not there for the next
+show, the tracking number was never recorded, and the claim window has closed. So a return
+shipment is chased exactly as hard as an outbound one — and the sharpest alert in this step
+has **no shipment row behind it at all**: a show whose move-out has passed, which had
+outbound freight, and which has nothing recorded coming back. It fires on an absence.
+
+**And an alert here needs both keying rules at once.** §5a keys a deadline alert on the
+deadline *and its date*, because a date moves rarely and deliberately. §5f keys a flight
+alert on the *standing*, never the estimate, because an arrival time moves every time
+anybody asks. Shipping has both kinds of moving part in one row — a receiving deadline that
+is edited a handful of times a year, and a carrier estimate that drifts hourly — so the key
+carries the deadline and the standing, and carries the estimate nowhere near it. The same
+composition rule applies to the **timeline**: a tracker returns its *whole* history on every
+call rather than a delta, so an append with no identity turns a nightly sweep into a
+timeline that grows by its own length every night. Carriers issue no stable event ids, so
+the fingerprint is derived from the scan — instant, phase and location, deliberately *not*
+the message, because carriers reword scan text between polls — and a unique index on
+`(shipment_id, fingerprint)` is what makes that a fact rather than an intention.
+
+One smaller correction, found by a test rather than by argument: **`expectedArrival` must
+not trust an estimate on a shipment with no tracking number.** Whatever is in that column
+came from a voided label or somebody's typing, and returning it made the engine report
+*"will miss the receiving deadline"* — a confident claim about a truck, sourced from
+nothing — on precisely the rows whose real problem is that no truck exists.
+
 ---
 
 ## 6. The booking agent
@@ -933,7 +1020,7 @@ empty** — someone will cut a show over a bad number. Mitigations, in order of 
 
 1. Show lead-capture *coverage* on the dashboard — "34 leads from 3 of 6 staff" — so a
    thin number is visibly thin rather than silently wrong.
-2. Make manual entry take under ten seconds in the day-of PWA (§10 step 19).
+2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20).
 3. Only then consider gamification.
 
 ### 8d. Metrics
@@ -970,7 +1057,7 @@ like a loss, and that is a reporting artifact, not a finding.
    backfilled.
 7. **The day-of view works with no network.** Show-floor wifi is unusable and convention
    centers charge extortionately for wired drops. This is an architectural constraint on
-   the §10 step 19 PWA, not a nice-to-have — it cannot be retrofitted onto server-rendered pages.
+   the §10 step 20 PWA, not a nice-to-have — it cannot be retrofitted onto server-rendered pages.
 8. **Lead PII is handled as regulated data** — consent recorded at capture, retention
    limits, deletion honored. We hold personal data of people who are not our users, and
    the schema must reflect that from the first row.
@@ -1130,18 +1217,54 @@ invert phases A and C.
       `pnpm flights --sync` is the engine without a screen. **Ticketing now materializes
       its itinerary into `flights`** — before this step nothing wrote that table at all.
       Five corrections folded into §5f above. 489 tests.
-- [ ] **14.** Shipping — EasyPost adapter, tracking, event timeline
-- [ ] **15.** Assets & collateral inventory, reservations, chain of custody
-- [ ] **16.** Alerts feed · **true-cost rollup** (nearly free once 12, 14 land)
-- [ ] **17.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture
-- [ ] **18.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
+- [x] **14.** Shipping — EasyPost adapter, tracking, event timeline, and the receiving
+      *window*. `src/lib/integrations/shipping/` is the third integration behind the usual
+      interface: an EasyPost Tracker v2 adapter (wire / normalize / client, written to the
+      published schema and **never run against a live key**, exactly as AeroAPI still is)
+      plus a `recorded` replay that projects a recorded *shape* onto the real transit
+      window and hands back only the scans that have already happened, chosen by
+      `selectTrackingProvider` with **no fallback**. `src/lib/shipping/` is the model, split
+      the way every step since 8 has been: `status.ts` pure (freshness, the two-edged window
+      verdict, the stall model, and the reconciler), `alerts.ts` pure (what is worth saying,
+      to whom, and a key that carries the deadline *and* the standing), `board.ts` (ordered
+      by what is wrong, not by what is due), `access.ts`, `edit.ts`, `store.ts` (org-scoped
+      through the show, the sweep, and the append-only timeline). Schema: `shipments.
+      consignment`, `receiving_opens_at`, `owner_id`, `received_at` + `received_by_id`,
+      `promised_delivery`, `estimate_changed_at`, `tracking_provider`, `updated_at`;
+      `shipment_events.source` + `fingerprint` (unique per shipment). Screens: `/shipping`
+      in the nav, and the show's **Logistics tab is writable** — it was the last read-only
+      one. `pnpm shipping` / `pnpm shipping --sync` is the engine without a screen. The seed
+      grew a live show and a prior-year one, because a calendar where every show is fifty
+      days out has no freight in motion and no move-out to have gone quiet after. Five
+      corrections folded into §5g above. 571 tests.
+- [ ] **15.** Conversational assistant — a chat agent that answers questions across the
+      workspace and **drafts** travel and lodging requests for a human to commit.
+      Read-and-draft only: it never confirms its own parse and never triggers a purchase,
+      because §6a's rule stands unchanged — an LLM parses requests into constraints and
+      narrates verdicts; the deterministic policy engine is the only thing that authorizes
+      spend. A flight request lands as a `travel_request` in the state machine that already
+      exists (the §6a seam — `raw_request_text`, `constraints_confirmed_at`, and an agent
+      that refuses to search an unconfirmed parse — is built and exercised; only the parser
+      is missing). A hotel request creates a lodging *record*, since §5 keeps hotel booking
+      out of v1.
+      **The access model is the hard part and is not a prompt.** The agent gets no database
+      access of its own: it calls the same org-scoped stores a screen calls, as the asking
+      actor, through the same `access.ts` gates. So "which room is Shelley in" is not
+      refused by a filter a model could be talked around — the row is never retrieved,
+      because `travelerScope` narrowed the query before the agent saw anything. Every tool
+      it holds is an existing store function; adding one that queries around the actor is
+      the one thing that would break the whole posture.
+- [ ] **16.** Assets & collateral inventory, reservations, chain of custody
+- [ ] **17.** Alerts feed · **true-cost rollup** (nearly free once 12, 14 land)
+- [ ] **18.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture
+- [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
 
 ### Phase D — v1.5 and beyond
 
-- [ ] **19.** Offline day-of PWA — my shift, booth, crate status, fast lead/meeting entry,
+- [ ] **20.** Offline day-of PWA — my shift, booth, crate status, fast lead/meeting entry,
       target-company alerts
-- [ ] **20.** Slack adapter · hosting · SSO rollout
-- [ ] **21.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
+- [ ] **21.** Slack adapter · hosting · SSO rollout
+- [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
       share links · room-block optimizer · gamification · LLM deadline extraction
 
@@ -1162,7 +1285,7 @@ the benefit of the model without the setup cost blocking the spine.
 2. ~~**Auth provider**~~ — **resolved: Clerk.** Per-org login-method control decided it.
    Partly settled at step 7: the *policy* half is built and provider-agnostic, and
    enabling a SAML/OIDC connection is Clerk configuration rather than our code, so
-   SSO needs no further build here. What still waits for step 20 is the rollout —
+   SSO needs no further build here. What still waits for step 21 is the rollout —
    a real IdP connection, and the domain-to-org mapping that goes with it.
 3. **Approval routing:** single Travel Manager queue for the org, or per-department
    approvers? Recommending a single queue for v1; per-department is a schema addition
@@ -1171,9 +1294,9 @@ the benefit of the model without the setup cost blocking the spine.
    booking is a separate provider integration and roughly doubles §6.
 5. **Scale:** how many travelers and shows per year? Under ~50 travelers, some of the
    policy machinery can be simpler. Above a few hundred, background job durability
-   needs real attention at step 4, not step 20.
+   needs real attention at step 4, not step 21.
 6. **Which CRM?** Salesforce and HubSpot are different enough that I'd build one well
-   rather than both adequately. This gates step 18.
+   rather than both adequately. This gates step 19.
 7. **Attribution default:** sourced (recommended) or influenced? And what window —
    90, 180, or 365 days? Changes what every ROI number means.
 8. **Is staff time in the cost?** Including attendee-days × a loaded rate usually
@@ -1186,7 +1309,7 @@ the benefit of the model without the setup cost blocking the spine.
    travel/planning spine, plus a per-show fee where the value concentrates. Not urgent, but
    it shapes what "workspace" means in the data model.
 10. **Data residency.** Lead PII plus EU shows may require EU hosting. Competitors lead
-    with it. Decide before step 17, since it constrains hosting at step 20.
+    with it. Decide before step 18, since it constrains hosting at step 21.
 11. ~~**How wide should the UI rework go, and when?**~~ — **resolved 2026-08-31: option B**,
     the consolidation *and* a full visual pass, brief "modern, bright colors, easy to
     navigate". Not started; step 12.5 (verifying Duffel and Clerk) was taken first. `src/app/` has been growing by
