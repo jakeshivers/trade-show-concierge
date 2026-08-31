@@ -526,6 +526,16 @@ control on the tab a Member gets. That is `readiness/access.ts`'s split — repo
 a privilege, changing the plan is — reached from a third direction, and §1's "for a Member,
 this app should be almost invisible" is what settles it.
 
+*Corrected 2026-08-31.* Recording the column was not the same as counting it. `standingFor`
+read `attendee_status` alone for three steps, so an admin-typed `confirmed` still filled a
+slot — the write path obeyed the rule, the screen showed the distinction, and the **number**
+ignored both. Coverage now requires `responded_at` before a `confirmed` counts. The result
+is a fifth standing, `secondhand`, held apart from `unconfirmed` on purpose: "said yes,
+chase them to confirm" and "has not answered" are different work items, and collapsing them
+throws away the half that is nearly done. `responded_at` gates *confirmed* only — a decline
+recorded on somebody's behalf still stands, because the wrong direction to be wrong in is
+counting them. `SCOPE.md` §11.12.
+
 **A double-booking is between travel windows, not between show dates.** The obvious
 implementation flags anyone staffed on two shows whose dates overlap, and it is wrong in
 both directions. Two three-day shows in the same week are not a conflict for somebody at
@@ -1119,13 +1129,15 @@ the benefit of the model without the setup cost blocking the spine.
     variants** — one token carries both themes, so there is no twin class left to forget.
     `UI-REWORK.md` §10 and §11 are what the work found that the plan did not predict.
 
-12. **Should booth coverage count a confirmation the subject never made?** Found while
-    fixing §11.11's roster defect, and **not fixed** because it is a domain call, not a
-    refactor. §5e and the ground rules both say a confirmation typed on somebody's behalf is
-    hearsay inside a staffing number, and `respondToInvitation` honours that — it stamps
-    `responded_at` only when the subject is the actor. But `standingFor`
-    (`src/lib/team/coverage.ts:126`) branches on `attendeeStatus !== 'confirmed'` alone and
-    never reads `responded_at`, so an admin-typed `confirmed` renders as "Confirmed and in
-    town" and counts. Requiring `responded_at` would add a fifth `Standing` kind ("recorded
-    by somebody else"), move coverage numbers on existing data, and touch the seed — its own
-    step, with its own argument. `UI-REWORK.md` §10 item 6.
+12. ~~**Should booth coverage count a confirmation the subject never made?**~~ —
+    **resolved 2026-08-31: no, and it no longer does.** Found while fixing §11.11's roster
+    defect. §5e and the ground rules already said a confirmation typed on somebody's behalf
+    is hearsay inside a staffing number, and two of the three layers already obeyed it —
+    `respondToInvitation` stamps `responded_at` only when the subject is the actor, and the
+    team tab already rendered a "not answered by them" badge on exactly those rows. Only
+    `standingFor` did not: it branched on `attendeeStatus` alone, so an admin-typed
+    `confirmed` read as "Confirmed and in town" and filled a slot. The screen was telling
+    the truth and the number was not, which is the worse half — the number is what a lead
+    reads and stops at. `AssignedStaff` now carries `respondedAt` and there is a fifth
+    `Standing` kind, `secondhand`, deliberately kept apart from `unconfirmed` because
+    "said yes, chase them to confirm" and "has not answered" are different work items.

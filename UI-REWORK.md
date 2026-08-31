@@ -410,7 +410,8 @@ edited** rather than at now — a shift in July is CDT and one in January is CST
 correct authorization is one people learn to ignore, which would have made the whole safety
 net worthless by tranche 8. It now reads the id out of the approvals queue.
 
-**6. The §2a defect has a second half, in `src/lib`, and it is still open.** ← *needs a call*
+**6. The §2a defect had a second half, in `src/lib`.** ← *resolved 2026-08-31, in its own
+step; `SCOPE.md` §11.12*
 
 `RosterEntry.isSelf` and the separate "Record Tomás's answer" control fix what the *screen*
 claimed. But the ground rule says: *"Only the person confirms their own attendance …
@@ -426,11 +427,16 @@ null recording that the subject never answered.
 So the hearsay the ground rule forbids does reach the staffing number today. It was not
 caused by this work and is not fixed by it.
 
-It is left open deliberately, because it is a domain decision rather than a refactor: making
-`standingFor` require `responded_at` adds a fifth `Standing` kind ("recorded by somebody
-else, not confirmed by them"), changes coverage numbers on existing data, and touches
-`SCOPE.md` §5e and the seed. That belongs in its own step with its own argument, not inside
-a UI tranche whose one rule is that behaviour does not change.
+It was left open through the rework deliberately — a domain decision rather than a refactor,
+and this tranche's one rule is that behaviour does not change — then fixed immediately
+afterwards as its own step. `standingFor` now requires `responded_at` before a `confirmed`
+counts, producing a fifth standing, `secondhand`, kept apart from `unconfirmed` because
+"said yes, chase them to confirm" and "has not answered" are different work items.
+
+Worth keeping for the pattern, which is the general lesson of the whole rework: **the write
+path obeyed the rule, the screen displayed the distinction, and the number ignored both.**
+Two of three layers being right is what made it survive three steps — every place a person
+would have gone looking was correct.
 
 
 ---

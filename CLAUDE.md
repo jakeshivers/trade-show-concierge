@@ -56,7 +56,7 @@ know the difference between money at risk and money already spent; and team & lo
 writable roster whose booth coverage refuses to count anybody who has not confirmed or is
 not in town, cross-show double-booking compared on travel windows, side events with guest
 lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
-clock. 441 tests, no keys required.
+clock. 445 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -359,12 +359,13 @@ themes now. `UI-REWORK.md` §10 and §11 are the long version.
    wrong. Answering for yourself and recording what a colleague told you are different
    acts, and a component given only a boolean cannot tell them apart. `RosterEntry.isSelf`
    plus a separate third-person "Record Tomás's answer" control is the fix.
-4. **That defect has a second half, in `src/lib`, and it is still open.**
-   `standingFor` (`src/lib/team/coverage.ts:126`) branches on `attendeeStatus` alone and
-   never reads `responded_at`, so a `confirmed` typed by an admin still counts toward booth
-   coverage — the hearsay the ground rule forbids. Not fixed here: it adds a fifth
-   `Standing` kind, moves coverage numbers on existing data, and is a domain call rather
-   than a refactor. **`SCOPE.md` §11.12 — needs a decision.**
+4. **That defect had a second half in `src/lib`, and it is now fixed too** (its own step,
+   after the rework — `SCOPE.md` §11.12). `standingFor` branched on `attendeeStatus` alone
+   and never read `responded_at`, so a `confirmed` typed by an admin counted toward booth
+   coverage — the hearsay the ground rule forbids. The write path already obeyed the rule
+   and the team tab already rendered a "not answered by them" badge on those exact rows;
+   only the number ignored both, which is the worse half, because the number is what a lead
+   reads and stops at.
 5. **A media query is not a preference.** Dark mode was `prefers-color-scheme` only, which
    cannot be overridden by a person, only obeyed — that is *why* there had been no toggle,
    not an oversight beside it. And the control needs three states: "follow the system" is a
@@ -544,9 +545,13 @@ silently. One key is now `AuthConfigError`.
   fully assigned and still short is flagged **overstated**, because that is the one figure
   nobody would have gone looking for. An unknown travel window is unknown, not absent.
   `src/lib/team/coverage.ts`.
-- **Only the person confirms their own attendance.** Staffing a show invites;
-  `show_attendees.responded_at` records that the subject answered. Coverage counts
-  confirmations, so one typed on somebody's behalf is hearsay inside a staffing number.
+- **Only the person confirms their own attendance, and coverage enforces it.** Staffing a
+  show invites; `show_attendees.responded_at` records that the subject answered; and
+  `standingFor` requires that timestamp before a `confirmed` counts — a status typed on
+  somebody's behalf lands as `secondhand`, visible and uncounted. Recording the column is
+  not the same as counting it, and for three steps only the write path obeyed the rule.
+  `secondhand` is deliberately not `unconfirmed`: "said yes, chase them" and "has not
+  answered" are different work items.
 - **A double-booking is between travel windows, not between show dates** — and where a
   window is missing the finding is `possible`, never `certain`, and says which side it had
   to guess. `src/lib/team/conflicts.ts`.
