@@ -2192,6 +2192,16 @@ invert phases A and C.
       by default. Nothing constructs a Slack client without `SLACK_BOT_TOKEN` and every
       method on it throws before touching the network without one. §11.5 is the open
       decision nearest both remaining halves.
+      **One repair after the fact, unrelated to the transport:** the seed cleared with
+      `delete from organizations` under a comment claiming orgs cascade to everything. Every
+      table really is reachable from one, so the intent was right and the mechanism was not —
+      three FKs are `restrict` deliberately (§4's rule that a financial row's cost center
+      must not vanish underneath it, plus an approval's approver), `RESTRICT` is checked
+      immediately per row, and the order Postgres processes sibling cascades in is
+      unspecified. It is `TRUNCATE … CASCADE` now, which is order-free and does not rot when
+      the next `restrict` FK is added. It had been broken since step 1 and was invisible
+      because `pnpm db:reset` deletes `.pglite` first, so the statement only ever ran against
+      an empty database in the path the docs recommend.
 - [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
       share links · room-block optimizer · gamification · LLM deadline extraction

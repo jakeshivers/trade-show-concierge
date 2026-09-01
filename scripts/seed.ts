@@ -6,7 +6,7 @@
  * something to develop against without any API keys. Nothing here implies a live
  * flight status or a real fare.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
@@ -71,8 +71,33 @@ async function main() {
   const db = getDb();
 
   console.log('· clearing existing data');
-  // Order matters only where cascades don't cover it; orgs cascade to everything.
-  await db.delete(s.organizations);
+  /**
+   * One statement, and it has to be `TRUNCATE … CASCADE` rather than a delete.
+   *
+   * This used to be `db.delete(s.organizations)` under a comment claiming "orgs
+   * cascade to everything". Every one of the ~50 tables really is reachable from
+   * `organizations`, so the *intent* was right and the mechanism was not: three
+   * foreign keys are `onDelete: 'restrict'` on purpose — `lodgings` and
+   * `side_events` protect their cost center (§4's rule: a financial row's cost
+   * center must not vanish underneath it) and `approvals` protects its approver.
+   * `RESTRICT` is checked **immediately, per row**, while the order Postgres
+   * processes sibling cascade constraints in is unspecified. So a delete that
+   * reached `cost_centers` before it reached `shows` was refused by a lodging
+   * that was itself about to be deleted a moment later — a real failure, on
+   * correct data, from an ordering nothing declares.
+   *
+   * `TRUNCATE … CASCADE` truncates every table that transitively references this
+   * one instead of firing per-row referential actions, so it is order-free and,
+   * more importantly, **cannot rot**: the next `restrict` FK somebody adds for a
+   * good reason does not silently break the seed the way these three did.
+   *
+   * Why it survived twenty steps: `pnpm db:reset` deletes the whole `.pglite`
+   * directory first, so in the only path anybody runs this statement was a no-op
+   * against an empty database. `pnpm db:seed` on its own — the documented way to
+   * reseed without losing the schema — was broken the whole time, and the
+   * command that hid it is the one the docs recommend.
+   */
+  await db.execute(sql`TRUNCATE TABLE ${s.organizations} CASCADE`);
 
   console.log('· organization & cost centers');
   const [org] = await db

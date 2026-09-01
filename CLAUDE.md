@@ -1698,6 +1698,16 @@ silently. One key is now `AuthConfigError`.
   changing the window re-derives every figure instead of requiring a migration and leaving
   the old answers lying around looking authoritative. The credit ledger's rule — a balance is
   a projection, never assigned — applied to pipeline.
+- **The seed clears with `TRUNCATE … CASCADE`, never a delete.** Three foreign keys are
+  `restrict` on purpose — `lodgings` and `side_events` protect their cost center, `approvals`
+  its approver — and `RESTRICT` is checked immediately, per row, while the order Postgres
+  processes sibling cascade constraints in is unspecified. So `delete from organizations`
+  was refused by a lodging that was itself about to be deleted a moment later. `TRUNCATE`
+  truncates every table that transitively references this one rather than firing per-row
+  referential actions, which is order-free and cannot rot when somebody adds the next
+  `restrict` FK for a good reason. **It hid for twenty steps because `pnpm db:reset` deletes
+  `.pglite` first**, so in the path the docs recommend the statement ran against an empty
+  database and did nothing.
 - **A runtime guard over an enum is derived from the exhaustive record, never hand-written
   beside it.** `alerts/store.ts` kept its own `SOURCES` array; adding a source to the type
   compiled everywhere, wrote correct rows, and read every one back as `unknown`. Nothing
@@ -1891,7 +1901,7 @@ silently. One key is now `AuthConfigError`.
 
 ```bash
 pnpm db:reset     # rm .pglite, push schema, seed — safe any time
-pnpm db:seed      # reseed only
+pnpm db:seed      # reseed only, keeping the schema — works on a populated db again
 pnpm booking:dry-run  # the whole booking loop, headless, no keys, no purchases
 pnpm booking:audit <id | idempotency-key>   # the audit trail for one request
 pnpm credits          # credit exposure and every live credit
