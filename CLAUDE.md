@@ -77,7 +77,7 @@ endpoint whose principal is deliberately not an `Actor`; and ROI — a CRM adapt
 enough that it cannot become a CRM, an attribution model that decides first touch across the
 whole calendar, and a dashboard whose most important output is the list of figures it
 refuses to print.
-829 tests, no keys required.
+837 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -142,7 +142,7 @@ working at all. MedTech Summit 2025 is fourteen months back with a *complete* co
 only show on the calendar whose multiple is quotable — and one buyer on it was met again at
 Automate 2025, so cross-show first touch is a row rather than an assertion in a test.
 
-**The five corrections step 19 turned up, and one repair:**
+**The six corrections step 19 turned up, and one repair:**
 
 1. **Two floors in a quotient do not cancel; they widen.** A lead floor pushes cost-per-lead
    up and a cost floor pushes it down, and the tempting reading is that they roughly offset.
@@ -179,6 +179,23 @@ Automate 2025, so cross-show first touch is a row rather than an assertion in a 
    out of its own absence is §8a's fabricated bill wearing the costume of a placeholder, on
    the screen a budget is set from. Every method throws. Not-built and nothing-found have to
    stay different answers.
+
+6. **Three defects in the Salesforce client that a fixture written from the docs could
+   never have caught, and one of them is §5j's import rule in an adapter.** `query()` did
+   not follow `nextRecordsUrl` — Salesforce pages at 2,000 records — so a large customer
+   would have got a pipeline figure that was quietly short, reported with exactly the same
+   confidence as a correct one, with nothing to re-count against; `wire.ts` had already
+   described that field as "a path we follow rather than ignore", so the comment was right
+   and the code had not caught up. `opportunitiesFor` interpolated *every* matched contact
+   id into one SOQL string that rides in a GET query string, which is fine on the eighteen
+   leads in the seed and breaks at exactly the customer size where the feature earns its
+   place. And `CurrencyIsoCode` exists **only in a multi-currency org** — selecting a field
+   an org lacks is a hard `INVALID_FIELD`, not a null — so the obvious query fails outright
+   on the majority of Salesforce orgs; it is now probed once and falls back to the org's own
+   `DefaultCurrencyIsoCode`, *read* rather than defaulted to `USD`, because a currency label
+   is part of a money figure. All three are covered by unit tests against a mock transport,
+   which is what is verifiable without an org — the four things that are not are Q1–Q4 in
+   `pnpm salesforce:capture`.
 
 **The repair:** `alerts/store.ts` kept a hand-written `SOURCES` array beside the union in
 `feed.ts`, and adding `'roi'` to the type compiled everywhere, wrote correct rows, and read
@@ -989,25 +1006,41 @@ is deliberately deferred until the standard list has been used and argued with, 
 templates card says on the page. The nav still grows one entry per screen
 that exists.
 
-**Three adapters have never met a live key, and say so in their own headers.** The AeroAPI
-flight-status adapter (step 13), the EasyPost tracking adapter (step 14) and the Salesforce
-CRM adapter (step 19) are all written to published schemas and tested against fixtures we
-wrote ourselves — the closed loop step 12.5 named, which proves internal consistency and
-structurally cannot catch a wrong field name. None has a capture script yet;
-`pnpm duffel:capture` is the shape of the script all three need before any is trusted with a
-real crate, a real gate, or a real pipeline.
+**Three adapters have never met a live key**, and each says so in its own header: AeroAPI
+(step 13), EasyPost (step 14) and Salesforce (step 19). All three are written to published
+schemas and tested against fixtures we wrote ourselves — the closed loop step 12.5 named,
+which proves internal consistency and structurally cannot catch a wrong field name.
 
-**Salesforce is the one where a wrong field name would look like the truth**, which is why
-its `wire.ts` names the three places it could hide. A wrong field on a tracking payload
-produces a crate with no scans and looks broken immediately. A wrong field here produces a
-dashboard where nothing is ever attributed — every show showing a real cost and no
-pipeline — which is *indistinguishable from the honest finding §8c says is the normal case*.
-The three suspects: stage names are per-org free text, so classification reads `IsWon` /
-`IsClosed` and never a name; an Opportunity has **no** `ContactId` and the join is
-`OpportunityContactRole`, so reading the former would compile, return `undefined` forever,
-and attribute nothing; and `Amount` arrives as a JSON float where every other provider in
-this codebase sends a decimal string, so it is stringified through `money/decimal.ts` rather
-than multiplied by 100.
+**Salesforce has the capture script; AeroAPI and EasyPost still do not.**
+`pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts` are `pnpm duffel:capture`'s
+shape reused: they record a real org's answers into `fixtures/live-salesforce/` and check our
+wire types and the *unmodified* normalizer against them, skipping cleanly when there are no
+captures so a clean clone still needs zero keys. It was built first here rather than in step
+order because **this is the adapter where a wrong field name would look like the truth**. A
+wrong field on a tracking payload gives a crate with no scans and looks broken within a
+minute; a wrong field here gives a dashboard where *nothing is ever attributed* — every show
+carrying a real cost and no pipeline — which is indistinguishable from the honest finding
+§8c says is normal at most companies. Nobody would go looking. The four questions are
+labelled Q1–Q4 in the script and asserted by name in the suite:
+
+- **Q1 — the join.** An Opportunity has **no** `ContactId`; the join is
+  `OpportunityContactRole`. Reading the former compiles, returns `undefined` forever, and
+  attributes nothing. This is the one whose wrong answer is invisible, so it is asked first.
+- **Q2 — won versus open.** Stage *names* are per-org free text ("Closed Won", "6 -
+  Closed/Won", and plenty not in English), so classification reads `IsWon` / `IsClosed` and
+  never a name. The suite prints the org's own stage vocabulary as the evidence.
+- **Q3 — money and dates.** `Amount` arrives as a JSON *number* where every other provider
+  here sends a decimal string, so it is stringified through `money/decimal.ts` rather than
+  multiplied by 100; `CloseDate` is a bare date anchored at midday, because `new Date()` on
+  it lands at UTC midnight and therefore in the *previous* quarter in every American zone.
+- **Q4 — currencies.** `CurrencyIsoCode` exists only in a multi-currency org and selecting a
+  field an org lacks is a hard `INVALID_FIELD`, so the query is probed once and falls back to
+  `Organization.DefaultCurrencyIsoCode` — read, never defaulted to `USD`, because a currency
+  label is part of a money figure.
+
+Captures are gitignored and the script redacts emails, names and phone numbers before
+writing; the suite asserts it did. §5j is about a stranger's details not travelling somewhere
+they were never collected for, and a git history is the least reversible such place.
 
 **The Anthropic adapter (step 15) has never met a live key either, and is in a different
 category.** It uses the vendor's own SDK, so there is no hand-written wire schema to be
@@ -1552,6 +1585,8 @@ pnpm assistant --as priya@… "..."   # the same question as somebody else; the 
 pnpm assistant --tools  # the tool surface per role — the access model as a table
 pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/ (needs a test key)
 pnpm duffel:capture --search   # stop after search; create no orders
+pnpm salesforce:capture        # the same loop for Salesforce (needs a Developer Edition org)
+pnpm salesforce:capture --read-only   # probe everything; write nothing into their CRM
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
 pnpm smoke        # fetch all 31 routes against a running `pnpm dev`; 200 + expected text

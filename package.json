@@ -26,6 +26,7 @@
     "assistant": "tsx scripts/assistant.ts",
     "smoke": "tsx scripts/smoke.ts",
     "duffel:capture": "tsx scripts/duffel-capture.ts",
+    "salesforce:capture": "tsx scripts/salesforce-capture.ts",
     "clerk:verify": "tsx scripts/clerk-verify.ts",
     "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",
     "test": "vitest run",

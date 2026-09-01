@@ -1936,7 +1936,16 @@ invert phases A and C.
       2025, so cross-show first touch is a row in this workspace rather than an assertion in
       a test. The CRM half comes out of the **real sync** against the `recorded` provider.
       The assistant gained `show_roi`, the second tool ever withheld from a Member.
-      Five corrections folded into §5k above, plus one repair in `alerts/store.ts`. 829 tests.
+      **`pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts`** are step 12.5's
+      loop-opening pair, built in the same step as the adapter rather than left owing,
+      because this is the adapter whose wrong field name would *look like the truth*: it
+      would produce a dashboard attributing nothing, which is indistinguishable from §8c's
+      normal case. Q1–Q4 are named in both, captures are gitignored, PII is redacted before
+      writing and the suite asserts it was. Building it also turned up three defects a
+      documentation-written fixture could never have caught — unfollowed pagination (§5j's
+      import rule in an adapter), an unchunked `IN (…)` list in a GET, and a query that fails
+      outright on any single-currency org. Six corrections folded into §5k above, plus one
+      repair in `alerts/store.ts`. 837 tests.
 
 ### Phase D — v1.5 and beyond
 
@@ -1978,10 +1987,14 @@ the benefit of the model without the setup cost blocking the spine.
    Some customers use each, so the answer is not one CRM forever; it is one CRM *built*
    at a time, which is what "one well rather than both adequately" was protecting.
    Salesforce is built behind `CrmProvider` and, like AeroAPI and EasyPost, has **never met
-   a live org** — its `wire.ts` says so, and names the three places a wrong field would hide
-   (per-org stage names, the `OpportunityContactRole` join that an Opportunity's non-existent
-   `ContactId` would silently replace, and `Amount` arriving as a JSON float where every
-   other provider sends a decimal string).
+   a live org** — its `wire.ts` says so. Unlike those two it has the loop-opening pair:
+   `pnpm salesforce:capture` records a real org's answers and
+   `tests/salesforce-conformance.test.ts` checks our types and the unmodified normalizer
+   against them, skipping cleanly with no captures. Four questions, Q1–Q4: whether an
+   Opportunity carries `ContactId` (it must not, or the `OpportunityContactRole` join is
+   wrong), whether `IsWon`/`IsClosed` are selectable (per-org stage *names* make a string
+   match wrong at the second customer), what type `Amount` and `CloseDate` arrive as, and
+   whether the org has `CurrencyIsoCode` at all.
    HubSpot is **declared and not built**, and every method on it throws rather than
    returning empty — see §5k. Building it is a smaller job than it was before the seam
    existed, and its own header lists what remains: the v4 associations API for the

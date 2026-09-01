@@ -53,3 +53,12 @@ next-env.d.ts
 # that anyone can regenerate them from their own test key. fixtures.ts holds
 # the curated, committed payloads distilled from these.
 /fixtures/live/
+
+# The same, for pnpm salesforce:capture — and here the reason is stronger than
+# account-scoping. These are records about real people at real companies. The
+# capture script redacts emails, names and phone numbers before writing, and the
+# conformance suite asserts that it did, but a belt-and-braces .gitignore is what
+# stops a future capture step that forgets to redact from becoming a commit. §5j
+# is exactly about a stranger's details not travelling somewhere they were never
+# collected for, and a public git history is the least reversible such place.
+/fixtures/live-salesforce/

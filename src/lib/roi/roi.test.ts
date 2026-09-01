@@ -24,7 +24,7 @@ import { canManageCrm, canSeeRoi } from './access';
 import { selectCrmProvider, selectCrmProviderOrNull } from './provider';
 import { RecordedCrmProvider, scenarioFor } from '@/lib/integrations/crm/recorded/provider';
 import { amountToCents, stageKindOf } from '@/lib/integrations/crm/salesforce/normalize';
-import { soqlQuote } from '@/lib/integrations/crm/salesforce/client';
+import { SalesforceCrmProvider, soqlQuote } from '@/lib/integrations/crm/salesforce/client';
 import { HubSpotCrmProvider } from '@/lib/integrations/crm/hubspot/client';
 import { CrmNotImplementedError, isNoMatch } from '@/lib/integrations/crm/types';
 
@@ -511,6 +511,163 @@ describe('the Salesforce normalizer', () => {
 
   it('escapes SOQL, which has no bound parameters', () => {
     expect(soqlQuote("o'brien@x.test")).toBe("'o\\'brien@x.test'");
+  });
+});
+
+describe('the Salesforce client — the three things a fixture cannot catch', () => {
+  type Call = { url: string; init?: RequestInit };
+
+  function provider(handler: (call: Call, n: number) => { status: number; body: unknown }) {
+    const calls: Call[] = [];
+    const http = (async (url: string | URL, init?: RequestInit) => {
+      const call = { url: String(url), init };
+      calls.push(call);
+      const { status, body } = handler(call, calls.length);
+      return {
+        ok: status >= 200 && status < 300,
+        status,
+        statusText: 'x',
+        json: async () => body,
+      } as Response;
+    }) as unknown as typeof fetch;
+    return {
+      calls,
+      sf: new SalesforceCrmProvider({
+        instanceUrl: 'https://x.my.salesforce.com',
+        accessToken: 'tok',
+        fetch: http,
+      }),
+    };
+  }
+
+  const role = (oppId: string, contactId: string) => ({
+    ContactId: contactId,
+    IsPrimary: true,
+    Opportunity: {
+      Id: oppId,
+      Name: oppId,
+      StageName: 'Qualification',
+      Amount: 100,
+      IsWon: false,
+      IsClosed: false,
+      CreatedDate: '2026-01-01T00:00:00.000+0000',
+      CloseDate: '2026-06-30',
+    },
+  });
+
+  it('follows nextRecordsUrl instead of reporting the first page', async () => {
+    // The §5j import failure in an adapter: a smaller number with exactly the
+    // same confidence, invisible until a customer is big enough to matter.
+    const { sf, calls } = provider((_call, n) =>
+      n === 1
+        ? {
+            status: 200,
+            body: {
+              done: false,
+              nextRecordsUrl: '/services/data/v60.0/query/01g000-2000',
+              records: [role('opp-1', 'c1')],
+            },
+          }
+        : { status: 200, body: { done: true, records: [role('opp-2', 'c1')] } },
+    );
+    const opps = await sf.opportunitiesFor(['c1']);
+    // Two pages fetched, and the second page's URL is not double-prefixed with
+    // the version segment. No org-currency lookup: the first query kept
+    // `CurrencyIsoCode` and succeeded, so this is a multi-currency org.
+    expect(calls).toHaveLength(2);
+    expect(calls[1].url).toBe('https://x.my.salesforce.com/services/data/v60.0/query/01g000-2000');
+    expect(opps.map((o) => o.externalId)).toEqual(['opp-1', 'opp-2']);
+  });
+
+  it('chunks the contact ids, because SOQL rides in a GET query string', async () => {
+    const { sf, calls } = provider(() => ({ status: 200, body: { done: true, records: [] } }));
+    await sf.opportunitiesFor(Array.from({ length: 450 }, (_, i) => `003${i}`));
+    // 450 ids at 200 per request is three chunks. Without chunking this is one
+    // URL long enough for Salesforce to refuse outright.
+    expect(calls).toHaveLength(3);
+    for (const call of calls) expect(call.url.length).toBeLessThan(16_000);
+  });
+
+  it('survives a single-currency org rather than failing every sync on one', async () => {
+    // `CurrencyIsoCode` only exists in a multi-currency org, and selecting a
+    // field an org does not have is a hard INVALID_FIELD rather than a null. The
+    // obvious query therefore fails outright on most Salesforce orgs.
+    const { sf, calls } = provider((call, n) => {
+      if (n === 1) {
+        return {
+          status: 400,
+          body: [
+            {
+              errorCode: 'INVALID_FIELD',
+              message: "No such column 'CurrencyIsoCode' on entity 'Opportunity'.",
+            },
+          ],
+        };
+      }
+      if (call.url.includes('Organization')) {
+        return { status: 200, body: { done: true, records: [{ DefaultCurrencyIsoCode: 'EUR' }] } };
+      }
+      return { status: 200, body: { done: true, records: [role('opp-1', 'c1')] } };
+    });
+
+    const opps = await sf.opportunitiesFor(['c1']);
+    expect(opps).toHaveLength(1);
+    // And the currency is *read*, not defaulted to USD — a currency label on a
+    // pipeline figure is part of the figure.
+    expect(opps[0].currency).toBe('EUR');
+    expect(calls[1].url).not.toContain('CurrencyIsoCode');
+  });
+
+  it('does not re-probe the currency shape on every chunk', async () => {
+    let currencyAttempts = 0;
+    // Organization is matched first: `DefaultCurrencyIsoCode` contains
+    // `CurrencyIsoCode` as a substring, so the order of these branches matters.
+    const { sf } = provider((call) => {
+      if (call.url.includes('Organization')) {
+        return { status: 200, body: { done: true, records: [{ DefaultCurrencyIsoCode: 'GBP' }] } };
+      }
+      if (call.url.includes('CurrencyIsoCode')) {
+        currencyAttempts += 1;
+        return {
+          status: 400,
+          body: [{ errorCode: 'INVALID_FIELD', message: "No such column 'CurrencyIsoCode'." }],
+        };
+      }
+      return { status: 200, body: { done: true, records: [] } };
+    });
+    await sf.opportunitiesFor(Array.from({ length: 450 }, (_, i) => `003${i}`));
+    expect(currencyAttempts).toBe(1);
+  });
+
+  it('refuses to invent a currency when the org will not say', async () => {
+    const { sf } = provider((call) => {
+      // The org answers the currency question with nothing at all.
+      if (call.url.includes('Organization')) {
+        return { status: 200, body: { done: true, records: [] } };
+      }
+      if (call.url.includes('CurrencyIsoCode')) {
+        return {
+          status: 400,
+          body: [{ errorCode: 'INVALID_FIELD', message: "No such column 'CurrencyIsoCode'." }],
+        };
+      }
+      return { status: 200, body: { done: true, records: [] } };
+    });
+    await expect(sf.opportunitiesFor(['c1'])).rejects.toThrow(/does not guess one/);
+  });
+
+  it('reports a malformed envelope rather than reading it as no results', async () => {
+    // An empty pipeline is a claim about the customer, not a parse failure.
+    const { sf } = provider(() => ({ status: 200, body: { done: true } }));
+    await expect(sf.opportunitiesFor(['c1'])).rejects.toThrow(/no `records` array/);
+  });
+
+  it('does not swallow a real error as a missing field', async () => {
+    const { sf } = provider(() => ({
+      status: 400,
+      body: [{ errorCode: 'MALFORMED_QUERY', message: 'unexpected token' }],
+    }));
+    await expect(sf.opportunitiesFor(['c1'])).rejects.toThrow(/MALFORMED_QUERY/);
   });
 });
 
