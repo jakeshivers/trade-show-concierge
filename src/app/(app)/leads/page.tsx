@@ -1,0 +1,85 @@
+import Link from 'next/link';
+import { getActor } from '@/lib/auth/actor';
+import { getLeadPortfolio } from '@/lib/leads/store';
+import { mayQuotePerLead } from '@/lib/leads/coverage';
+import { Card, Empty, PageHeader, Stat, showDate } from '../_components/ui';
+import { CoverageHeadline, CoverageNotes } from './_present';
+
+/**
+ * Lead capture across the calendar, worst first. SCOPE.md §8c.
+ *
+ * The ordering is the argument, as it is on the flight board, the shipping board
+ * and the asset register: a show that ran and recorded nothing outranks one
+ * running now that is merely thin, and a show that has not opened sorts last
+ * because silence there is not a finding.
+ *
+ * What this page is careful *not* to show is a total. "412 leads this year" over
+ * a set of shows whose coverage ranges from complete to unmeasured is the
+ * confidently-wrong number §8c warns about, assembled from six honest ones. So
+ * the counts stay per show, each with the sentence that qualifies it, and the
+ * one aggregate figure on the page is how many of them are floors.
+ */
+export default async function LeadsPage() {
+  const actor = await getActor();
+  const rows = await getLeadPortfolio(actor);
+  const floors = rows.filter((r) => r.coverage.isFloor).length;
+  const overdue = rows.reduce((n, r) => n + r.coverage.retentionOverdue, 0);
+  const unrecordedBasis = rows.reduce((n, r) => n + r.coverage.basis.unknown, 0);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title="Leads"
+        blurb="Every show’s capture, worst first. A count is only worth what the coverage behind it is."
+      />
+
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Counts that are floors" value={String(floors)} />
+        <Stat label="Leads with no lawful basis" value={String(unrecordedBasis)} />
+        <Stat label="Past their erasure date" value={String(overdue)} />
+      </div>
+
+      {rows.length === 0 ? (
+        <Empty>Nothing on the calendar yet.</Empty>
+      ) : (
+        <div className="space-y-4">
+          {rows.map((row) => {
+            const perLead = mayQuotePerLead(row.coverage);
+            return (
+              <Card key={row.showId}>
+                <div className="flex flex-wrap items-baseline gap-3">
+                  <Link href={`/shows/${row.showId}/leads`} className="font-medium hover:underline">
+                    {row.showName}
+                  </Link>
+                  <span className="text-xs text-text-muted">
+                    {showDate(row.startsOn, row.timezone)} · {row.status}
+                  </span>
+                  <span className="ml-auto text-xs text-text-muted">
+                    {row.meetingsHeld} meeting(s) held · {row.meetingsBooked} booked ·{' '}
+                    {row.meetingsNoShow} no-show
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <CoverageHeadline coverage={row.coverage} />
+                  <CoverageNotes coverage={row.coverage} />
+                  {!perLead.ok && row.coverage.standing !== 'not_yet' && (
+                    <p className="mt-2 text-sm text-text-muted">
+                      <span className="font-medium">Cost per lead is withheld.</span>{' '}
+                      {perLead.reason}
+                    </p>
+                  )}
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <p className="text-xs text-text-muted">
+        There is deliberately no year-to-date total on this page. Adding six counts whose coverage
+        runs from complete to unmeasured produces one number that reads as authoritative and is
+        not — which is the failure §8c says gets a working show cut.
+      </p>
+    </div>
+  );
+}

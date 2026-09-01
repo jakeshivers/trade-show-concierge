@@ -5,18 +5,19 @@ import { selectStatusProviderOrNull } from '@/lib/flights/provider';
 import { syncShipmentTracking } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
 import { sweepAssetAlerts } from '@/lib/assets/store';
+import { sweepLeadAlerts } from '@/lib/leads/store';
 import { runCreditMaintenance } from '@/lib/travel/credits';
 import type { AlertSource } from './feed';
 
 type Db = ReturnType<typeof getDb>;
 
 /**
- * All five engines, in one call. The thing `pnpm alerts --sweep` runs and the
+ * All six engines, in one call. The thing `pnpm alerts --sweep` runs and the
  * thing step 21's scheduler will run.
  *
  * It exists because the engines have to run **together and completely** for the
  * feed to mean anything. Each one resolves the conditions it no longer plans
- * (see `store.ts`), so running four of five leaves the fifth's rows standing
+ * (see `store.ts`), so running five of six leaves the sixth's rows standing
  * with no statement about whether they are still true — which is survivable and
  * is exactly what `standingOf`'s `unchecked` standing is for, but only if a
  * reader can tell. So a run reports every engine's outcome, including the two
@@ -84,6 +85,14 @@ export async function runAllSweeps(
     raised: assets.alertsWritten,
     resolved: assets.alertsResolved,
     detail: `${assets.reservations} reservation(s) examined`,
+  });
+
+  const leads = await sweepLeadAlerts(orgId, now, db);
+  out.push({
+    source: 'lead',
+    raised: leads.raised,
+    resolved: leads.resolved,
+    detail: `${leads.planned.length} lead condition(s) hold tonight`,
   });
 
   const credits = await runCreditMaintenance(db, orgId, now);

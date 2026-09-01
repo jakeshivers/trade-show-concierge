@@ -106,6 +106,17 @@ used. Clerk's instance settings remain the primary control; `org_login_policies`
 org's recorded, versioned intent and the input to our second gate. It fails closed: under
 an allowlist, an account whose identities cannot be read is refused, never admitted.
 
+**What "see all users' travel" does not settle** — added at step 18. Leads are personal
+data about people who are not our users and never agreed to anything with us (§9.8), so the
+question is not the one §3's table answers. It splits: a lead **count** is everybody's,
+because it is the show's scoreboard and §8c's whole mitigation is that a thin number is
+visible to the person who could fix it; the **personal detail** is narrowed to whoever
+captured it plus the approvers, in the query rather than in the markup. Capturing is
+anybody's — gating it produces §8c's bad count by construction — and erasing is not, because
+it is irreversible. Issuing an **intake key** sits one bar higher again, with Admin, because
+a key writes into this workspace from outside every gate above: it is authentication, not
+data. §5j.
+
 **Where this is enforced, as of step 9:** in the query, in `src/lib/travel/queue.ts` and
 `src/lib/shows/store.ts`. A Member asking the travel list for the whole org gets
 themselves — `scope: 'all'` is a request, not an authorization — and a Member loading a
@@ -884,6 +895,99 @@ home, which §5f addresses to the traveler alone.
 
 ---
 
+### 5j. Leads & meetings — what a lead count has to say before it says a number (step 18)
+
+§8c already called the lead count the weakest link in the whole ROI story, and blamed rep
+behaviour: a booth staffer at hour six of day two does not open a CRM. That is right about
+the cause and it turned out to be about a third of the problem. Building capture found two
+more mechanisms, and one obligation that changes what "delete" is allowed to mean.
+
+**A count that does not say who did not capture is a fabricated bill.** §8a's rule at the
+scale of a show's return side. "34 leads" is a number with the authority of a computed one,
+and if three of six people on the booth recorded nothing then it is a floor wearing a
+total's clothes. So a count is introduced with **"at least"** whenever anybody rostered on
+a booth shift captured nothing, the silent people are *named* rather than counted, and the
+sentence is computed once in `coverage.ts` so the portfolio and the show's tab cannot
+disagree. **"On the booth" is a shift assignment, not attendance** — the analyst at two
+briefings and the engineer demoing in a partner's suite are at the show and are not where
+badges get scanned, and counting them makes every show look under-covered, which is §5e's
+rule that a warning firing on the ordinary case is one nobody reads. Where nothing is
+rostered, coverage is **unknown**, never 0 of 0, which would render as perfect.
+
+**And the ratio is withheld rather than published with an asterisk.** Cost per lead over an
+undercounted denominator comes out too *high*, which reads as a bad show — so the number a
+thin count produces does not merely mislead, it drives the specific wrong decision §8c
+warns about, which is cutting a show that worked. §19 owns that figure; what step 18 owes
+it is a denominator that refuses.
+
+**Duplicates inflate in the flattering direction, which is the direction nobody audits.**
+Two staff scan the same badge an hour apart; a scanner re-exports; somebody imports the
+same file twice. Cost per lead is a quotient, so a 15% duplicate rate makes a show look 15%
+cheaper per lead than it was. Identity is the scanner's own reference first and the email
+second, **within a show only** — meeting the same person in June and in October is two real
+engagements with two costs — and name-plus-company is a *suspicion* that is surfaced and
+never auto-merged, because silently dropping a real second lead is the same failure
+pointing the other way.
+
+**Import must account for every row it read.** A parser that skips a malformed row reports
+a smaller number with the same confidence as a correct one, and nobody re-counts a CSV. So
+accepted + rejected + duplicate always equals the row count, the rejections are kept with
+their row numbers and reasons on the `lead_imports` record, and the batch is written *even
+when nothing was accepted*. The column mapping is proposed and confirmed rather than
+applied: a column called `Company` that is really the exhibitor's would be filed as every
+lead's employer, plausibly, forever. And an imported lead is attributed to **nobody** — not
+to whoever uploaded the file — or one person's capture coverage reads as perfect and
+everyone else's as worse.
+
+**A lawful basis is never manufactured from an absence.** §9.8 makes lead PII regulated
+from the first row, and the practical form of that is one column with no default. A badge
+vendor's export has no consent field, so an import that wrote `consent` because the field
+was missing would be inventing a lawful basis out of the absence of one — §5a's fabricated
+bill, in a jurisdiction that fines for it. `unknown` is a real recorded answer; consent
+claimed with no timestamp, or with no record of what the person was told, is refused for
+outbound use the same way. **Refusing to market is not refusing to keep**: a business card
+handed over at a booth is lawfully held for the follow-up the person started, so an
+unknown-basis lead stays, stays counted, and is withheld from anything outbound.
+
+**Erasure must not erase the count.** The sharpest of the six. A retention date that
+expires, or a person exercising their right to be forgotten, cannot be honoured by deleting
+the row: every ROI figure that show has ever produced would move, silently, months later,
+and cost per lead would improve on its own. So erasure is **redaction** — the personal
+columns are nulled (including `crm_external_id`, or our erasure is a fiction with a
+footnote), and the shell keeps the show, the capturer, the timestamp and the source. The
+person is gone; that a conversation happened is not personal data. Retention is a finite
+default rather than a policy screen, because a limit nobody has configured must still be
+*some* number, and `retention_overdue` is `critical` from the first night: it is the only
+alert in the product that reports our own non-compliance, and a retention promise nothing
+enforces is worse than no promise.
+
+**The intake endpoint is the first principal in this product that is not a person**, and it
+is deliberately not an `Actor`. A service user with a role would flow through `getActor()`
+and reach every store function in the codebase; an `IntakePrincipal` is the wrong *type*
+for all of them, so the compiler enforces a boundary a role check would only describe. It
+is §6f's lesson in a different costume. Three properties fall out: only the hash of a key
+is stored and the plaintext is shown once; a key is scoped to one show wherever possible,
+because a scanner rented for three days has no business writing to next year's show; and
+revocation is a timestamp, so "which key wrote these forty leads" stays answerable. **A
+retry is a success, not a conflict** — scanners on convention-centre wifi retry requests
+whose responses they never saw, and answering 409 teaches an integration to treat a
+recorded lead as a failure, after which somebody writes the loop that manufactures the
+duplicates the endpoint exists to prevent.
+
+**Who reads a stranger's phone number is a narrower question than who reads a colleague's
+fare.** The count is everybody's — it is the show's scoreboard, and §8c's entire mitigation
+is that a thin number is visible to the person who could fix it. The personal detail is
+yours and your approvers', narrowed in the query the way `travelerScope` narrows travel,
+and a withheld row renders as a labelled shell rather than a blank name, because blank is
+indistinguishable from erased and those are opposite facts. Capturing is **anybody's** — a
+capture flow gated on a role produces §8c's bad number by construction — and erasing is
+not, because it is irreversible. The assistant gets `lead_capture`, which returns counts and
+coverage and **no personal data at all**: `listShowLeads` is not a tool, because a model's
+context window is somewhere data goes and does not obviously come back from, and nothing
+anybody asks the concierge needs a stranger's phone number in it.
+
+---
+
 ## 6. The booking agent
 
 The core loop: **user states constraints → agent finds an itinerary → policy engine
@@ -1318,6 +1422,16 @@ empty** — someone will cut a show over a bad number. Mitigations, in order of 
 2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20).
 3. Only then consider gamification.
 
+**What step 18 established, building it.** Mitigation 1 is done and is the whole shape of
+the feature: the count is never rendered bare, the word in front of it is "at least"
+whenever anybody rostered on the booth captured nothing, and the silent people are named.
+Two things the diagnosis above did not have. First, the behavioural problem has two
+*mechanical* siblings — duplicates, which inflate the count in the flattering direction and
+make a show look cheaper per lead than it was, and silent import loss, which deflates it
+with equal confidence. Second, cost per lead is **withheld** over a thin count rather than
+published with a caveat, because the error runs in the direction that reads as a bad show
+and drives exactly the decision this section warns about. §5j is the long version.
+
 ### 8d. Metrics
 
 | Metric | Why it earns a place |
@@ -1625,7 +1739,44 @@ invert phases A and C.
       `pnpm cost` / `pnpm cost <show id>` are the two engines without a screen. The seed
       completes one deadline and re-runs the sweep so a **resolved** row exists, and
       acknowledges one alert *as the person it was addressed to*. 693 tests.
-- [ ] **18.** Leads & meetings — CSV import, REST intake endpoint, GDPR posture
+- [x] **18.** Leads & meetings — **CSV import · REST intake endpoint · the GDPR posture** —
+      `src/lib/leads/`, split the way everything since step 8 has been.
+      `coverage.ts` is pure and holds the argument §8c was missing: a count is
+      introduced with **"at least"** whenever anybody rostered on a booth shift captured
+      nothing, the silent people are named, "on the booth" is a shift assignment rather
+      than attendance, an unrostered show is `unknown` and never 0 of 0, and
+      `mayQuotePerLead` **withholds** cost per lead over a thin denominator rather than
+      publishing it with a caveat — the error runs in the direction that reads as a bad
+      show. `consent.ts` is the GDPR half and refuses three things: a lawful basis is
+      never manufactured from an absent column, consent with no timestamp or no recorded
+      notice is a claim about consent rather than consent, and **erasure is redaction** —
+      the personal columns are nulled and the shell stays, so honouring a request does not
+      move every ROI figure that show ever produced. `parse.ts` is an RFC-4180-enough CSV
+      reader plus an import planner in which accepted + rejected + duplicate always equals
+      the row count, with a mapping that is proposed and confirmed rather than applied.
+      `dedupe.ts` is identity within a show — the scanner's reference, then the email, and
+      name-plus-company as a *suspicion* that is never auto-merged. `alerts.ts` is the
+      **sixth engine**, whose sharpest alert has no lead row behind it (a show that ran,
+      was staffed, and recorded nothing) and whose `retention_overdue` is the only alert in
+      the product reporting our own non-compliance. `intake.ts` is the first principal here
+      that is not a person, and deliberately **not an `Actor`**, so the compiler enforces a
+      boundary a role check would only describe. `access.ts` splits the count (everybody)
+      from the personal detail (whoever captured it, plus approvers), capture (anybody)
+      from erasure (approvers), and puts issuing a key with Admin. `store.ts` is the only
+      file touching rows, org-scoped through the show. Schema: `leads` gained `source`,
+      `import_id`, `external_ref` (unique per show), `duplicate_of_id`, `consent_notice`,
+      `redacted_at` / `_by_id` / `redaction_reason` and `updated_at`; `meetings` gained
+      `no_show_at` and timestamps; new `lead_imports` (append-only, keeps every rejection)
+      and `intake_keys` (hash only, show-scoped, revoked rather than deleted). Screens:
+      `/leads`, a **Leads** tab on every show, `/settings/intake`, and
+      `POST /api/intake/leads` — the first route in this product that authenticates without
+      `getActor()`. The assistant gained `lead_capture`, which returns counts and coverage
+      and no personal data at all. `pnpm leads` / `pnpm leads <show id>` /
+      `pnpm leads --sweep` / `pnpm leads --retention` is the engine without a screen. The
+      seed captures at the booth, posts through the *real* intake path (including the retry
+      a scanner makes), imports a CSV through the real parser, and sweeps **before and
+      after** the import so a genuinely resolved lead alert exists. Six corrections folded
+      into §5j above. 770 tests.
 - [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
 
 ### Phase D — v1.5 and beyond
@@ -1683,6 +1834,14 @@ the benefit of the model without the setup cost blocking the spine.
    it shapes what "workspace" means in the data model.
 10. **Data residency.** Lead PII plus EU shows may require EU hosting. Competitors lead
     with it. Decide before step 18, since it constrains hosting at step 21.
+    **Step 18 built the half that does not need the answer, and it turned out to be most
+    of it.** Consent is recorded at capture with a lawful basis that is never defaulted,
+    retention has a finite default and a sweep that actually erases, erasure is redaction
+    so honouring it does not silently move a year of ROI figures, and who may read a
+    stranger's personal data is narrower than who may read a colleague's fare. None of that
+    depends on where the database is. What still does: residency is a *hosting* decision
+    (step 21), and it is the half that a European customer's procurement team asks about
+    first. The posture is portable; the region is not yet chosen.
 11. ~~**How wide should the UI rework go, and when?**~~ — **resolved 2026-08-31: option B**,
     the consolidation *and* a full visual pass, brief "modern, bright colors, easy to
     navigate". Not started; step 12.5 (verifying Duffel and Clerk) was taken first. `src/app/` has been growing by

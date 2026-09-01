@@ -1782,6 +1782,23 @@ export const ticketCreditEntries = pgTable(
 
 /* ------------------------------ leads & meetings --------------------------- */
 
+/**
+ * A person we met at a booth — and the only table in this product holding
+ * personal data about somebody who is not our user. §9.8 makes that regulated
+ * data from the first row, which shows up in four columns here rather than in a
+ * policy document.
+ *
+ * `consent_basis` has no default and that is the design. A badge-scanner export
+ * has no consent column, so an import that defaulted the basis would be
+ * manufacturing a lawful basis out of the absence of one — the §5a fabricated
+ * bill, in a jurisdiction that fines for it. Unknown is a real, recorded answer,
+ * and `leads/consent.ts` decides what may be done with a row that carries it.
+ *
+ * `redacted_at` exists because erasure must not erase the *count*. Deleting the
+ * row would silently move every ROI figure that show ever produced, which is the
+ * §8c failure with a compliance obligation on top; nulling the PII and keeping
+ * the shell satisfies the erasure request and keeps "we captured 84 leads" true.
+ */
 export const leads = pgTable(
   'leads',
   {
@@ -1804,13 +1821,108 @@ export const leads = pgTable(
     crmExternalId: text('crm_external_id'),
     // Lead PII is regulated data: consent is recorded at capture, not assumed.
     consentCapturedAt: timestamp('consent_captured_at', { withTimezone: true }),
+    /** `consent` | `legitimate_interest` | `unknown`. Never defaulted. */
     consentBasis: text('consent_basis'),
+    /** What the person was actually told. A basis with no notice behind it is a claim. */
+    consentNotice: text('consent_notice'),
     deleteAfter: timestamp('delete_after', { withTimezone: true }),
+    /** `manual` | `csv` | `api`. Which door it came through. */
+    source: text('source').notNull().default('manual'),
+    /** The batch, when it came from one. Append-only; see `leadImports`. */
+    importId: uuid('import_id'),
+    /**
+     * The scanner's own id for this scan. Unique per show, which is what makes
+     * the intake endpoint idempotent: a scanner on convention-center wifi
+     * retries, and a retry that creates a second lead inflates the one number
+     * §8c says is already the weakest link in the ROI story.
+     */
+    externalRef: text('external_ref'),
+    /** Set when this row is a duplicate of another lead on the same show. */
+    duplicateOfId: uuid('duplicate_of_id'),
+    redactedAt: timestamp('redacted_at', { withTimezone: true }),
+    redactedById: uuid('redacted_by_id').references(() => users.id, { onDelete: 'set null' }),
+    redactionReason: text('redaction_reason'),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     index('leads_show_idx').on(t.showId),
     index('leads_crm_idx').on(t.crmExternalId),
+    index('leads_capturer_idx').on(t.showId, t.capturedById),
+    index('leads_retention_idx').on(t.deleteAfter, t.redactedAt),
+    uniqueIndex('leads_external_ref_idx').on(t.showId, t.externalRef),
+  ],
+);
+
+/**
+ * One import, recorded whole — including what it refused.
+ *
+ * A CSV import that reports "84 leads imported" and silently dropped nine
+ * malformed rows produces a lead count that is wrong in the direction nobody
+ * checks. Every row read lands in exactly one of accepted / rejected /
+ * duplicate, the three add up to `rowsRead`, and the arithmetic is on the
+ * screen. The column mapping is kept because "why is every company blank" is
+ * only answerable against the mapping the import actually used.
+ */
+export const leadImports = pgTable(
+  'lead_imports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    importedById: uuid('imported_by_id').references(() => users.id, { onDelete: 'set null' }),
+    source: text('source').notNull().default('csv'),
+    filename: text('filename'),
+    mapping: jsonb('mapping').$type<Record<string, string | null>>(),
+    rowsRead: integer('rows_read').notNull().default(0),
+    accepted: integer('accepted').notNull().default(0),
+    rejected: integer('rejected').notNull().default(0),
+    duplicates: integer('duplicates').notNull().default(0),
+    /** Every rejection, with its row number and the reason. Never summarized away. */
+    problems: jsonb('problems').$type<{ row: number; reason: string }[]>(),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('lead_imports_show_idx').on(t.showId, t.createdAt)],
+);
+
+/**
+ * A credential for the REST intake endpoint — the first principal in this app
+ * that is not a person.
+ *
+ * Only the hash is stored, so a leaked database does not leak working keys and
+ * the plaintext is displayed exactly once. `showId` is nullable but strongly
+ * preferred: a badge scanner rented for one show has no business writing to
+ * another, and the narrowest credential that does the job is the one to issue.
+ * Revocation is a timestamp rather than a delete, because "which key wrote these
+ * forty leads" has to stay answerable after the key is gone.
+ */
+export const intakeKeys = pgTable(
+  'intake_keys',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Null means every show in the org — allowed, discouraged, and said so on screen. */
+    showId: uuid('show_id').references(() => shows.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    /** The public half, shown so a person can tell two keys apart. */
+    tokenPrefix: text('token_prefix').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedById: uuid('revoked_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [
+    uniqueIndex('intake_keys_hash_idx').on(t.tokenHash),
+    index('intake_keys_org_idx').on(t.orgId, t.revokedAt),
   ],
 );
 
@@ -1825,10 +1937,20 @@ export const meetings = pgTable(
     company: text('company'),
     isExistingCustomer: boolean('is_existing_customer').notNull().default(false),
     scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+    /**
+     * When it actually happened. Null on a scheduled meeting and null on one
+     * that nobody showed up to, which are different things — `noShowAt` is what
+     * tells them apart, because a booked meeting that never occurred must not
+     * sit in the count of meetings held.
+     */
     occurredAt: timestamp('occurred_at', { withTimezone: true }),
+    noShowAt: timestamp('no_show_at', { withTimezone: true }),
     ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     notes: text('notes'),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('meetings_show_idx').on(t.showId)],
 );
@@ -1970,6 +2092,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   assets: many(assets),
   collateralItems: many(collateralItems),
   ticketCredits: many(ticketCredits),
+  intakeKeys: many(intakeKeys),
 }));
 
 export const costCentersRelations = relations(costCenters, ({ one, many }) => ({
@@ -2183,6 +2306,7 @@ export const ticketCreditEntriesRelations = relations(ticketCreditEntries, ({ on
 export const leadsRelations = relations(leads, ({ one, many }) => ({
   show: one(shows, { fields: [leads.showId], references: [shows.id] }),
   capturedBy: one(users, { fields: [leads.capturedById], references: [users.id] }),
+  import: one(leadImports, { fields: [leads.importId], references: [leadImports.id] }),
   meetings: many(meetings),
 }));
 
@@ -2190,6 +2314,19 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
   show: one(shows, { fields: [meetings.showId], references: [shows.id] }),
   owner: one(users, { fields: [meetings.ownerId], references: [users.id] }),
   lead: one(leads, { fields: [meetings.leadId], references: [leads.id] }),
+}));
+
+export const leadImportsRelations = relations(leadImports, ({ one, many }) => ({
+  org: one(organizations, { fields: [leadImports.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [leadImports.showId], references: [shows.id] }),
+  importedBy: one(users, { fields: [leadImports.importedById], references: [users.id] }),
+  leads: many(leads),
+}));
+
+export const intakeKeysRelations = relations(intakeKeys, ({ one }) => ({
+  org: one(organizations, { fields: [intakeKeys.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [intakeKeys.showId], references: [shows.id] }),
+  createdBy: one(users, { fields: [intakeKeys.createdById], references: [users.id] }),
 }));
 
 export const showOutcomesRelations = relations(showOutcomes, ({ one }) => ({

@@ -190,6 +190,7 @@ const SOURCES: AlertSource[] = [
   'shipping',
   'asset',
   'credit',
+  'lead',
   'booking',
   'unknown',
 ];

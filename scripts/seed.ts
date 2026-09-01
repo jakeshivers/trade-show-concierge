@@ -42,6 +42,16 @@ import {
   sweepAssetAlerts,
 } from '../src/lib/assets/store';
 import { ScriptedAssistantModel } from '../src/lib/integrations/llm/scripted/provider';
+import {
+  captureLead,
+  commitImport,
+  createIntakeKey,
+  intakeLead,
+  recordMeeting,
+  resolveIntakeKey,
+  sweepLeadAlerts,
+} from '../src/lib/leads/store';
+import { inferMapping, parseCsv, planImport } from '../src/lib/leads/parse';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -1692,6 +1702,254 @@ async function main() {
   // The feed's two states that only a *second* run can produce, produced by
   // running things a second time rather than by writing rows that look like it.
   //
+  console.log('\u00b7 leads & meetings (real capture, a real CSV through the real parser)');
+  // The live show is where capture is *happening*, so it is where §8c's failure
+  // lives: some of the booth captures, some does not, and the count is honest
+  // about which. dmwest needs a roster for that to be measurable at all —
+  // coverage counts people rostered on booth shifts, and 0 of 0 would read as
+  // perfect rather than as unknown.
+  const dmShifts = [
+    await shiftAt(dmwest, at(1, 9), at(1, 13), 3),
+    await shiftAt(dmwest, at(1, 13), at(1, 17), 3),
+  ];
+  const dmRoster = [priya, tomas, reese, ingrid] as const;
+  for (const person of dmRoster) {
+    const invited = await invite(dmwest, person, 'Booth staff', { from: at(0, 12), to: at(3, 19) });
+    await accept(invited, person, dmwest, { from: at(0, 12), to: at(3, 19) });
+  }
+  for (const [shiftId, userId] of [
+    [dmShifts[0], priya.id],
+    [dmShifts[0], tomas.id],
+    [dmShifts[0], reese.id],
+    [dmShifts[1], priya.id],
+    [dmShifts[1], ingrid.id],
+  ] as const) {
+    await assignToShift(admin, shiftId, userId);
+  }
+
+  // Priya captures at the booth, with the notice she actually reads out. Tomás
+  // captures one and stops. Reese and Ingrid record nothing at all — which is
+  // the ordinary case §8c describes, and the reason the count says "at least".
+  const boothNotice = 'Told at the booth: we will follow up about the products discussed.';
+  const captured = [
+    { by: priya, name: 'Dana Whitfield', email: 'dana.whitfield@lakeside-mfg.test', company: 'Lakeside Manufacturing', title: 'VP Operations', basis: 'consent', interests: ['Palletizing', 'Vision'] },
+    { by: priya, name: 'Hector Balint', email: 'h.balint@corvid-packaging.test', company: 'Corvid Packaging', title: 'Automation Engineer', basis: 'consent', interests: ['Cobots'] },
+    { by: priya, name: 'Su-Min Ha', email: 'sumin.ha@fairweather.test', company: 'Fairweather Foods', title: 'Plant Manager', basis: 'legitimate_interest', interests: ['Palletizing'] },
+    { by: tomas, name: 'Ollie Vance', email: 'ovance@brightpath-labs.test', company: 'Brightpath Labs', title: 'Director, Engineering', basis: 'legitimate_interest', interests: ['Vision'] },
+  ] as const;
+  for (const c of captured) {
+    await captureLead(
+      actorFor(c.by),
+      dmwest.id,
+      {
+        fullName: c.name,
+        email: c.email,
+        phone: null,
+        company: c.company,
+        title: c.title,
+        notes: null,
+        interests: [...c.interests],
+        externalRef: null,
+        basis: c.basis,
+        consentNotice: c.basis === 'consent' ? boothNotice : null,
+      },
+      now,
+      db,
+    );
+  }
+
+  // A badge scanner, through the REST endpoint's own code path — key issued,
+  // resolved, and used. Seeding these as plain inserts would file leads the
+  // intake path never accepted, which is the same objection as hand-writing an
+  // offer snapshot.
+  const scannerKey = await createIntakeKey(
+    admin,
+    { label: 'Anaheim booth scanner', showId: dmwest.id },
+    now,
+    db,
+  );
+  const resolved = await resolveIntakeKey(scannerKey.token, db);
+  if (!('principal' in resolved)) throw new Error('seeded intake key did not resolve');
+  const scans = [
+    { ref: 'DMW-88214', name: 'Marguerite Adeyemi', email: 'm.adeyemi@northstar-tool.test', company: 'Northstar Tool' },
+    { ref: 'DMW-88301', name: 'Ivan Pokorny', email: 'ipokorny@delta-fab.test', company: 'Delta Fabrication' },
+    // Sent twice, the way a scanner on convention-centre wifi does. The second
+    // is answered as a duplicate rather than as an error, and writes nothing.
+    { ref: 'DMW-88301', name: 'Ivan Pokorny', email: 'ipokorny@delta-fab.test', company: 'Delta Fabrication' },
+  ];
+  let scanned = 0;
+  let retried = 0;
+  for (const scan of scans) {
+    const outcome = await intakeLead(
+      resolved.principal,
+      {
+        showId: dmwest.id,
+        input: {
+          fullName: scan.name,
+          email: scan.email,
+          phone: null,
+          company: scan.company,
+          title: null,
+          notes: null,
+          interests: null,
+          externalRef: scan.ref,
+          // The scanner vendor collected consent at their kiosk, or did not, and
+          // says nothing about it. `unknown` is what honesty looks like here.
+          basis: null,
+          consentNotice: null,
+        },
+      },
+      now,
+      db,
+    );
+    if (outcome.kind === 'created') scanned += 1;
+    if (outcome.kind === 'duplicate') retried += 1;
+  }
+
+  // Last year's show had a roster, and that is what makes its lead story
+  // legible: with nobody rostered, coverage can only say "unknown", which is
+  // true and says nothing. With three people on the booth and every lead
+  // arriving later in a vendor's CSV, the count reads "at least 5 leads, from 0
+  // of 3 people on the booth" — which is §8c's finding stated as a number.
+  const a25Shifts = [
+    await shiftAt(automate2025, at(-47, 9), at(-47, 13), 3),
+    await shiftAt(automate2025, at(-47, 13), at(-47, 17), 3),
+  ];
+  for (const person of [shelley, priya, tomas] as const) {
+    const invited = await invite(automate2025, person, 'Booth staff', {
+      from: at(-50, 12),
+      to: at(-45, 19),
+    });
+    await accept(invited, person, automate2025, { from: at(-50, 12), to: at(-45, 19) });
+  }
+  for (const [shiftId, userId] of [
+    [a25Shifts[0], shelley.id],
+    [a25Shifts[0], priya.id],
+    [a25Shifts[0], tomas.id],
+    [a25Shifts[1], priya.id],
+    [a25Shifts[1], tomas.id],
+  ] as const) {
+    await assignToShift(admin, shiftId, userId);
+  }
+
+  // Sweep *before* the import, so the sharpest alert in this feature is a row
+  // somebody actually raised rather than a sentence in a comment: a show that
+  // ran, was staffed, and recorded nothing at all. It is then resolved by the
+  // import below — the same way a crate arriving resolves a stall, and the only
+  // demonstration in the seed of step 17's resolution on the sixth engine.
+  const preImportSweep = await sweepLeadAlerts(org.id, now, db);
+
+  // Imported from the scanner vendor's CSV after the fact —
+  // through the real parser and the real planner, so the rejected rows and the
+  // duplicate are the ones `planImport` actually found rather than numbers typed
+  // into the batch record.
+  const csv = [
+    'Attendee Name,Email,Company,Job Title,Badge ID,Notes',
+    'Perry Nakashima,pnakashima@ridgeline-auto.test,Ridgeline Automotive,Manufacturing Engineer,A25-1188,Wants the palletizer datasheet',
+    '"Okonkwo, Ada",ada.okonkwo@sable-industries.test,Sable Industries,Head of Ops,A25-1201,"Asked about lead times, twice"',
+    'Bettina Krause,bkrause@havenworks.test,Havenworks,Controls Lead,A25-1244,',
+    ',orphan@nowhere.test,Unknown,,A25-1250,Badge scanned with no name attached',
+    'Perry Nakashima,pnakashima@ridgeline-auto.test,Ridgeline Automotive,Manufacturing Engineer,A25-1188,Second scan on day two',
+    'Yusuf Demir,ydemir@kestrel-controls.test,Kestrel Controls,Buyer,A25-1290,',
+    'Marguerite Adeyemi,m.adeyemi@northstar-tool.test,Northstar Tool,Procurement,A25-1301,Met at the demo bar',
+  ].join('\n');
+  const csvRows = parseCsv(csv);
+  const csvMapping = inferMapping(csvRows[0]);
+  const csvPlan = planImport(csvRows, csvMapping);
+  const imported = await commitImport(
+    admin,
+    {
+      showId: automate2025.id,
+      plan: csvPlan,
+      mapping: csvMapping,
+      filename: 'automate-2025-scans.csv',
+      now: at(-44, 10),
+    },
+    db,
+  );
+
+  // Somebody set a 90-day retention on last year's scans and nothing has ever
+  // enforced it. That is the whole reason `retention_overdue` is `critical` from
+  // the first night: a documented commitment being documented-ly broken, and it
+  // becomes visible only because something finally reads the column.
+  const stale = await db
+    .select({ id: s.leads.id })
+    .from(s.leads)
+    .where(eq(s.leads.showId, automate2025.id))
+    .limit(2);
+  for (const row of stale) {
+    await db
+      .update(s.leads)
+      .set({ deleteAfter: at(-4, 12) })
+      .where(eq(s.leads.id, row.id));
+  }
+
+  // Meetings: one held, one still booked, and one nobody turned up to — the
+  // third is the state a simpler model loses, and it must not sit in the count
+  // of meetings held.
+  await recordMeeting(
+    actorFor(priya),
+    dmwest.id,
+    {
+      subject: 'Lakeside Manufacturing — palletizer line walkthrough',
+      company: 'Lakeside Manufacturing',
+      isExistingCustomer: false,
+      scheduledAt: at(1, 11),
+      occurredAt: at(1, 11),
+      noShowAt: null,
+      leadId: null,
+      ownerId: priya.id,
+      notes: 'Wants a quote against a 14-week install window.',
+    },
+    now,
+    db,
+  );
+  await recordMeeting(
+    actorFor(shelley),
+    dmwest.id,
+    {
+      subject: 'Corvid Packaging — commercial follow-up',
+      company: 'Corvid Packaging',
+      isExistingCustomer: true,
+      scheduledAt: at(2, 15),
+      occurredAt: null,
+      noShowAt: null,
+      leadId: null,
+      ownerId: shelley.id,
+      notes: null,
+    },
+    now,
+    db,
+  );
+  await recordMeeting(
+    actorFor(tomas),
+    dmwest.id,
+    {
+      subject: 'Brightpath Labs — vision demo',
+      company: 'Brightpath Labs',
+      isExistingCustomer: false,
+      scheduledAt: at(1, 14),
+      occurredAt: null,
+      noShowAt: at(1, 15),
+      leadId: null,
+      ownerId: tomas.id,
+      notes: 'Nobody came. Rebooked for the follow-up call.',
+    },
+    now,
+    db,
+  );
+
+  console.log('· lead alerts (produced by running the real sweep, twice)');
+  const leadSweep = await sweepLeadAlerts(org.id, now, db);
+  console.log(
+    `  before the import: ${preImportSweep.planned.length} condition(s), ${preImportSweep.raised} raised`,
+  );
+  console.log(
+    `  after it: ${leadSweep.planned.length} condition(s), ${leadSweep.raised} raised, ` +
+      `${leadSweep.resolved} resolved \u00b7 csv: ${csvPlan.accepted.length} accepted, ` +
+      `${csvPlan.rejected.length} rejected, ${csvPlan.duplicates.length} duplicate`,
+  );
+
   // Resolution is the half of step 17 that nothing else in the seed demonstrates:
   // an alert ends because a sweep stops planning it, not because anybody clears
   // it. So somebody orders the carpet, the register no longer has anything to
@@ -1740,6 +1998,12 @@ async function main() {
     ticketCredits: creditRows.length,
     travelRequests: 3,
     assistantConversations: 2,
+    leadsCaptured: captured.length,
+    leadsScanned: scanned,
+    leadScanRetries: retried,
+    leadsImported: imported.written,
+    leadAlerts: leadSweep.raised,
+    leadAlertsResolved: leadSweep.resolved,
   };
   console.log('\n✓ seed complete', counts);
 }

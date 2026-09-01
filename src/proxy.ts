@@ -19,7 +19,10 @@ import { authMode } from '@/lib/auth/mode';
  * `getActor()`, on the server, per request.
  */
 
-const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)']);
+// `/api/intake` carries its own credential — an intake key, not a session — so
+// Clerk must not bounce it to a sign-in page. It is not unauthenticated: the
+// route refuses without a key, and `resolveIntakeKey` is the whole gate.
+const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)', '/api/intake(.*)']);
 
 const withClerk = clerkMiddleware(async (auth, request) => {
   if (!isPublic(request)) await auth.protect();

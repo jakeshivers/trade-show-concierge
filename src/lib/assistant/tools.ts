@@ -11,6 +11,7 @@ import { getLodgingBoard } from '@/lib/lodging/store';
 import { getFlightBoard } from '@/lib/flights/store';
 import { getShipmentBoard } from '@/lib/shipping/store';
 import { getAssetRegister, getCollateral } from '@/lib/assets/store';
+import { getLeadPortfolio } from '@/lib/leads/store';
 import { listRequests, loadRequest, travelersFor, costCentersFor } from '@/lib/travel/queue';
 import { draftLodgingRecord, draftTravelRequest } from './draft';
 
@@ -204,6 +205,31 @@ export const TOOLS: AssistantTool[] = [
     schema: z.object({}),
     kind: 'read',
     run: (c) => getCollateral(c.actor, c.db),
+  }),
+  /**
+     * Counts and coverage. **Deliberately no names, emails or phone numbers.**
+     *
+     * Every other read tool here returns the same rows a screen would show the
+     * asking actor, and that stays true — a Member reads lead *counts* on the
+     * show tab too. What is different about this table is whose data it is:
+     * leads are personal data about people who are not our users and never
+     * agreed to anything with us (§9.8). A model's context window is a place
+     * data goes and does not obviously come back from, and nothing anybody
+     * would ask the concierge needs a stranger's phone number in it. So the
+     * tool holds the scoreboard and `listShowLeads` is not a tool at all —
+     * which is `access.ts`'s subtractive rule reaching a table rather than a
+     * role.
+     */
+  tool({
+    name: 'lead_capture',
+    description:
+      'Lead capture per show: how many, from how many of the people on the booth, and ' +
+      'what is missing. A count is a floor whenever anybody rostered on the booth ' +
+      'recorded nothing, and cost per lead is withheld rather than quoted over an ' +
+      'undercount. Returns no personal data about any lead — only the counts.',
+    schema: z.object({}),
+    kind: 'read',
+    run: (c) => getLeadPortfolio(c.actor, c.now, c.db),
   }),
   tool({
     name: 'travel_requests',

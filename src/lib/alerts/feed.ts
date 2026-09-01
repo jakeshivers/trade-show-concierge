@@ -36,6 +36,7 @@ export type AlertSource =
   | 'shipping'
   | 'asset'
   | 'credit'
+  | 'lead'
   | 'booking'
   | 'unknown';
 
@@ -118,6 +119,8 @@ export function linkFor(a: FeedAlert): string | null {
       return a.showId ? `/shows/${a.showId}/logistics` : '/shipping';
     case 'asset':
       return a.showId ? `/shows/${a.showId}/logistics` : '/assets';
+    case 'lead':
+      return a.showId ? `/shows/${a.showId}/leads` : '/leads';
     case 'credit':
     case 'booking':
       return '/travel';
@@ -132,6 +135,7 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
   shipping: 'Freight',
   asset: 'Asset',
   credit: 'Credit',
+  lead: 'Leads',
   booking: 'Booking',
   unknown: 'Other',
 };

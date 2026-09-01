@@ -69,8 +69,12 @@ flag, an availability verdict that refuses a booth three different ways, and an 
 whose on-hand figure is a projection of a ledger rather than a number somebody typed; and
 the alerts feed and the true-cost rollup — one screen that finally reads what five engines
 have been writing to the `alerts` table since step 11, and a cost figure that leads with
-what it is missing rather than with the number.
-693 tests, no keys required.
+what it is missing rather than with the number; and leads & meetings — capture that anybody
+can do, a count that says "at least" and names who recorded nothing, an import in which
+every row read is accounted for, a lawful basis that is never manufactured out of a blank
+column, an erasure that removes the person without moving the count, and a REST intake
+endpoint whose principal is deliberately not an `Actor`.
+770 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -91,7 +95,89 @@ is different, which is the access model rather than a filter — and `pnpm alert
 runs all five engines and reports what each one *resolved* as well as what it raised.
 `pnpm cost` prints every show's true cost worst-first with its coverage, and
 `pnpm cost <show id>` prints one show line by line with every gap named in the words the
-screen uses.
+screen uses. `pnpm leads` prints capture worst-first — the count, the word in front of it,
+who on the booth recorded nothing, and why cost per lead is being withheld — and
+`pnpm leads --retention` is the one command in this product that destroys data on purpose,
+erasing the person and leaving the count exactly where it was.
+
+**What step 18 added, and where:** `src/lib/leads/` — capture, and the first table in this
+product holding personal data about somebody who is not our user. Split the way everything
+since step 8 has been. `coverage.ts` is pure and is the argument §8c was missing: a count is
+introduced with **"at least"** whenever anybody rostered on a booth shift recorded nothing,
+the silent people are *named*, "on the booth" is a shift assignment rather than attendance,
+an unrostered show is `unknown` and never 0 of 0 — and `mayQuotePerLead` **withholds** cost
+per lead over a thin denominator instead of publishing it with an asterisk. `consent.ts` is
+the GDPR half: `unknown` is a recorded answer rather than a default, consent with no
+timestamp or no recorded notice is a claim about consent, and **erasure is redaction**.
+`parse.ts` is a CSV reader (quotes, embedded newlines, CRLF, Excel's BOM) plus an import
+planner in which accepted + rejected + duplicate always equals the row count. `dedupe.ts` is
+identity *within a show* — the scanner's reference, then the email, and name-plus-company as
+a suspicion that is never auto-merged. `alerts.ts` is the **sixth engine** and mostly says
+nothing. `intake.ts` is the REST credential, and an `IntakePrincipal` is deliberately not an
+`Actor`. `access.ts` splits the count from the person behind it, and capture from erasure.
+`edit.ts` is pure validation. `store.ts` is the only file touching rows, org-scoped through
+the show.
+
+Schema: `leads` gained `source`, `import_id`, `external_ref` (unique per `(show, ref)`),
+`duplicate_of_id`, `consent_notice`, `redacted_at` / `redacted_by_id` / `redaction_reason`
+and `updated_at`; `meetings` gained `no_show_at`, `created_by_id` and timestamps; new
+append-only **`lead_imports`** (which keeps every rejection with its row number) and
+**`intake_keys`** (hash only, show-scoped, revoked rather than deleted). Screens: `/leads`
+in the nav, a **Leads** tab on every show — the eighth, and shown to everybody — and
+`/settings/intake` under Settings. `POST /api/intake/leads` is the first route here that
+authenticates without `getActor()`, and `src/proxy.ts` marks `/api/intake` public in Clerk
+mode because it carries its own credential. The assistant gained `lead_capture` — counts and
+coverage, and no personal data at all. `pnpm leads` / `pnpm leads <show id>` /
+`pnpm leads --sweep` / `pnpm leads --retention` is the engine without a screen. The seed
+captures at the booth as four different people, posts through the **real** intake path
+including the retry a scanner makes on bad wifi, imports a CSV through the **real** parser
+(one row with no name, one duplicate — both rejected by the planner rather than by hand),
+and runs the sweep **before and after** the import so a genuinely resolved lead alert exists.
+
+**The six corrections step 18 turned up:**
+
+1. **A lead count that does not say who did not capture is §8a's fabricated bill, on the
+   return side.** §8c blamed rep behaviour, which is the cause and about a third of the
+   problem. "34 leads" carries the authority of a computed figure; if three of six people on
+   the booth recorded nothing it is a floor wearing a total's clothes. So the count is never
+   rendered bare, the silent people are named rather than counted, and the sentence is
+   computed once so the portfolio and the show's tab cannot disagree. And **cost per lead is
+   withheld**, not caveated: over an undercount it comes out too *high*, which reads as a
+   bad show, so a thin count does not merely mislead — it drives the exact decision §8c
+   warns about, cutting a show that worked.
+2. **Duplicates inflate in the flattering direction, which is the direction nobody audits.**
+   Cost per lead is a quotient, so a 15% duplicate rate makes a show look 15% cheaper per
+   lead than it was. Identity is the scanner's own reference, then the email, **within a
+   show only** — the same person met in June and October is two engagements with two costs —
+   and name-plus-company is surfaced and never auto-merged, because silently dropping a real
+   second lead is the same failure pointing the other way.
+3. **An import that skips a row reports a smaller number with the same confidence.**
+   Accepted + rejected + duplicate always equals the row count; the rejections keep their
+   row numbers and reasons on the batch record; the batch is written even when nothing was
+   accepted, or a person is certain they imported and the screen is certain they did not.
+   The mapping is confirmed rather than applied — a `Company` column that is really the
+   *exhibitor's* would be filed as every lead's employer, plausibly, forever. And an imported
+   lead is attributed to **nobody**, not to whoever uploaded the file, or one person's
+   coverage reads as perfect and everybody else's as worse.
+4. **A lawful basis is never manufactured out of an absent column.** A badge vendor's export
+   has no consent field, so a default would invent a basis from the absence of one — §5a's
+   fabricated bill in a jurisdiction that fines for it. `unknown` is a real answer; the row
+   is still lawfully held for the follow-up the person started, still counted, and withheld
+   from anything outbound. Refusing to market is not refusing to keep.
+5. **Erasure must not erase the count.** Deleting the row would move every ROI figure that
+   show ever produced, silently, months later — cost per lead would improve on its own. So
+   erasure nulls the personal columns (including `crm_external_id`, or our erasure is a
+   fiction with a footnote) and keeps the shell: the person is gone, and that a conversation
+   happened is not personal data. `retention_overdue` is `critical` from the first night,
+   being the only alert in the product that reports our own non-compliance.
+6. **The intake endpoint is the first principal here that is not a person, and it must not
+   be an `Actor`.** A service user with a role flows through `getActor()` into every store
+   function in the codebase; an `IntakePrincipal` is the wrong *type* for all of them, so
+   the compiler enforces a boundary a role check would only describe — §6f's lesson in a
+   different costume. And **a retry is a success**: scanners on convention-centre wifi retry
+   requests whose responses they never saw, and a 409 teaches an integration to treat a
+   recorded lead as a failure, after which somebody writes the loop that manufactures the
+   duplicates the endpoint exists to prevent.
 
 **What step 17 added, and where:** `src/lib/alerts/` and `src/lib/cost/`, split the way
 everything since step 8 has been. `alerts/feed.ts` is pure and is the whole argument: an
@@ -394,7 +480,7 @@ is still next. The plumbing half:
   `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
 - **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
   `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all 25 routes against a running `pnpm dev` and checks 200 plus
+- **`pnpm smoke`** fetches all 28 routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
 And the visual half:
@@ -760,12 +846,15 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 18 — **leads & meetings** (`SCOPE.md` §10): CSV import, a REST intake
-endpoint, and the GDPR posture. §8c says plainly that this is the weakest link in the whole
-ROI story and that the problem is behavioural rather than technical — reps do not log leads,
-and a cost-per-lead computed over a bad lead count is *confidently* wrong, which §8a now has
-a whole vocabulary for refusing. Step 17's coverage indicator is the shape the lead side
-will need too: the number has to say what it is missing before it says anything else.
+**Next:** step 19 — **CRM read/write adapter, attribution, and the ROI dashboard**
+(`SCOPE.md` §10). Both halves of §8's question now exist and both refuse to lie: `/cost`
+says "at least" when a figure is a floor, and `/leads` says "at least" when a count is. Step
+19 divides one by the other, which is the first arithmetic in this product where two honest
+numbers can produce a dishonest one — `mayQuotePerLead` in `src/lib/leads/coverage.ts` is
+already the refusal, and step 19 has to obey it rather than route around it. The CRM half is
+§8b: read opportunities linked to leads we captured, write one attribution field back, and
+never try to become the CRM. §11.6 (which CRM) and §11.7 (sourced vs. influenced, and the
+window) are open and gate it.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -775,11 +864,19 @@ the person whose trip it is. The assistant does not stream (a server action retu
 whole answer, which keeps every tool call inside the request as the actor `getActor()`
 resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
 logistics are all writable as of steps 10–14, and Logistics grew chain of custody and
-collateral at step 16, and Cost arrived at step 17 as the seventh tab — **there is no
-read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
+collateral at step 16, Cost arrived at step 17 as the seventh tab and Leads at step 18 as
+the eighth — **there is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
+**Nothing pushes a lead to a CRM, and the vocabulary for refusing to is already
+built:** `marketabilityOf` says whether a row may leave the building and why not, and every
+seeded lead from a scanner fails it, because a badge vendor's export carries no consent
+column. Wiring the CRM is step 19 (§8b), and the rule it must obey — a lead with no recorded
+lawful basis is never exported — is live and enforced today by the thing that would do the
+exporting. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
+same reason no engine runs on one: `pnpm leads --retention` and a button on the tab are the
+only things that erase, which is honest about the fact that this workspace has no scheduler
+and will not until step 21. **Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
 pushes, and nothing runs them on a schedule either — an alert is exactly as fresh as the
 last time somebody pressed *Re-check everything*, which is why `unchecked` is a standing
 and a figure on the page rather than a footnote. **Nothing rebooks a cancelled flight**, and the alert says so
@@ -1109,6 +1206,60 @@ silently. One key is now `AuthConfigError`.
 - **Past the point where an asset can turn up, "return it" is the wrong sentence.** A booth
   nobody has seen in six weeks is an insurance and replacement conversation. §5a's tense
   rule, at the end of the chain of custody. `src/lib/assets/alerts.ts`.
+- **A lead count that does not say who did not capture is a fabricated bill.** §8a's rule on
+  the return side. A count is introduced with "at least" whenever anybody rostered on a
+  booth shift recorded nothing, and the silent people are *named* — "on the booth" is a
+  shift assignment, not attendance, because counting every attendee flags every show and
+  flagging every show is the same as flagging none. An unrostered show is `unknown`, never
+  0 of 0, which renders as perfect. `src/lib/leads/coverage.ts`, `SCOPE.md` §5j.
+- **Cost per lead is withheld over a thin count, never caveated.** The error runs *high*,
+  which reads as a bad show, so a quotient over an undercount drives exactly the decision
+  §8c warns about. `mayQuotePerLead` is the refusal, and step 19 has to obey it rather than
+  route around it.
+- **A duplicate lead inflates in the flattering direction.** Identity is the scanner's own
+  reference, then the email, and **within a show only** — the same person met at two shows
+  is two engagements with two costs, and collapsing them hands one show credit for the
+  other's conversation. Name-plus-company is a *suspicion*, surfaced and never auto-merged.
+- **An import accounts for every row it read.** Accepted + rejected + duplicate equals the
+  row count, always; the rejections keep their row numbers and reasons; the batch record is
+  written even when nothing was accepted. The column mapping is proposed and **confirmed**,
+  never applied silently. An imported lead is attributed to nobody — crediting the uploader
+  makes one person's capture coverage perfect and everybody else's worse.
+- **A lawful basis is never manufactured out of an absent column.** `leads.consent_basis`
+  has no database default, `unknown` is a recorded answer, and consent claimed with no
+  timestamp or no record of what the person was told is a claim about consent rather than
+  consent. Refusing to market is not refusing to keep: an unknown-basis lead stays, stays
+  counted, and is withheld from anything outbound. `src/lib/leads/consent.ts`.
+- **Erasure is redaction, because erasing the person must not erase the count.** Deleting
+  the row would move every ROI figure that show ever produced, silently, months later, and
+  cost per lead would improve on its own. The personal columns are nulled — including
+  `crm_external_id`, or the erasure is a fiction with a footnote — and the shell keeps the
+  show, the capturer, the timestamp and the source. A withheld row renders as a labelled
+  shell rather than a blank name, because blank is indistinguishable from erased and those
+  are opposite facts.
+- **A retention promise nothing enforces is worse than no promise.** `delete_after` has a
+  finite default because a limit nobody configured must still be some number, the sweep
+  actually erases, and `retention_overdue` is `critical` from the first night — the only
+  alert in the product that reports our own non-compliance rather than a supplier's.
+- **Capturing a lead is anybody's; erasing one is not.** A capture flow gated on a role
+  produces §8c's bad count by construction — the person holding the badge at hour six of
+  day two is a Member. Erasure is irreversible, so it sits with changing the plan. The
+  *count* is everybody's and the *person behind it* is narrowed in the query to whoever
+  captured it plus the approvers. `src/lib/leads/access.ts`.
+- **An intake key is not an `Actor`, and that is a type rather than a check.** A service
+  user with a role would flow through `getActor()` into every store function in the app; an
+  `IntakePrincipal` is the wrong type for all of them. Only the hash is stored, the key is
+  scoped to one show wherever possible, and revocation is a timestamp so "which key wrote
+  these forty leads" stays answerable. `src/lib/leads/intake.ts`.
+- **A retry on the intake endpoint is a success, not a conflict.** A scanner on
+  convention-centre wifi retries requests whose responses it never saw. 409 teaches the
+  integration to treat a recorded lead as a failure, after which somebody writes the retry
+  loop that manufactures the duplicates the endpoint exists to prevent. `external_ref` is
+  unique per show, and that index is what makes idempotency true rather than intended.
+- **The assistant holds lead counts and never a lead.** `lead_capture` returns coverage and
+  no personal data; `listShowLeads` is not a tool. A model's context window is somewhere
+  data goes and does not obviously come back from, and nothing anybody asks the concierge
+  needs a stranger's phone number in it.
 - **Only a sweep resolves an alert; a person only ever says they have seen it.**
   `acknowledged_at` is "I read this" and `resolved_at` is "this stopped being true", and a
   screen that let one set the other would be the acknowledged-and-forgotten failure with a
@@ -1204,6 +1355,10 @@ pnpm alerts --as priya@…  # the same feed as somebody else; the access model, 
 pnpm alerts --sweep   # run all five engines; prints what each raised *and resolved*
 pnpm cost             # every committed show's true cost, biggest first, with its coverage
 pnpm cost <show id>   # one show line by line, every gap named
+pnpm leads            # every show's capture, worst first, with what the count is missing
+pnpm leads <show id>  # one show: its leads, its meetings, and tonight's alerts
+pnpm leads --sweep    # write tonight's lead alerts; run twice, nothing is written again
+pnpm leads --retention # erase everything past its date — the count does not move
 pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
 pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
 pnpm assistant --tools  # the tool surface per role — the access model as a table
@@ -1211,7 +1366,7 @@ pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 25 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 28 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -1232,6 +1387,12 @@ src/app/(app)/alerts/        the feed: five engines' output, grouped, with the s
                               of each — and no way for a person to resolve one
 src/app/(app)/cost/          the true-cost portfolio, and `_present.tsx` — the vocabulary
                               it and the show's Cost tab both render through
+src/app/(app)/leads/         capture across the calendar, worst first, and `_present.tsx` —
+                              the one sentence in front of every count, shared with the tab
+src/app/api/intake/leads/    POST from a badge scanner: the only route that authenticates
+                              without getActor(), and a retry answered as a success
+src/app/(app)/settings/intake/  issuing and revoking intake keys; admin, because a key is
+                              a credential rather than data
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
@@ -1242,6 +1403,8 @@ src/app/(app)/assistant/     the concierge and one conversation, with each tool 
                               rendered beside the answer rather than behind it
 src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
 src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
+src/app/(app)/shows/[id]/leads/    the eighth tab: capture, the CSV import with its whole
+                              arithmetic on the page, meetings, and erasure
 src/app/(app)/shows/[id]/cost/     the show's true cost, not rendered at all for a Member
 src/app/(app)/shows/[id]/logistics/  three models on one page: writable freight and its
                               timeline, the assets it carries with their custody chain,
@@ -1259,6 +1422,14 @@ src/lib/alerts/               the feed — feed.ts (pure: the five standings, or
 src/lib/cost/                 true cost — rollup.ts (pure: the lines, the six refusals, and
                               coverage as a shape rather than a percentage), store.ts (every
                               show's inputs in a fixed number of queries), access.ts
+src/lib/leads/                capture — coverage.ts (pure: the count that says what it is
+                              missing, and the withheld per-lead figure), consent.ts (pure:
+                              a basis never defaulted, and erasure that keeps the count),
+                              parse.ts (CSV + an import planner that loses no row),
+                              dedupe.ts (identity within a show, never across),
+                              alerts.ts (the sixth engine; its sharpest alert has no lead
+                              row behind it), intake.ts (a principal that is not an Actor),
+                              edit.ts, access.ts, store.ts
 src/lib/shows/                the planning core — pure clone planner, pure intake,
                               the visibility rule, and the org-scoped store
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the

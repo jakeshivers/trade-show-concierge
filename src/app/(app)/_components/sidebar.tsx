@@ -18,6 +18,8 @@ import {
   Receipt,
   Radar,
   ShieldCheck,
+  KeyRound,
+  UserPlus,
 } from 'lucide-react';
 import { cn } from './cn';
 import { setPref, usePref } from './pref';
@@ -72,6 +74,9 @@ const GROUPS: Group[] = [
       // engines write to it and, until step 17, nothing read any of them.
       { href: '/alerts', label: 'Alerts', Icon: BellRing },
       { href: '/readiness', label: 'Readiness', Icon: ClipboardCheck },
+      // Beside True cost rather than under Travel: they are the two halves of
+      // §8's question, and both are a number that has to say what it is missing.
+      { href: '/leads', label: 'Leads', Icon: UserPlus },
       { href: '/cost', label: 'True cost', Icon: Receipt, approverOnly: true },
     ],
   },
@@ -91,7 +96,10 @@ const GROUPS: Group[] = [
   },
   {
     label: 'Settings',
-    items: [{ href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true }],
+    items: [
+      { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
+      { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
+    ],
   },
 ];
 

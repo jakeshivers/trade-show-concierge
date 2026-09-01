@@ -17,9 +17,10 @@ import {
  *
  * The tabs are real routes rather than client state so a link to a show's
  * deadlines is a link to a show's deadlines. Steps 9–14 made each of them
- * editable in turn, and step 16 gave Logistics its chain of custody — there is
- * no read-only tab left. None of them promise an action that does not exist yet,
- * and Cost is not shown at all to somebody who may not read it.
+ * editable in turn, step 16 gave Logistics its chain of custody, and step 18
+ * added Leads — there is no read-only tab left. None of them promise an action
+ * that does not exist yet, and Cost is not shown at all to somebody who may not
+ * read it.
  */
 
 const TABS = [
@@ -29,6 +30,10 @@ const TABS = [
   { segment: 'lodging', label: 'Lodging' },
   { segment: 'travel', label: 'Travel' },
   { segment: 'logistics', label: 'Logistics' },
+  // Everybody, deliberately. The lead count is the show's scoreboard and §8c's
+  // whole mitigation is that a thin one is visibly thin to the person who could
+  // fix it; the personal detail behind it is narrowed in the query instead.
+  { segment: 'leads', label: 'Leads' },
   // Not shown to a Member at all, rather than shown and refused. A tab that
   // exists and says no is an invitation to ask why; a show's cost is every
   // colleague's fare in one number, and §3 draws that line around travel.

@@ -52,6 +52,7 @@ async function routes(): Promise<Check[]> {
     { path: `/shows/${id}/lodging`, expect: 'otel' },
     { path: `/shows/${id}/travel`, expect: 'ravel' },
     { path: `/shows/${id}/logistics`, expect: 'Shipments' },
+    { path: `/shows/${id}/leads`, expect: 'lawful basis' },
     { path: `/shows/${id}/clone`, expect: 'lone' },
     // Approver-only, like /cost. As a Member both of these render the refusal
     // instead of the figures, which is the access model working rather than a
@@ -67,10 +68,12 @@ async function routes(): Promise<Check[]> {
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
     { path: '/assets', expect: 'lost between shows' },
+    { path: '/leads', expect: 'coverage behind it' },
     { path: '/assistant', expect: 'never books' },
     // Admin-only: with DEV_ACTOR_EMAIL set to a member this legitimately 404s,
     // which is the shell working rather than a smoke failure.
     { path: '/settings/security', expect: 'Sign-in methods' },
+    { path: '/settings/intake', expect: 'intake' },
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
