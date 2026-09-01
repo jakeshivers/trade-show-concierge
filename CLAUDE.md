@@ -1134,10 +1134,41 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 22's backlog. **Step 21's remaining two halves are deferred by decision, not
-left undone** (2026-09-01, `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack
-workspace and no SSO client**, and hosting needs a cloud account that §9's ground rule
-forbids wiring unasked. Do not pick any of them up speculatively.
+**Next: step 22, and the pick is LLM deadline extraction** (`SCOPE.md` §5a's post-v1
+addition, listed last in §10.22). Recommended 2026-09-01 and not started. Three reasons, in
+order:
+
+- **It is the missing half of this product's own #1 feature.** `RESEARCH.md` §3a ranks the
+  service-manual deadline engine "highest ROI feature found — $2.5–3.5k/show, unique", and
+  its table calls LLM extraction the v2 add-on. Today somebody types that register by hand,
+  which is precisely the tedious work §1's first job exists to kill.
+- **Everything it needs is already built and enforced, not merely planned.**
+  `show_deadlines.extracted_from_document` and `confirmed_at` are live columns; the rule
+  that nothing extracted is quoted in dollars until a human confirms is enforced by step
+  11's engine, which chases an unconfirmed deadline as a **date** and never as an amount;
+  the register is writable and confirmation is already a first-class act; and §6a's boundary
+  was exercised at step 15 — `llm/types.ts` performs one exchange and runs no loop.
+- **It is the only substantial item verifiable end to end on localhost.** There is a working
+  `ANTHROPIC_API_KEY`, so unlike Slack, SSO, hosting, AeroAPI and EasyPost this one does not
+  ship written-to-the-docs-and-hoped.
+
+**The two risks to settle before writing code, because both are the closed loop step 12.5
+named.** Nothing in `package.json` reads a PDF, so this needs the first parsing dependency
+in the project; and a real exhibitor manual is somebody's copyrighted document, so the test
+corpus has to be **synthetic** — which means the suite proves internal consistency and
+structurally cannot catch a layout the real manuals use and ours does not. Decide what plays
+the part `pnpm duffel:capture` plays elsewhere *before* building, not after.
+
+Two alternatives, if that is the wrong shape: the **drayage estimator** (pure, no keys, and
+it feeds the true-cost rollup's biggest silent line — smaller and less differentiating), or
+**HubSpot** (§11.6: a free developer tier makes it the only unverified adapter that could
+realistically get the capture script Duffel and Salesforce have — closing a known gap rather
+than opening a new one).
+
+**Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
+`SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on
+**localhost only**, and hosting needs a cloud account that §9's ground rule forbids wiring
+unasked. Do not pick any of them up speculatively.
 
 - **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified,
   like AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`.
