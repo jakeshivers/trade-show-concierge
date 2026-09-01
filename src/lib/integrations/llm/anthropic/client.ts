@@ -36,6 +36,14 @@ export type AnthropicConfig = {
   apiKey: string | null;
   model: string;
   baseUrl?: string;
+  /**
+   * An identity-linked key acts *in* a workspace rather than owning one, and
+   * the API refuses the request outright without the header rather than
+   * choosing a default — the same posture this app takes everywhere else about
+   * guessing. It is optional because a classic workspace key does not carry
+   * one; when a key needs it and it is absent, the 400 names the header.
+   */
+  workspaceId?: string;
 };
 
 /**
@@ -52,6 +60,7 @@ export function anthropicConfigFromEnv(
     apiKey: env.ANTHROPIC_API_KEY?.trim() || null,
     model: env.ASSISTANT_MODEL?.trim() || DEFAULT_MODEL,
     baseUrl: env.ANTHROPIC_BASE_URL?.trim() || undefined,
+    workspaceId: env.ANTHROPIC_WORKSPACE_ID?.trim() || undefined,
   };
 }
 
@@ -110,6 +119,9 @@ export class AnthropicAssistantModel implements AssistantModel {
     this.client ??= new Anthropic({
       apiKey: this.config.apiKey,
       baseURL: this.config.baseUrl,
+      defaultHeaders: this.config.workspaceId
+        ? { 'anthropic-workspace-id': this.config.workspaceId }
+        : undefined,
     });
     return this.client;
   }

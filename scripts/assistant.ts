@@ -86,7 +86,12 @@ async function main() {
 
   const asIndex = argv.indexOf('--as');
   const email = asIndex >= 0 ? (argv[asIndex + 1] ?? null) : null;
-  const question = argv.filter((a, i) => a !== '--as' && i !== asIndex + 1).join(' ').trim();
+  // `asIndex + 1` is only the email's position when `--as` was actually given.
+  // With no `--as`, asIndex is -1 and this dropped argv[0] — which is the whole
+  // question in the one-argument form, so every question a shell passed as a
+  // single quoted string was silently swallowed and printed the usage line.
+  const emailIndex = asIndex >= 0 ? asIndex + 1 : -1;
+  const question = argv.filter((a, i) => a !== '--as' && i !== emailIndex).join(' ').trim();
 
   if (!question) {
     console.log('Usage: pnpm assistant [--as email] "your question"');
