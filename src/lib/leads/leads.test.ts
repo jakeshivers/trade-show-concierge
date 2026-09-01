@@ -10,7 +10,7 @@ import {
   REDACTED_NAME,
 } from './consent';
 import { CsvError, inferMapping, parseCsv, planImport, type ColumnMapping } from './parse';
-import { findMatch, isBlocking, type DedupeCandidate } from './dedupe';
+import { findMatch, findPossiblePairs, isBlocking, type DedupeCandidate } from './dedupe';
 import { assessCoverage, mayQuotePerLead, type CountableLead } from './coverage';
 import { planLeadAlerts, type AlertableShow } from './alerts';
 import { validateLead, validateMeeting, validateRedactionReason, LeadError } from './edit';
@@ -288,6 +288,37 @@ describe('duplicate detection', () => {
     // Two people really can share a name at a big enough show, and silently
     // dropping a real second lead is the same failure pointing the other way.
     expect(isBlocking(m)).toBe(false);
+  });
+
+  it('offers every same-name-same-company pair for a person to settle', () => {
+    const pairs = findPossiblePairs([
+      ...existing,
+      {
+        id: 'l2',
+        fullName: 'Dr. Jane Okafor',
+        email: null,
+        company: 'acme',
+        externalRef: null,
+        capturedAt: new Date(NOW.getTime() + 3_600_000),
+        capturedByName: 'Tomás Iglesias',
+      },
+    ]);
+    expect(pairs).toHaveLength(1);
+    // The earlier capture is the conversation that happened first; the later
+    // one is the re-scan, so that is the row that stops counting.
+    expect(pairs[0].keep.id).toBe('l1');
+    expect(pairs[0].other.id).toBe('l2');
+  });
+
+  it('offers nothing where the machine would already have refused the write', () => {
+    // A same-scan or same-email pair cannot exist among stored leads: all three
+    // write paths refuse those before anything is written.
+    expect(
+      findPossiblePairs([
+        existing[0],
+        { ...existing[0], id: 'l3', fullName: 'Someone Else', capturedAt: NOW },
+      ]),
+    ).toHaveLength(0);
   });
 
   it('finds nothing when there is nothing to match on', () => {

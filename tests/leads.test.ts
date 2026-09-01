@@ -12,6 +12,7 @@ import {
   getLeadPortfolio,
   intakeLead,
   listShowLeads,
+  markDuplicate,
   previewImport,
   recordMeeting,
   redactLead,
@@ -19,6 +20,7 @@ import {
   revokeIntakeKey,
   sweepLeadAlerts,
   sweepLeadRetention,
+  unmarkDuplicate,
   LeadError,
 } from '@/lib/leads/store';
 import { REDACTED_NAME } from '@/lib/leads/consent';
@@ -421,6 +423,126 @@ describe('intake keys', () => {
     await expect(
       createIntakeKey(marcus, { label: 'Nope', showId: dmwestId }),
     ).rejects.toBeInstanceOf(ForbiddenError);
+  });
+});
+
+describe('the pair only a person can settle', () => {
+  async function twoOfTheSameName() {
+    const showId = await scratchShow('Possible duplicate scratch');
+    const first = await captureLead(
+      priya,
+      showId,
+      draft({ fullName: 'Dana Whitfield', company: 'Lakeside', email: 'dana@x.test' }),
+      new Date(Date.now() - 3_600_000),
+    );
+    const second = await captureLead(
+      marcus,
+      showId,
+      draft({ fullName: 'Dana Whitfield', company: 'Lakeside' }),
+    );
+    return { showId, first: first.lead!, second: second.lead! };
+  }
+
+  it('admits the pair, surfaces it, and counts both until somebody says otherwise', async () => {
+    const { showId, first, second } = await twoOfTheSameName();
+    const board = await getLeadBoard(shelley, showId);
+    // Admitted on purpose: two people really can share a name, and silently
+    // dropping a real second lead is the same failure as counting a fake one.
+    expect(board.coverage.leadCount).toBe(2);
+    expect(board.possiblePairs).toHaveLength(1);
+    expect(board.possiblePairs[0].keep.id).toBe(first.id);
+    expect(board.possiblePairs[0].other.id).toBe(second.id);
+  });
+
+  it('drops the count by one when marked, and deletes nothing', async () => {
+    const { showId, first, second } = await twoOfTheSameName();
+    await markDuplicate(shelley, second.id, first.id);
+
+    const board = await getLeadBoard(shelley, showId);
+    expect(board.coverage.leadCount).toBe(1);
+    expect(board.coverage.duplicateCount).toBe(1);
+    // Settled is not a question any more.
+    expect(board.possiblePairs).toHaveLength(0);
+    // And nothing was merged away: the row keeps its own consent record and its
+    // own retention clock.
+    const row = await db.query.leads.findFirst({ where: eq(s.leads.id, second.id) });
+    expect(row).toBeTruthy();
+    expect(row!.fullName).toBe('Dana Whitfield');
+    expect(row!.deleteAfter).not.toBeNull();
+  });
+
+  it('is reversible, because it was a judgement about two strangers', async () => {
+    const { showId, first, second } = await twoOfTheSameName();
+    await markDuplicate(shelley, second.id, first.id);
+    await unmarkDuplicate(shelley, second.id);
+    expect((await getLeadBoard(shelley, showId)).coverage.leadCount).toBe(2);
+  });
+
+  it('is not a Member’s to do — it moves the count', async () => {
+    const { second, first } = await twoOfTheSameName();
+    await expect(markDuplicate(priya, second.id, first.id)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('refuses a chain, so the count does not depend on click order', async () => {
+    const { showId, first, second } = await twoOfTheSameName();
+    await markDuplicate(shelley, second.id, first.id);
+    const third = await captureLead(
+      priya,
+      showId,
+      draft({ fullName: 'Dana Whitfield', company: 'Lakeside', email: 'third@x.test' }),
+    );
+    await expect(markDuplicate(shelley, third.lead!.id, second.id)).rejects.toBeInstanceOf(
+      LeadError,
+    );
+  });
+
+  it('refuses to collapse the same person across two shows', async () => {
+    const a = await scratchShow('Cross-show dupe A');
+    const b = await scratchShow('Cross-show dupe B');
+    const one = await captureLead(priya, a, draft({ email: 'x1@x.test' }));
+    const two = await captureLead(priya, b, draft({ email: 'x2@x.test' }));
+    // Two engagements with two costs; collapsing them hands one show credit for
+    // the other's conversation.
+    await expect(
+      markDuplicate(shelley, two.lead!.id, one.lead!.id),
+    ).rejects.toBeInstanceOf(LeadError);
+  });
+
+  it('refuses a lead as a duplicate of itself', async () => {
+    const { first } = await twoOfTheSameName();
+    await expect(markDuplicate(shelley, first.id, first.id)).rejects.toBeInstanceOf(LeadError);
+  });
+});
+
+describe('the outbound verdict', () => {
+  it('travels on the row, so the answer is where somebody could still fix it', async () => {
+    const showId = await scratchShow('Outbound scratch');
+    await captureLead(priya, showId, draft({ email: 'nobasis@x.test' }));
+    await captureLead(
+      priya,
+      showId,
+      draft({ email: 'li@x.test', basis: 'legitimate_interest' }),
+    );
+    const leads = await listShowLeads(shelley, showId);
+    const withheld = leads.find((l) => l.email === 'nobasis@x.test')!;
+    const usable = leads.find((l) => l.email === 'li@x.test')!;
+
+    expect(usable.outbound.usable).toBe(true);
+    expect(withheld.outbound.usable).toBe(false);
+    // The verdict and the thing to do about it, not just a refusal.
+    if (!withheld.outbound.usable) expect(withheld.outbound.fix).toBeTruthy();
+  });
+
+  it('never lets an erased lead out, whatever basis it had', async () => {
+    const showId = await scratchShow('Outbound erasure scratch');
+    const { lead } = await captureLead(
+      priya,
+      showId,
+      draft({ email: 'gone@x.test', basis: 'legitimate_interest' }),
+    );
+    await redactLead(shelley, lead!.id, 'Erasure request received.');
+    const [row] = await listShowLeads(shelley, showId);
+    expect(row.outbound.usable).toBe(false);
   });
 });
 

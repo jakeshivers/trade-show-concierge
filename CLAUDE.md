@@ -74,7 +74,7 @@ can do, a count that says "at least" and names who recorded nothing, an import i
 every row read is accounted for, a lawful basis that is never manufactured out of a blank
 column, an erasure that removes the person without moving the count, and a REST intake
 endpoint whose principal is deliberately not an `Actor`.
-770 tests, no keys required.
+781 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -112,8 +112,9 @@ timestamp or no recorded notice is a claim about consent, and **erasure is redac
 `parse.ts` is a CSV reader (quotes, embedded newlines, CRLF, Excel's BOM) plus an import
 planner in which accepted + rejected + duplicate always equals the row count. `dedupe.ts` is
 identity *within a show* — the scanner's reference, then the email, and name-plus-company as
-a suspicion that is never auto-merged. `alerts.ts` is the **sixth engine** and mostly says
-nothing. `intake.ts` is the REST credential, and an `IntakePrincipal` is deliberately not an
+a suspicion that is never auto-merged — and `findPossiblePairs` is what makes that refusal
+honest rather than a nicer word for discarded, offering the pair to somebody who was there.
+`alerts.ts` is the **sixth engine** and mostly says nothing. `intake.ts` is the REST credential, and an `IntakePrincipal` is deliberately not an
 `Actor`. `access.ts` splits the count from the person behind it, and capture from erasure.
 `edit.ts` is pure validation. `store.ts` is the only file touching rows, org-scoped through
 the show.
@@ -868,12 +869,15 @@ collateral at step 16, Cost arrived at step 17 as the seventh tab and Leads at s
 the eighth — **there is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Nothing pushes a lead to a CRM, and the vocabulary for refusing to is already
-built:** `marketabilityOf` says whether a row may leave the building and why not, and every
-seeded lead from a scanner fails it, because a badge vendor's export carries no consent
-column. Wiring the CRM is step 19 (§8b), and the rule it must obey — a lead with no recorded
-lawful basis is never exported — is live and enforced today by the thing that would do the
-exporting. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
+**Nothing pushes a lead to a CRM, and the verdict that will gate it is already
+on the screen:** every lead row carries `outbound` — `marketabilityOf`'s answer to "may this
+row leave the building", with the reason and the fix — and every seeded lead from a scanner
+fails it, because a badge vendor's export carries no consent column. It is computed on the
+row rather than at the point of export deliberately: the moment somebody can still fix it is
+the moment they are looking at the lead, and by the time step 19's exporter asks, the person
+who stood at the booth has gone home. Wiring the CRM is step 19 (§8b), and what it must do
+is *read* that verdict rather than re-derive one — nothing exports today, so the rule is
+enforced by the screen and not yet by an exporter. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
 same reason no engine runs on one: `pnpm leads --retention` and a button on the tab are the
 only things that erase, which is honest about the fact that this workspace has no scheduler
 and will not until step 21. **Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
@@ -1220,6 +1224,13 @@ silently. One key is now `AuthConfigError`.
   reference, then the email, and **within a show only** — the same person met at two shows
   is two engagements with two costs, and collapsing them hands one show credit for the
   other's conversation. Name-plus-company is a *suspicion*, surfaced and never auto-merged.
+- **A refusal to auto-merge is only honest if something later asks.** The `possible` pair is
+  offered on the tab and settled by a person, because the machine deliberately will not:
+  marking one **moves the lead count**, so it sits with changing the plan, and it is
+  reversible in both directions because it was a judgement about two strangers who share a
+  name. Nothing is merged or deleted — the row keeps its own consent record and its own
+  retention clock and simply stops being counted twice. Chains are refused, or "how many
+  leads" would depend on the order somebody clicked in. `src/lib/leads/dedupe.ts`.
 - **An import accounts for every row it read.** Accepted + rejected + duplicate equals the
   row count, always; the rejections keep their row numbers and reasons; the batch record is
   written even when nothing was accepted. The column mapping is proposed and **confirmed**,

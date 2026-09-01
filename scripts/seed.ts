@@ -1736,14 +1736,23 @@ async function main() {
     { by: priya, name: 'Hector Balint', email: 'h.balint@corvid-packaging.test', company: 'Corvid Packaging', title: 'Automation Engineer', basis: 'consent', interests: ['Cobots'] },
     { by: priya, name: 'Su-Min Ha', email: 'sumin.ha@fairweather.test', company: 'Fairweather Foods', title: 'Plant Manager', basis: 'legitimate_interest', interests: ['Palletizing'] },
     { by: tomas, name: 'Ollie Vance', email: 'ovance@brightpath-labs.test', company: 'Brightpath Labs', title: 'Director, Engineering', basis: 'legitimate_interest', interests: ['Vision'] },
+    // The `possible` case, and the only one a person has to settle: same name,
+    // same company, captured by two people an hour apart, with no email on the
+    // second to make it certain. The machine admits it deliberately — two people
+    // really can share a name — and the tab asks somebody who was there.
+    { by: tomas, name: 'Dana Whitfield', email: null, company: 'Lakeside Manufacturing', title: 'VP Ops', basis: 'legitimate_interest', interests: ['Cobots'] },
   ] as const;
-  for (const c of captured) {
+  // Staggered through this morning rather than all at `now`. Two captures
+  // sharing a timestamp make "first, and again" a claim the data cannot support,
+  // and the possible-duplicate pair below is exactly where that shows.
+  for (const [i, c] of captured.entries()) {
+    const capturedAt = new Date(now.getTime() - (captured.length - i) * 3_600_000);
     await captureLead(
       actorFor(c.by),
       dmwest.id,
       {
         fullName: c.name,
-        email: c.email,
+        email: c.email ?? null,
         phone: null,
         company: c.company,
         title: c.title,
@@ -1753,7 +1762,7 @@ async function main() {
         basis: c.basis,
         consentNotice: c.basis === 'consent' ? boothNotice : null,
       },
-      now,
+      capturedAt,
       db,
     );
   }
@@ -1994,7 +2003,7 @@ async function main() {
     costCenters: costCenters.length,
     policyLayers: 3,
     assets: 5,
-    shifts: shifts.length,
+    shifts: shifts.length + dmShifts.length + a25Shifts.length,
     ticketCredits: creditRows.length,
     travelRequests: 3,
     assistantConversations: 2,

@@ -2,9 +2,23 @@ import { getActor } from '@/lib/auth/actor';
 import { getLeadBoard } from '@/lib/leads/store';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Badge, Card, Empty, Table, Td, Th, showDate, showDateTime } from '../../../_components/ui';
-import { BasisBadge, CoverageHeadline, CoverageNotes, RetentionBadge } from '../../../leads/_present';
+import {
+  BasisBadge,
+  CoverageHeadline,
+  CoverageNotes,
+  OutboundBadge,
+  RetentionBadge,
+} from '../../../leads/_present';
 import { loadShow } from '../detail';
-import { CaptureForm, EraseForm, ImportForm, MeetingForm, RetentionButton } from './forms';
+import {
+  CaptureForm,
+  DuplicateForm,
+  EraseForm,
+  ImportForm,
+  MeetingForm,
+  RetentionButton,
+  UndoDuplicateForm,
+} from './forms';
 
 /**
  * Leads & meetings — the return side of §8, and the eighth tab.
@@ -30,7 +44,7 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
   const board = await getLeadBoard(actor, id);
   const { show } = detail;
-  const { coverage, leads, meetings, imports, people, may } = board;
+  const { coverage, leads, meetings, imports, people, possiblePairs, may } = board;
   const perLead = mayQuotePerLead(coverage);
   const linkable = leads.filter((l) => !l.redactedAt && !l.restricted);
 
@@ -46,6 +60,38 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
         )}
         {may.capture && <CaptureForm showId={id} />}
       </Card>
+
+      {may.manage && possiblePairs.length > 0 && (
+        <Card title="Might be the same person">
+          <p className="text-sm text-text-muted">
+            Same name, same company, both kept. Nothing merges these automatically, because two
+            people really can share a name at a show this size and silently dropping a real second
+            lead is the same mistake as counting a fake one — pointing the other way. Marking a
+            pair deletes nothing: the later row keeps its own consent record and its own retention
+            date, and stops being counted.
+          </p>
+          <ul className="mt-3 space-y-3">
+            {possiblePairs.map((pair) => (
+              <li key={`${pair.keep.id}-${pair.other.id}`} className="text-sm">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <span className="font-medium">{pair.keep.fullName}</span>
+                  {pair.company && <span className="text-text-muted">{pair.company}</span>}
+                  <span className="text-xs text-text-muted">
+                    first {showDate(pair.keep.capturedAt, show.timezone)}
+                    {pair.keep.capturedByName && ` · ${pair.keep.capturedByName}`}
+                    {' · again '}
+                    {showDate(pair.other.capturedAt, show.timezone)}
+                    {pair.other.capturedByName && ` · ${pair.other.capturedByName}`}
+                  </span>
+                </div>
+                <div className="mt-1">
+                  <DuplicateForm showId={id} leadId={pair.other.id} ofLeadId={pair.keep.id} />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
 
       <Card title="Leads">
         {leads.length === 0 ? (
@@ -90,6 +136,11 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                   </Td>
                   <Td>
                     <BasisBadge basis={lead.basis} />
+                    {!lead.redactedAt && (
+                      <div className="mt-1">
+                        <OutboundBadge outbound={lead.outbound} />
+                      </div>
+                    )}
                   </Td>
                   <Td>
                     <RetentionBadge standing={lead.retention} />
@@ -103,6 +154,12 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                     )}
                   </Td>
                   <Td>
+                    {lead.duplicateOfId && (
+                      <div className="mb-1">
+                        <span className="text-xs text-text-muted">not counted — duplicate</span>
+                        {may.manage && <UndoDuplicateForm showId={id} leadId={lead.id} />}
+                      </div>
+                    )}
                     {may.redact && !lead.redactedAt && <EraseForm showId={id} leadId={lead.id} />}
                   </Td>
                 </tr>
@@ -178,6 +235,17 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                     </span>
                   </div>
                   {batch.notes && <p className="text-xs text-warn">{batch.notes}</p>}
+                  {/* The mapping this import actually used. Kept and shown because
+                      "why is every company blank" has no other answer, and a batch
+                      record that stored it without ever displaying it would only
+                      look like one. */}
+                  {batch.mapping && (
+                    <p className="mt-0.5 text-xs text-text-muted">
+                      {Object.entries(batch.mapping)
+                        .map(([header, field]) => `${header} → ${field ?? 'not imported'}`)
+                        .join(' · ')}
+                    </p>
+                  )}
                   {batch.problems.length > 0 && (
                     <ul className="mt-1 space-y-0.5 text-xs text-text-muted">
                       {batch.problems.map((p) => (

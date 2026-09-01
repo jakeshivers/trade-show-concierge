@@ -927,7 +927,12 @@ cheaper per lead than it was. Identity is the scanner's own reference first and 
 second, **within a show only** — meeting the same person in June and in October is two real
 engagements with two costs — and name-plus-company is a *suspicion* that is surfaced and
 never auto-merged, because silently dropping a real second lead is the same failure
-pointing the other way.
+pointing the other way. **That refusal is only honest if something later asks**, so the
+pair is offered on the show's tab and settled by a person: marking one moves the lead
+count, which puts it with changing the plan, and it is reversible in both directions
+because it was a judgement about two strangers with the same name. Nothing merges and
+nothing is deleted — the row keeps its own consent record and its own retention clock and
+stops being counted twice.
 
 **Import must account for every row it read.** A parser that skips a malformed row reports
 a smaller number with the same confidence as a correct one, and nobody re-counts a CSV. So
@@ -1755,7 +1760,11 @@ invert phases A and C.
       reader plus an import planner in which accepted + rejected + duplicate always equals
       the row count, with a mapping that is proposed and confirmed rather than applied.
       `dedupe.ts` is identity within a show — the scanner's reference, then the email, and
-      name-plus-company as a *suspicion* that is never auto-merged. `alerts.ts` is the
+      name-plus-company as a *suspicion* that is never auto-merged but *is* offered to a
+      person to settle, which is what keeps "surfaced and never auto-resolved" from meaning
+      discarded. Every lead row carries `marketabilityOf`'s verdict — may this leave the
+      building, and why not — on the screen rather than at the point of export, because the
+      moment it is fixable is the moment somebody is looking at it. `alerts.ts` is the
       **sixth engine**, whose sharpest alert has no lead row behind it (a show that ran,
       was staffed, and recorded nothing) and whose `retention_overdue` is the only alert in
       the product reporting our own non-compliance. `intake.ts` is the first principal here
@@ -1776,7 +1785,7 @@ invert phases A and C.
       seed captures at the booth, posts through the *real* intake path (including the retry
       a scanner makes), imports a CSV through the real parser, and sweeps **before and
       after** the import so a genuinely resolved lead alert exists. Six corrections folded
-      into §5j above. 770 tests.
+      into §5j above. 781 tests.
 - [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
 
 ### Phase D — v1.5 and beyond

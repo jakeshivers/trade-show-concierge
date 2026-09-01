@@ -1,4 +1,9 @@
-import { BASIS_LABEL, type LawfulBasis, type RetentionStanding } from '@/lib/leads/consent';
+import {
+  BASIS_LABEL,
+  type LawfulBasis,
+  type Marketability,
+  type RetentionStanding,
+} from '@/lib/leads/consent';
 import type { CoverageStanding, LeadCoverage } from '@/lib/leads/coverage';
 import { Badge, type Tone } from '../_components/ui';
 
@@ -69,6 +74,26 @@ export function BasisBadge({ basis }: { basis: LawfulBasis }) {
 export function RetentionBadge({ standing }: { standing: RetentionStanding }) {
   if (standing === 'live') return null;
   return <Badge tone={RETENTION_TONE[standing]}>{RETENTION_LABEL[standing]}</Badge>;
+}
+
+/**
+ * Whether this row may leave the building, and why not.
+ *
+ * On the screen rather than at the point of export, because the moment somebody
+ * can still fix it is the moment they are looking at the lead — and by the time
+ * §19's exporter asks, the person who stood at the booth and knows what was said
+ * has gone home. The reason and the fix are both shown: "no lawful basis" is a
+ * verdict, and "record what the person was told" is a thing to do.
+ */
+export function OutboundBadge({ outbound }: { outbound: Marketability }) {
+  if (outbound.usable) return <Badge tone="good">outbound ok</Badge>;
+  return (
+    <>
+      <Badge tone="warn">not for outbound</Badge>
+      <div className="mt-0.5 text-xs text-text-muted">{outbound.reason}</div>
+      {outbound.fix && <div className="text-xs text-text-muted">{outbound.fix}</div>}
+    </>
+  );
 }
 
 /** What is wrong with a show's leads, under the headline, or nothing. */

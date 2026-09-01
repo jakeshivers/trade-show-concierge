@@ -21,6 +21,12 @@
  *    real second lead is the same failure as counting a fake one, pointing the
  *    other way. So it is surfaced and never auto-resolved.
  *
+ * A `possible` match is the only one a *person* has to settle, and that is what
+ * `findPossiblePairs` is for: the machine refuses to merge, so something has to
+ * ask. Without it the finding is announced once, in the sentence that comes back
+ * from the capture form, and is then unrecoverable — which makes "surfaced and
+ * never auto-resolved" a nicer way of saying discarded.
+ *
  * **Never across shows.** Meeting the same person at Automate in June and at
  * MedTech in October is two real engagements with two costs and two
  * attributions; collapsing them would hand one show credit for the other's
@@ -117,4 +123,36 @@ export function findMatch(incoming: Incoming, existing: DedupeCandidate[]): Matc
 /** The matches that block a write. A `possible` is reported and admitted. */
 export function isBlocking(match: Match | null): match is Match {
   return match !== null && match.kind !== 'possible';
+}
+
+/**
+ * Every pair on one show that *might* be the same person.
+ *
+ * Only the `possible` rule fires here, and deliberately: a `same_scan` or
+ * `same_email` pair cannot exist among stored leads, because all three write
+ * paths refuse those before they are written. What can exist is two rows with
+ * the same name at the same company, admitted on purpose, waiting for somebody
+ * who was at the booth to say whether that is one buyer or two.
+ *
+ * Rows already marked as a duplicate are excluded from both sides. A pair
+ * somebody has settled is not a question any more, and re-offering it is how a
+ * list of things to do becomes a list to scroll past.
+ */
+export function findPossiblePairs(leads: DedupeCandidate[]): { keep: DedupeCandidate; other: DedupeCandidate }[] {
+  const pairs: { keep: DedupeCandidate; other: DedupeCandidate }[] = [];
+  for (let i = 0; i < leads.length; i += 1) {
+    for (let j = i + 1; j < leads.length; j += 1) {
+      const a = leads[i];
+      const b = leads[j];
+      const company = lower(a.company);
+      if (!company || lower(b.company) !== company) continue;
+      if (nameKey(a.fullName) !== nameKey(b.fullName)) continue;
+      // The earlier capture is the one to keep: it is the conversation that
+      // actually happened first, and the later row is the re-scan.
+      const [keep, other] =
+        a.capturedAt.getTime() <= b.capturedAt.getTime() ? [a, b] : [b, a];
+      pairs.push({ keep, other });
+    }
+  }
+  return pairs;
 }

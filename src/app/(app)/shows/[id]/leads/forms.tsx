@@ -1,7 +1,17 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { addMeeting, capture, commit, erase, preview, runRetention, type ImportPreviewState } from './actions';
+import {
+  addMeeting,
+  capture,
+  commit,
+  erase,
+  markAsDuplicate,
+  preview,
+  runRetention,
+  unmarkAsDuplicate,
+  type ImportPreviewState,
+} from './actions';
 import { FIELD_LABEL, type LeadField } from '@/lib/leads/parse';
 import type { FormState } from '../../../_components/form';
 import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
@@ -148,6 +158,49 @@ export function EraseForm({ showId, leadId }: { showId: string; leadId: string }
       />
       <QuietSubmit pending={pending} busy="Erasing…">
         Erase permanently
+      </QuietSubmit>
+      <Message state={state} />
+    </form>
+  );
+}
+
+/**
+ * "Same person" / "two people" on a pair the machine would not settle.
+ *
+ * Deliberately two plain controls rather than a merge dialog: there is nothing
+ * to merge. One row stops counting, and the other does not change at all.
+ */
+export function DuplicateForm({
+  showId,
+  leadId,
+  ofLeadId,
+}: {
+  showId: string;
+  leadId: string;
+  ofLeadId: string;
+}) {
+  const [state, action, pending] = useActionState<FormState, FormData>(markAsDuplicate, {});
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="leadId" value={leadId} />
+      <input type="hidden" name="ofLeadId" value={ofLeadId} />
+      <Submit pending={pending} busy="Saving…">
+        Same person — count once
+      </Submit>
+      <Message state={state} />
+    </form>
+  );
+}
+
+export function UndoDuplicateForm({ showId, leadId }: { showId: string; leadId: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(unmarkAsDuplicate, {});
+  return (
+    <form action={action} className="flex items-center gap-2">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="leadId" value={leadId} />
+      <QuietSubmit pending={pending} busy="Saving…">
+        Not a duplicate
       </QuietSubmit>
       <Message state={state} />
     </form>

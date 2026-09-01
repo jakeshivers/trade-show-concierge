@@ -22,6 +22,7 @@ import { getDb } from '../src/db';
 import * as schema from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
 import {
+  getLeadBoard,
   getLeadPortfolio,
   listShowLeads,
   listShowMeetings,
@@ -89,9 +90,10 @@ async function detail(actor: Actor, showId: string) {
   const coverage = await loadCoverage(actor.orgId, now, db);
   const entry = coverage.get(showId);
   if (!entry) throw new Error(`No show ${showId} in this workspace.`);
-  const [leads, meetings] = await Promise.all([
+  const [leads, meetings, board] = await Promise.all([
     listShowLeads(actor, showId, now, db),
     listShowMeetings(actor, showId, db),
+    getLeadBoard(actor, showId, now, db),
   ]);
 
   console.log(`\n${entry.show.name}\n`);
@@ -102,13 +104,25 @@ async function detail(actor: Actor, showId: string) {
     if (lead.redactedAt) flags.push(`erased ${day(lead.redactedAt)}`);
     if (lead.retention === 'overdue') flags.push('PAST ITS ERASURE DATE');
     if (lead.retention === 'due_soon') flags.push(`erase by ${day(lead.deleteAfter)}`);
-    if (lead.duplicateOfId) flags.push('duplicate');
+    if (lead.duplicateOfId) flags.push('not counted — duplicate');
+    if (!lead.redactedAt && !lead.outbound.usable) flags.push('not for outbound');
     console.log(
       `  ${lead.fullName.padEnd(26)} ${(lead.company ?? '—').padEnd(24)} ` +
         `${lead.source.padEnd(6)} ${(lead.capturedByName ?? 'imported').padEnd(20)} ${flags.join(' · ')}`,
     );
   }
   if (leads.length === 0) console.log('  No leads recorded.');
+
+  if (board.possiblePairs.length > 0) {
+    console.log('\n  Might be the same person — nothing merges these on its own:\n');
+    for (const pair of board.possiblePairs) {
+      console.log(
+        `  ${pair.keep.fullName}${pair.company ? ` at ${pair.company}` : ''} — ` +
+          `${day(pair.keep.capturedAt)} (${pair.keep.capturedByName ?? 'imported'}) ` +
+          `and again ${day(pair.other.capturedAt)} (${pair.other.capturedByName ?? 'imported'})`,
+      );
+    }
+  }
 
   console.log('');
   for (const m of meetings) {

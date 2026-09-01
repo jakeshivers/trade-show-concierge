@@ -9,9 +9,11 @@ import {
   captureLead,
   commitImport,
   previewImport,
+  markDuplicate,
   recordMeeting,
   redactLead,
   sweepLeadRetention,
+  unmarkDuplicate,
 } from '@/lib/leads/store';
 import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
 
@@ -122,6 +124,40 @@ export async function runRetention(_prev: FormState, form: FormData): Promise<Fo
         ? 'Nothing was past its date. Nothing was erased.'
         : `${result.erased} lead(s) erased across the workspace. Every lead count is unchanged.`,
   };
+}
+
+/**
+ * Settling a possible duplicate.
+ *
+ * Both directions exist because this is a judgement about two strangers who
+ * share a name, and the person who made it may have been wrong. Nothing is
+ * merged or deleted either way — the row keeps its own consent record and its
+ * own retention clock and simply stops being counted twice.
+ */
+export async function markAsDuplicate(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await markDuplicate(actor, str(form, 'leadId'), str(form, 'ofLeadId'));
+  } catch (err) {
+    return asFormError(err);
+  }
+  refresh(showId);
+  return {
+    ok: 'Counted once. Neither row was deleted — the later one keeps its own consent record and retention date, and simply stops being counted.',
+  };
+}
+
+export async function unmarkAsDuplicate(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await unmarkDuplicate(actor, str(form, 'leadId'));
+  } catch (err) {
+    return asFormError(err);
+  }
+  refresh(showId);
+  return { ok: 'Counted again — two people after all.' };
 }
 
 /* --------------------------------- importing ------------------------------- */

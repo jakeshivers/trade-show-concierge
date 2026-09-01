@@ -14,14 +14,22 @@ import {
 } from './access';
 import {
   basisOf,
+  marketabilityOf,
   planRedaction,
   retentionDueAt,
   retentionStandingOf,
   type LawfulBasis,
+  type Marketability,
   type RetentionStanding,
 } from './consent';
 import { assessCoverage, type CapturingStaff, type CountableLead, type LeadCoverage } from './coverage';
-import { findMatch, isBlocking, type DedupeCandidate, type Match } from './dedupe';
+import {
+  findMatch,
+  findPossiblePairs,
+  isBlocking,
+  type DedupeCandidate,
+  type Match,
+} from './dedupe';
 import {
   LeadError,
   validateLead,
@@ -85,6 +93,13 @@ export type LeadRow = {
   redactedAt: Date | null;
   redactionReason: string | null;
   duplicateOfId: string | null;
+  /**
+   * Whether this row may leave the building — a mailing list, a CRM sync, an
+   * export. Computed here rather than at the point of export so the answer is on
+   * the screen a person is looking at when they could still fix it, and so
+   * §19's exporter reads a verdict rather than re-deriving one.
+   */
+  outbound: Marketability;
   /** True when this row's personal fields were withheld from this reader. */
   restricted: boolean;
 };
@@ -136,6 +151,12 @@ function toLeadRow(
     redactedAt: row.redactedAt,
     redactionReason: row.redactionReason,
     duplicateOfId: row.duplicateOfId,
+    outbound: marketabilityOf({
+      basis: basisOf(row.consentBasis),
+      consentCapturedAt: row.consentCapturedAt,
+      consentNotice: row.consentNotice,
+      redactedAt: row.redactedAt,
+    }),
   };
   if (!visible) {
     // Withheld, and *labelled* withheld. A blank name would be indistinguishable
@@ -372,10 +393,22 @@ export type LeadImportRow = {
   notes: string | null;
 };
 
+export type PossiblePair = {
+  keep: { id: string; fullName: string; capturedAt: Date; capturedByName: string | null };
+  other: { id: string; fullName: string; capturedAt: Date; capturedByName: string | null };
+  company: string | null;
+};
+
 export type LeadBoard = {
   show: typeof s.shows.$inferSelect;
   coverage: LeadCoverage;
   leads: LeadRow[];
+  /**
+   * Same name, same company, both admitted — the one match `dedupe.ts` refuses
+   * to settle on its own. Offered to somebody who can, because the alternative
+   * is that "surfaced and never auto-resolved" quietly means discarded.
+   */
+  possiblePairs: PossiblePair[];
   meetings: MeetingRow[];
   imports: LeadImportRow[];
   people: { id: string; fullName: string }[];
@@ -412,10 +445,31 @@ export async function getLeadBoard(
       .orderBy(asc(s.users.fullName)),
   ]);
 
+  // A pair somebody has already settled is not a question any more.
+  const settled = new Set(leads.filter((l) => l.duplicateOfId).map((l) => l.id));
+  const pairs = findPossiblePairs(
+    (await dedupeCandidates(showId, db)).filter((c) => !settled.has(c.id)),
+  );
+
   return {
     show,
     coverage: coverage.get(showId)!.coverage,
     leads,
+    possiblePairs: pairs.map((p) => ({
+      keep: {
+        id: p.keep.id,
+        fullName: p.keep.fullName,
+        capturedAt: p.keep.capturedAt,
+        capturedByName: p.keep.capturedByName,
+      },
+      other: {
+        id: p.other.id,
+        fullName: p.other.fullName,
+        capturedAt: p.other.capturedAt,
+        capturedByName: p.other.capturedByName,
+      },
+      company: p.keep.company,
+    })),
     meetings,
     imports: importRows.map((r) => ({
       id: r.batch.id,
@@ -678,6 +732,85 @@ export async function recordMeeting(
     })
     .returning();
   return row;
+}
+
+/**
+ * Two rows, one person — said by somebody who would know.
+ *
+ * `dedupe.ts` refuses to merge a name-plus-company match because two people
+ * really can share a name at a big enough show, and silently dropping a real
+ * second lead is the same failure as counting a fake one. That refusal is only
+ * honest if something later *asks*, which is what this is.
+ *
+ * It sits with changing the plan rather than with reporting, for one reason:
+ * marking a duplicate **moves the lead count**, and therefore moves every figure
+ * §19 will divide by it. Same bar as skipping a task, waiving a deadline, or
+ * erasing a lead.
+ *
+ * Nothing is deleted and nothing is merged. The row keeps its own capture, its
+ * own consent record and its own retention clock — it is simply not counted
+ * twice — so the decision is reversible by the next person who looks, which is
+ * exactly what a judgement call about two strangers with the same name should be.
+ */
+export async function markDuplicate(
+  actor: Actor,
+  leadId: string,
+  ofLeadId: string,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canManageLeads(actor)) {
+    throw new ForbiddenError('mark a lead as a duplicate — it moves the count, so it is a change to the plan');
+  }
+  if (leadId === ofLeadId) throw new LeadError('A lead cannot be a duplicate of itself.');
+
+  const rows = await db
+    .select({ lead: s.leads })
+    .from(s.leads)
+    .innerJoin(s.shows, eq(s.leads.showId, s.shows.id))
+    .where(and(inArray(s.leads.id, [leadId, ofLeadId]), eq(s.shows.orgId, actor.orgId)));
+  const lead = rows.find((r) => r.lead.id === leadId)?.lead;
+  const target = rows.find((r) => r.lead.id === ofLeadId)?.lead;
+  if (!lead || !target) throw new NotFoundError('lead');
+  if (lead.showId !== target.showId) {
+    // §5j: the same person met at two shows is two engagements with two costs.
+    throw new LeadError(
+      'Those leads are on different shows. Meeting the same person twice is two conversations with two costs, and collapsing them would hand one show credit for the other’s.',
+    );
+  }
+  if (target.duplicateOfId) {
+    // No chains: a duplicate of a duplicate makes "how many leads" depend on
+    // the order somebody clicked in.
+    throw new LeadError(
+      'That lead is itself marked as a duplicate. Point this one at the original instead.',
+    );
+  }
+  await db
+    .update(s.leads)
+    .set({ duplicateOfId: ofLeadId, updatedAt: now })
+    .where(eq(s.leads.id, leadId));
+}
+
+/** Two people after all. The row goes back into the count. */
+export async function unmarkDuplicate(
+  actor: Actor,
+  leadId: string,
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<void> {
+  if (!canManageLeads(actor)) {
+    throw new ForbiddenError('unmark a lead as a duplicate — it moves the count, so it is a change to the plan');
+  }
+  const rows = await db
+    .select({ id: s.leads.id })
+    .from(s.leads)
+    .innerJoin(s.shows, eq(s.leads.showId, s.shows.id))
+    .where(and(eq(s.leads.id, leadId), eq(s.shows.orgId, actor.orgId)));
+  if (rows.length === 0) throw new NotFoundError('lead');
+  await db
+    .update(s.leads)
+    .set({ duplicateOfId: null, updatedAt: now })
+    .where(eq(s.leads.id, leadId));
 }
 
 /**
