@@ -2185,8 +2185,10 @@ invert phases A and C.
       workspace. **Still owed, and deliberately so as of 2026-09-01:** hosting (a cloud
       account, which §9's ground rule forbids wiring unasked, and where §11.10's residency
       decision stops being deferrable and the day-of service worker meets a real origin) and
-      the SSO rollout (see §11.2 — there is no IdP to connect, and the domain-to-org mapping
-      it needs is a change to a ground rule rather than a feature). **The Slack adapter
+      the SSO rollout, which is **downstream of hosting rather than parallel to it** (see
+      §11.2 — an IdP cannot post an assertion to `localhost`, so there is no connection to
+      make until there is an origin; and the domain-to-org mapping it needs is a change to a
+      ground rule rather than a feature). **The Slack adapter
       stays unverified on purpose**: there is no workspace to run it against, so it keeps
       the header AeroAPI, EasyPost and Salesforce carry, and the app keeps reaching nobody
       by default. Nothing constructs a Slack client without `SLACK_BOT_TOKEN` and every
@@ -2226,17 +2228,25 @@ the benefit of the model without the setup cost blocking the spine.
    SSO needs no further build here. What waited for step 21 was the rollout — a real
    IdP connection, and the domain-to-org mapping that goes with it.
 
-   **Update 2026-09-01: there is no IdP to roll out to, so the rollout is deferred
-   rather than attempted.** No enterprise SSO client exists for this workspace, so the
-   connection cannot be made and the domain-to-org mapping cannot be checked against
-   one. That is the right answer rather than a shortfall, for a reason worth stating:
-   **domain-to-org provisioning is a change to a ground rule, not a feature.** Today a
-   verified session that matches no `users` row gets no access *and no row created for
-   it*. Mapping `@customer.com` to an org is precisely a mechanism for creating one, so
-   writing it against an imagined IdP would mean inventing both the rule and the
-   evidence for it. It waits for a real connection. The login-method gate keeps failing
-   closed in the meantime, which is the behaviour that matters if this is ever switched
-   on before anybody re-reads this paragraph.
+   **Update 2026-09-01: SSO is a TODO, and it is gated on hosting rather than on
+   itself.** This project runs on localhost, and that is not an incidental detail —
+   **enterprise SSO is downstream of a public origin, not parallel to it.** A SAML IdP
+   posts its assertion back to an ACS URL it has to be able to reach, and enterprise
+   OIDC connections want a redirect URI on a real domain with a real certificate; an
+   IdP cannot reach `localhost:3000`, so there is nothing to connect a connection *to*
+   until step 21's hosting half exists. Treat the two as one gate. Nothing about the
+   ordering is a surprise to the code — §7 already built the policy half
+   provider-agnostically, and enabling a connection is Clerk configuration rather than
+   ours.
+
+   **What is genuinely ours, and is the reason not to do this in passing when hosting
+   lands: domain-to-org provisioning is a change to a ground rule, not a feature.**
+   Today a verified session that matches no `users` row gets no access *and no row
+   created for it*. Mapping `@customer.com` to an org is precisely a mechanism for
+   creating one. Writing it against an imagined IdP would mean inventing both the rule
+   and the evidence for it, so it waits for a real connection to be checked against.
+   The login-method gate keeps failing closed meanwhile, which is the behaviour that
+   matters if any of this is switched on before anybody re-reads this paragraph.
 3. **Approval routing:** single Travel Manager queue for the org, or per-department
    approvers? Recommending a single queue for v1; per-department is a schema addition
    that's cheap now and expensive later if wrong.

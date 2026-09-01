@@ -1144,13 +1144,18 @@ forbids wiring unasked. Do not pick any of them up speculatively.
   The default transport is `console`, which composes the real message and delivers it to
   nobody. **Do not add a `recorded` Slack provider** — the whole argument for `console`
   existing is that a replayed *delivery* is a claim somebody's phone buzzed.
-- **The SSO rollout waits for a real IdP**, and the domain-to-org mapping it needs is a
-  **change to a ground rule** rather than a feature: today a verified session matching no
-  `users` row gets no access *and no row created for it*, and domain-to-org provisioning is
-  precisely a way to create one. Decide that deliberately, with a live connection in front
-  of you, not in passing.
-- **Hosting** is where §11.10 (data residency) stops being deferrable and where the day-of
-  service worker meets a real origin and a real TLS certificate for the first time.
+- **The SSO rollout is a TODO gated on hosting, not on itself.** This project runs on
+  localhost, and enterprise SSO is **downstream of a public origin**: a SAML IdP posts its
+  assertion to an ACS URL it has to be able to reach, and an enterprise OIDC connection
+  wants a redirect URI on a real domain — neither can reach `localhost:3000`. So hosting
+  and SSO are one gate, in that order, and there is no useful SSO work to do before it.
+  When it does land, the domain-to-org mapping is a **change to a ground rule** rather than
+  a feature: today a verified session matching no `users` row gets no access *and no row
+  created for it*, and domain-to-org provisioning is precisely a way to create one. Decide
+  that deliberately, with a live connection in front of you, not in passing.
+- **Hosting** is therefore the one that unblocks the other, and is where §11.10 (data
+  residency) stops being deferrable and where the day-of service worker meets a real origin
+  and a real TLS certificate for the first time.
 
 §11.5 (scale) is the open decision nearest all three, and step 21 gave it a first concrete
 edge: the nightly job is a `for` loop over every org inside one HTTP request, which is right
@@ -1190,9 +1195,11 @@ test suite and the seed would each destroy the demo they exist to build.
 job on this machine**: without `CRON_SECRET` the endpoint refuses, and until a scheduler is
 pointed at a real origin the only things that run it are `pnpm nightly` and a button on
 `/settings/notifications` — which is why `manual_only` is a standing of its own. **Alerts now have a transport and a scheduler, and by default neither reaches anybody — and
-that is the settled state, not a step on the way to one.** There is no Slack workspace and no
-SSO client for this project (2026-09-01), so the adapter stays written-and-unverified and the
-app stays reaching nobody unless somebody sets a token.
+that is the settled state for as long as this runs on localhost.** There is no Slack
+workspace for this project (2026-09-01), so the adapter stays written-and-unverified and the
+app keeps reaching nobody unless somebody sets a token. SSO is a TODO on the same footing and
+for a sharper reason: an IdP cannot post an assertion to `localhost`, so it is gated on
+hosting — see §11.2.
 With no `SLACK_BOT_TOKEN` the transport is `console`, which composes every message from the
 real alerts and delivers it **to nobody** — recorded as `rendered`, never `sent`, so a
 workspace that has told nobody anything can never read as one that has. With no
