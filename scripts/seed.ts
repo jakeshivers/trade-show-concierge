@@ -52,6 +52,7 @@ import {
   sweepLeadAlerts,
 } from '../src/lib/leads/store';
 import { inferMapping, parseCsv, planImport } from '../src/lib/leads/parse';
+import { addTarget } from '../src/lib/dayof/store';
 import { sweepRoiAlerts, syncCrm } from '../src/lib/roi/store';
 import { RecordedCrmProvider } from '../src/lib/integrations/crm/recorded/provider';
 
@@ -1805,6 +1806,54 @@ async function main() {
       capturedAt,
       db,
     );
+  }
+
+  // Who this show is for — the list the day-of screen warns against, built
+  // through the real store so the must-meet reason rule is actually enforced
+  // rather than typed around.
+  //
+  // The shape is the finding rather than the rows. Lakeside Manufacturing is
+  // *met*, and it is met because Priya captured Dana Whitfield an hour ago —
+  // there is no `met_at` column and nothing ticked a box, so erasing that lead
+  // would take the claim with it. Corvid Packaging is met under a different
+  // spelling ("Corvid Packaging Inc." on the badge), which is the only thing
+  // `normalizeCompany` is for. Vance Group is a must-meet nobody has spoken to
+  // and nobody owns, which is the escalation case. And Brightpath is a target
+  // whose lead exists but was captured by somebody else, so the alert on the
+  // floor is "already spoken to" rather than "go and find them".
+  for (const t of [
+    {
+      companyName: 'Lakeside Manufacturing',
+      aliases: ['Lakeside Mfg'],
+      priority: 'must_meet' as const,
+      reason: 'Renewal is up in Q1 and their VP Ops is on the floor Tuesday only.',
+      ownerId: marcus.id,
+    },
+    {
+      companyName: 'Corvid Packaging Inc.',
+      aliases: [],
+      priority: 'target' as const,
+      reason: 'Evaluating cobots against two competitors.',
+      ownerId: priya.id,
+    },
+    {
+      companyName: 'Vance Group',
+      aliases: ['Vance Group Holdings'],
+      priority: 'must_meet' as const,
+      reason: 'Largest unclosed opportunity in the region. Nobody has met them in person.',
+      // Deliberately unowned: an alert addressed to an owner who does not exist
+      // reaches nobody, and this is the row most likely to be walked past.
+      ownerId: null,
+    },
+    {
+      companyName: 'Brightpath Labs',
+      aliases: [],
+      priority: 'watch' as const,
+      reason: null,
+      ownerId: null,
+    },
+  ]) {
+    await addTarget(admin, dmwest.id, t, now, db);
   }
 
   // A badge scanner, through the REST endpoint's own code path — key issued,

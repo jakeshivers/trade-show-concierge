@@ -48,7 +48,7 @@ to be trained to use this, it has failed job 1.
 | Hosting | Deferred until the core works | Nothing is wired to a cloud provider yet. |
 | External APIs | Behind provider interfaces, off by default | Every integration has a `NotConfigured` state. The app runs with zero keys. |
 | Agent decisions | **Deterministic policy engine, LLM only at the edges** | See §6. This is the most important call in the document. |
-| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. §10 step 20. |
+| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. Built at step 20, and the decision was load-bearing: the day-of page is the only one in this product that is not a Server Component, its server half deliberately fetches *nothing*, and two pure modules are shipped to the browser because a target alert and a queue reconciliation cannot wait for a network. §5l. |
 | Financial dimensions | **Cost centers from day one** | Retrofitting a cost dimension permanently orphans historical spend. §4. |
 
 ---
@@ -1072,6 +1072,86 @@ nothing-found have to stay different answers.
 
 ---
 
+### 5l. Day-of — what a screen may claim when it is on its own (step 20)
+
+§2 has said since the first table in this document that the day-of experience is an
+**offline-first PWA, and that offline is an architecture decision rather than a screen.**
+Building it turned out to be less about caching than about tense: everything else in this
+product decides on a server and renders the answer, and this screen has to hold an answer
+and then keep being read for hours after the thing it describes has moved.
+
+**A cached screen is §5f's unchecked flight with every row at once, and it is worse.**
+There, a leg nobody had refreshed rendered `scheduled` — the calm one — so a board that had
+not asked anything in eight hours showed a full slate of on-time flights. A cached page has
+the same defect with no visible cause: it is drawn, the numbers are there, and nothing about
+a phone with no bars says the crate reading is from Tuesday. So a snapshot carries one
+instant, every reader passes a clock, and the age is a line at the top rather than a
+footnote.
+
+**A fact and a verdict age differently, and withholding both is not the safe option.**
+"Booth 2209, shift 09:00-13:00" was true when it was written and is still true. "Crate on
+time" is a present-tense claim computed from an estimate that moves hourly. So the standing
+comes off a crate line past forty-five minutes and the facts stay - and the line that
+survives is the one that matters most on a move-in morning: *on a dock, nobody has confirmed
+it at the booth* is a signature, not a guess about a truck. A screen that blanked everything
+when it went stale would remove the most actionable sentence on it in the name of caution.
+
+**A queued capture is not a captured lead, and the counts never merge.** §5j's whole
+mitigation is that a thin number is visibly thin; a count that quietly included rows sitting
+in a phone in somebody's pocket would be that failure with a new cause. The device says how
+many are on it, in the word *device* rather than *pending* — the thing a person needs to
+understand is a location, not a process.
+
+**Every queued item is accounted for, and a rejected one is kept.** §5j made an import's
+accepted + rejected + duplicate equal the row count because a silently dropped row reports a
+smaller number with the same confidence. A dropped queue item is worse: there is no file to
+re-read and no row number to point at, and the person who had the conversation is the only
+record left. So `reconcile` throws rather than losing anything, and a lead refused for a
+missing name stays on the device, marked, with the sentence explaining it — deleting it would
+destroy the only copy of a real conversation because a field was blank, and retrying it
+forever would leave a badge that is always on, which is a badge that is off.
+
+**A re-send is a success, and it is the same rail as a badge scanner's retry.** §5j's
+`external_ref` unique per show was built for a scanner retrying over seconds on
+convention-centre wifi. An outbox retries over a lunch break, after a browser has been
+killed, from a different network — the same problem with a longer clock — so the client mints
+its ref at the moment of typing and it never changes. What is new is that **our own re-send
+and somebody else's duplicate must stay different answers**: only one of them is news, and
+collapsing them would tell a person their colleague met the buyer when in fact their own
+phone did.
+
+**A target-company alert is the one piece of logic in this product that cannot run on a
+server.** It is worth something for the ninety seconds somebody is standing in front of the
+person and nothing at all afterwards, and a hall has no network — so `matchTarget` is pure,
+shipped to the client, and called on every keystroke. Two things follow. The server calls the
+same function, because two implementations would disagree about "Lakeside Mfg" within a week
+and the disagreement would surface as somebody on the floor being told nothing while the
+report says they met the account. And the match is **exact after normalising legal
+suffixes, never fuzzy**: the failure of a loose match here is not a wrong row on a screen, it
+is a person at a booth telling a stranger their company is one we came for, with no way to
+check it.
+
+**Whether a target was met is derived, never stored.** There is no `met_at` column. A target
+is met because a lead exists on this show whose company matches, so an erasure takes the
+evidence and the claim together and "6 of 9 met" cannot disagree with the list under it — the
+credit ledger's rule and §5k's attribution rule, from a third direction. And a must-meet with
+no owner escalates rather than going quiet, which is §5a's unowned deadline exactly.
+
+**A cache outlives the session that was allowed to read it.** Every row in a snapshot was
+fetched under one person's scope, and a phone in a booth gets handed to whoever is free — so
+the snapshot carries the actor it was built for, the client refuses to render one that does
+not match, and the mismatch wipes IndexedDB and the service worker's caches rather than
+filtering what is drawn. For the same reason the worker caches **only** the day-of pages:
+caching /cost or /travel would leave a copy of a colleague's fares on a device long after the
+session ended, which is the lateral read the whole access posture exists to close.
+
+**And the honest limitation, said on the page rather than hidden.** A browser cannot cache a
+page it has never seen, so the offline screen works only if it was opened while there was a
+connection. That is not a defect to engineer around; it is a sentence to put in front of
+somebody in the week before the show.
+
+---
+
 ## 6. The booking agent
 
 The core loop: **user states constraints → agent finds an itinerary → policy engine
@@ -1531,9 +1611,10 @@ like a toy and is actually a fix for the real failure mode.
 empty** — someone will cut a show over a bad number. Mitigations, in order of cost:
 
 1. Show lead-capture *coverage* on the dashboard — "34 leads from 3 of 6 staff" — so a
-   thin number is visibly thin rather than silently wrong.
-2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20).
-3. Only then consider gamification.
+   thin number is visibly thin rather than silently wrong. **Done at step 18.**
+2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20). **Done at
+   step 20.**
+3. Only then consider gamification. Still not built, and still third.
 
 **What step 18 established, building it.** Mitigation 1 is done and is the whole shape of
 the feature: the count is never rendered bare, the word in front of it is "at least"
@@ -1544,6 +1625,27 @@ make a show look cheaper per lead than it was, and silent import loss, which def
 with equal confidence. Second, cost per lead is **withheld** over a thin count rather than
 published with a caveat, because the error runs in the direction that reads as a bad show
 and drives exactly the decision this section warns about. §5j is the long version.
+
+**What step 20 established, building mitigation 2.** The ten seconds is a real constraint
+and it decides the form: one required field, the company second because it is what fires the
+target alert, and everything else behind "More fields". But the diagnosis above is missing
+the half that actually costs leads, which is not the *typing* — it is that on a show floor
+the form does not load at all. So the mitigation is an architecture rather than a layout:
+the screen holds its own data, a capture is written to the device before it is written
+anywhere else, and the queue re-sends itself on the same idempotency rail a badge scanner
+uses. §5l is the long version.
+
+The one thing this does **not** do is count a queued capture. §8c's failure is a number that
+is silently thin; a number that quietly included rows sitting in a phone would be the same
+failure with a friendlier cause, and it would resolve itself — wrongly — the moment somebody
+walked past a wifi point. The device says how many are on it, beside the recorded count and
+never inside it.
+
+**And there is now a fourth mitigation, cheaper than gamification and pointing the other
+way.** Coverage tells you a count is thin *after* the show; a target-account list tells
+somebody at the booth, during the conversation, that the person in front of them is one of
+the nine accounts the booth was bought for. It does not improve the count — it improves what
+is in it, which is the thing cost-per-lead cannot see at all.
 
 ### 8d. Metrics
 
@@ -1949,8 +2051,31 @@ invert phases A and C.
 
 ### Phase D — v1.5 and beyond
 
-- [ ] **20.** Offline day-of PWA — my shift, booth, crate status, fast lead/meeting entry,
-      target-company alerts
+- [x] **20.** **Offline day-of PWA** — my shift, booth, crate status, fast lead/meeting
+      entry, target-company alerts. The first step that is a change to how the client
+      *works* rather than another model behind another screen. `src/lib/dayof/` is split
+      the way everything since step 8 is, with two files that are new in kind: `targets.ts`
+      and `outbox.ts` are pure **and shipped to the browser**, because a target-company
+      alert has to fire while the name is being typed and a queue has to be reconciled with
+      no server to ask. `snapshot.ts` holds the freshness model and `degradeVerdicts` —
+      the standing comes off a crate line past forty-five minutes and the recorded facts
+      stay. `store.ts` builds one object stamped with one instant and drains a device's
+      queue **through the real `captureLead`**, as the person who typed it. Schema: a new
+      `show_targets` (with no `met_at` column, deliberately — met is derived from the
+      leads) and `meetings.external_ref`, unique per show, which is `leads.external_ref`'s
+      idempotency rail extended to the other thing a booth records. `GET
+      /api/day-of/snapshot` is the only screen in this product whose data leaves the server
+      as data; `POST /api/day-of/sync` answers **every** item it is sent and is deliberately
+      not the intake endpoint, because an intake key writes leads attributed to nobody and
+      that attribution is the entire input to §8c's coverage figure. `public/sw.js` is
+      hand-written and caches only the day-of pages; `src/app/manifest.ts` starts at
+      `/day-of`. Targets are edited on the show's Leads tab — an approver's, because adding
+      a must-meet moves a denominator — and read by everybody, because a target nobody at
+      the booth can see is a target nobody meets. `pnpm day-of` / `pnpm day-of <show id>
+      --stale 90` is the model without a screen, and `--stale` exists because the hard part
+      of an offline screen is not what it says when it is fresh. Eight corrections folded
+      into §5l above, plus §8c's mitigation 2 and the §2 row it has been owed since the
+      first table. 882 tests.
 - [ ] **21.** Slack adapter · hosting · SSO rollout
 - [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external

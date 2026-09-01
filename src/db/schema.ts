@@ -37,6 +37,17 @@ export const showDecisionEnum = pgEnum('show_decision', [
   'declined',
 ]);
 
+/**
+ * How much it costs to walk past this account. Three levels rather than two,
+ * because "would be nice" and "the reason we bought the booth" are different
+ * sentences to put in front of somebody at hour six of day two.
+ */
+export const targetPriorityEnum = pgEnum('target_priority', [
+  'must_meet',
+  'target',
+  'watch',
+]);
+
 export const taskStatusEnum = pgEnum('task_status', [
   'not_started',
   'in_progress',
@@ -1949,10 +1960,82 @@ export const meetings = pgTable(
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     notes: text('notes'),
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * The device's own id for this record, when it was written offline.
+     *
+     * `leads.external_ref` earns its unique index because a badge scanner
+     * retries a request it never saw the answer to. A phone in a hall with no
+     * signal is the same machine with a longer gap: the outbox re-sends on
+     * reconnect, and without a rail the second send is a second meeting. The
+     * ref is minted on the device at the moment the person types, so it
+     * survives the app being closed, the battery dying, and the sync being
+     * attempted from a different network an hour later.
+     */
+    externalRef: text('external_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('meetings_show_idx').on(t.showId)],
+  (t) => [
+    index('meetings_show_idx').on(t.showId),
+    uniqueIndex('meetings_external_ref_idx').on(t.showId, t.externalRef),
+  ],
+);
+
+/**
+ * The accounts this show exists to meet.
+ *
+ * SCOPE.md §10 step 20 asks for "target-company alerts", and the reason they
+ * belong to the day-of PWA rather than to a planning screen is a matter of
+ * timing: the alert is worth something for the ninety seconds somebody is
+ * standing in front of the person, and nothing at all afterwards. A nightly
+ * engine cannot deliver it. It has to fire on the device, from cached rows,
+ * while the name is still being typed — which is why `dayof/targets.ts` is pure
+ * and shipped to the client, and why this table is small enough to cache whole.
+ *
+ * **Whether a target was met is derived, never stored.** There is no `met_at`
+ * column, and adding one would be the mistake the credit ledger and the ROI
+ * attribution both refused: a target is met because a lead exists on this show
+ * whose company matches, so the answer changes when the lead does. A stored
+ * flag would be set by whoever remembered to press the button, would survive an
+ * erasure that removed the only evidence, and would let "we met 6 of 9 targets"
+ * disagree with the lead list it is supposedly counting.
+ *
+ * `aliases` exists because a company is a string typed at a booth. "Lakeside
+ * Manufacturing", "Lakeside Mfg" and "Lakeside" are one account, and
+ * `matchTarget` deliberately will not guess that — it matches the name and the
+ * aliases exactly, after normalising legal suffixes, and nothing else. A fuzzy
+ * match here does not produce a wrong row; it produces somebody at a booth
+ * telling a stranger they are an important account.
+ */
+export const showTargets = pgTable(
+  'show_targets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    companyName: text('company_name').notNull(),
+    /** Other spellings of the same account. Matched exactly, like the name. */
+    aliases: jsonb('aliases').$type<string[]>(),
+    /** `must_meet` | `target` | `watch`. What it costs to walk past them. */
+    priority: targetPriorityEnum('priority').notNull().default('target'),
+    /** Why this account is on the list — the sentence a booth staffer reads. */
+    reason: text('reason'),
+    /**
+     * Who owns the relationship. Nullable, and the nullability is load-bearing
+     * in the same way `show_deadlines.owner_id`'s is: an unowned must-meet is
+     * the one most likely to be walked past, and an alert addressed to its owner
+     * would reach nobody. It escalates instead.
+     */
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('show_targets_show_idx').on(t.showId),
+    uniqueIndex('show_targets_company_idx').on(t.showId, t.companyName),
+  ],
 );
 
 /**

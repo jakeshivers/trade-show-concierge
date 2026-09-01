@@ -15,6 +15,7 @@ import {
   sweepLeadRetention,
   unmarkDuplicate,
 } from '@/lib/leads/store';
+import { addTarget, removeTarget, TargetError } from '@/lib/dayof/store';
 import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
 
 /**
@@ -35,7 +36,7 @@ import { type FormState, formErrorFrom, optional, str } from '../../../_componen
  * "fixing" it.
  */
 
-const EXPECTED = [LeadError, CsvError, ForbiddenError, NotFoundError];
+const EXPECTED = [LeadError, CsvError, TargetError, ForbiddenError, NotFoundError];
 const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
@@ -43,6 +44,7 @@ function refresh(showId: string) {
   revalidatePath(`/shows/${showId}`);
   revalidatePath('/leads');
   revalidatePath('/alerts');
+  revalidatePath(`/day-of/${showId}`);
 }
 
 export async function capture(_prev: FormState, form: FormData): Promise<FormState> {
@@ -272,4 +274,50 @@ export async function commit(_prev: FormState, form: FormData): Promise<FormStat
   } catch (err) {
     return asFormError(err);
   }
+}
+
+/* ------------------------------ target accounts ----------------------------- */
+
+/**
+ * Who we came to this show to meet.
+ *
+ * Editing this list is `canManageTargets` — an approver — for the reason every
+ * other list that moves a denominator is: adding a must-meet account at hour six
+ * of day two changes every "targets met" figure the show will ever report.
+ * Reading it is everybody's, and has to be, because the whole feature is a
+ * sentence a booth staffer reads while a stranger is standing in front of them.
+ *
+ * The list is edited here, on the show's Leads tab, rather than on the day-of
+ * screen — that screen is for people who are standing up, and the decision about
+ * which accounts justify a booth was made months earlier by somebody sitting
+ * down.
+ */
+export async function addTargetAccount(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await addTarget(actor, showId, {
+      companyName: str(form, 'companyName'),
+      aliases: (optional(form, 'aliases') ?? '').split(',').map((a) => a.trim()).filter(Boolean),
+      priority: (optional(form, 'priority') ?? 'target') as 'must_meet' | 'target' | 'watch',
+      reason: optional(form, 'reason'),
+      ownerId: optional(form, 'ownerId'),
+    });
+  } catch (err) {
+    return asFormError(err);
+  }
+  refresh(showId);
+  return { ok: 'Target account added.' };
+}
+
+export async function removeTargetAccount(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await removeTarget(actor, str(form, 'targetId'));
+  } catch (err) {
+    return asFormError(err);
+  }
+  refresh(showId);
+  return { ok: 'Removed.' };
 }

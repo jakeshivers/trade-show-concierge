@@ -17,6 +17,7 @@ import {
   Plane,
   Receipt,
   Radar,
+  ScanLine,
   TrendingUp,
   ShieldCheck,
   KeyRound,
@@ -67,6 +68,11 @@ const GROUPS: Group[] = [
     label: 'Plan',
     items: [
       { href: '/', label: 'Overview', Icon: LayoutDashboard },
+      // Second, and above everything that plans a show, because it is the only
+      // entry here somebody opens while standing up. It is also the one screen
+      // that has to be found *before* it is needed — an offline page nobody
+      // visited on wifi is an offline page that is not there.
+      { href: '/day-of', label: 'Day of', Icon: ScanLine },
       // First in Plan rather than last in Travel: §1's corollary is that a
       // Member should barely have to learn this app, and for them this screen
       // is most of it.

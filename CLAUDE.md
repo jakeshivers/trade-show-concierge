@@ -41,7 +41,8 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 
 ## Where we are
 
-Phase A (**the vertical slice through the booking spine**) is done; Phase B is under way.
+Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
+has started.
 
 **Done:** steps 1–12 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
@@ -76,8 +77,11 @@ column, an erasure that removes the person without moving the count, and a REST 
 endpoint whose principal is deliberately not an `Actor`; and ROI — a CRM adapter narrow
 enough that it cannot become a CRM, an attribution model that decides first touch across the
 whole calendar, and a dashboard whose most important output is the list of figures it
-refuses to print.
-837 tests, no keys required.
+refuses to print; and the offline day-of PWA — one screen that holds its own data, says how
+old it is, takes a capture with no network and re-sends it on the same rail a badge scanner
+retries on, and tells somebody at the booth that the person in front of them is one of the
+accounts the booth was bought for.
+882 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -102,6 +106,87 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 20 added, and where:** `src/lib/dayof/` — the offline day-of screen, and the
+first step that changes how the *client* works rather than adding another model behind
+another screen. Split the way everything since step 8 has been, with two files that are new
+in kind: **`targets.ts` and `outbox.ts` are pure and shipped to the browser**, because a
+target-company alert has to fire while the name is being typed and a queue has to be
+reconciled with no server to ask. `targets.ts` matches a company **exactly, after stripping
+legal suffixes, and never fuzzily** — the failure of a loose match is not a wrong row, it is
+somebody at a booth telling a stranger their company is one we came for — and *met* is
+derived from the leads rather than stored. `outbox.ts` is the device queue: every item is
+accounted for, `reconcile` throws rather than dropping one, a rejected item is **kept and
+marked** instead of retried forever, and our own re-send (`already`) is deliberately a
+different answer from somebody else's duplicate. `snapshot.ts` carries one instant and
+`degradeVerdicts` takes the present tense off a crate line past forty-five minutes while
+leaving the recorded facts standing. `access.ts` puts the screen and the target list in
+**anybody's** hands and editing the list in an approver's. `store.ts` builds the snapshot in
+a fixed number of queries and drains the queue **through the real `captureLead`**, as the
+person who typed it.
+
+Schema: a new **`show_targets`** — with no `met_at` column, deliberately — and
+`meetings.external_ref`, unique per show, which is `leads.external_ref`'s idempotency rail
+extended to the other thing a booth records. Routes: `GET /api/day-of/snapshot` is the only
+screen in this product whose data leaves the server as data, and `POST /api/day-of/sync`
+answers **every** item it is sent. Screens: `/day-of` (a picker, ordered by proximity to
+*now*), `/day-of/[id]` — **the only page here that is not a Server Component, whose server
+half deliberately fetches nothing** — and a Target accounts card on the show's Leads tab.
+`public/sw.js` is hand-written and caches only the day-of pages; `src/app/manifest.ts` is the
+installable manifest and starts at `/day-of`. `pnpm day-of` / `pnpm day-of <show id> --stale
+90` is the model without a screen. The seed grows four target accounts on the live show
+through the real store: one met, one met under a different spelling, one must-meet that is
+unmet *and* unowned, and one watch.
+
+**The eight corrections step 20 turned up:**
+
+1. **A cached screen is §5f's unchecked flight with every row at once, and it is worse.**
+   There, an unrefreshed leg rendered `scheduled` — the calm one — so a board nobody had
+   asked anything in eight hours showed a full slate of on-time flights. A cached page has
+   the same defect with *no visible cause*: it is drawn, the numbers are there, and nothing
+   about a phone with no bars says the crate reading is from Tuesday. One instant on the
+   snapshot, a clock passed by every reader, and the age is a line at the top.
+2. **A fact and a verdict age differently, and blanking both is not the cautious option.**
+   "Booth 2209" does not move because a phone lost signal; "crate on time" is computed from
+   an estimate that moves hourly. So `derivedFrom` splits them, and the line that survives
+   going stale is the one that matters most on a move-in morning — *on a dock, nobody has
+   confirmed it at the booth* is a signature, not a guess about a truck. Withholding
+   everything would have removed the most actionable sentence on the screen in the name of
+   safety.
+3. **The server half of the page must fetch nothing.** Whatever HTML it returns is cached and
+   served again tomorrow, so data rendered into it would be a second copy of the show's facts
+   with no instant attached — two sources, one of them invisible, disagreeing on a morning
+   when somebody is deciding whether the booth will arrive. There is exactly one copy on the
+   device, in IndexedDB, and it carries the moment it was true. What the document holds is
+   the shell and an identity.
+4. **A queued capture is not a captured lead, and the counts never merge.** §8c's mitigation
+   is that a thin number is visibly thin; a count that quietly included rows sitting in a
+   phone would be that failure with a friendlier cause, resolving itself — wrongly — the
+   moment somebody walked past a wifi point. The word is *device* rather than *pending*,
+   because what a person needs to understand is a location, not a process.
+5. **A rejected item is kept, and that is not the obvious call.** Deleting it destroys the
+   only copy of a real conversation because a field was blank. Retrying it forever leaves a
+   badge that is always on, which is a badge that is off. So it stays, blocked, with the
+   server's own sentence on it, and it is the one thing in this app a person fixes by editing
+   what they typed.
+6. **Our own re-send and somebody else's duplicate must stay different answers.** Both are
+   duplicates to the database and only one is news. `already` means an earlier attempt landed
+   and we never heard — the ordinary case, and a success. `duplicate` means a colleague met
+   this person, which is worth saying out loud. Collapsing them tells somebody their
+   colleague got the buyer when in fact their own phone did.
+7. **A cache outlives the session that was allowed to read it.** Every row in a snapshot was
+   fetched under one person's scope and a phone in a booth gets handed to whoever is free, so
+   the snapshot carries its actor, a mismatch **wipes** IndexedDB and the worker's caches
+   rather than filtering what is drawn, and `sw.js` caches only the day-of pages — caching
+   `/cost` or `/travel` would leave a colleague's fares on a device long after the session
+   ended.
+8. **`pnpm smoke` cannot check this page, and that is the first time.** Every other route's
+   content is server-rendered, so a 200 plus a phrase proves the page resolved its data. Here
+   the phrase in the HTML is the *shell*, and everything real arrives from IndexedDB and a
+   fetch after hydration. The check is kept because it still catches a broken import, and the
+   gap is named rather than papered over: this page was verified by driving a headless
+   browser against a running dev server, which is not in `pnpm test` and should not be —
+   "no keys, no network, no browser" is a ground rule.
 
 **What step 19 added, and where:** `src/lib/integrations/crm/` — the fifth integration
 behind the usual interface, and the first where §11.6's "one well rather than both
@@ -952,16 +1037,14 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 20 — **the offline day-of PWA** (`SCOPE.md` §10). It is the first step that
-is a change to how the client *works* rather than another model behind another screen: show
-floor wifi is genuinely unusable, so offline is an architecture decision (§2) and not a
-screen. §8c's mitigation 2 lands here — manual lead entry in under ten seconds — and it is
-the one that actually moves the count that §5j and §5k both spend their length apologising
-for. What it needs from what exists: `leads/access.ts` already puts capture in anybody's
-hands, `intake.ts` already answers a retry as a success (which is offline sync's hardest
-case, solved once for scanners), and `/shows/[id]/team` already knows whose shift is on.
-§11.5 (scale) and §11.10 (data residency, now a hosting question only) are the open
-decisions nearest it; neither gates it.
+**Next:** step 21 — **Slack adapter · hosting · SSO rollout** (`SCOPE.md` §10). Two of the
+three are owed by things already built: every engine writes an `alerts` row and **nothing
+transports one** (there is no email, no Slack, no push, and no scheduler — an alert is
+exactly as fresh as the last time somebody pressed *Re-check everything*), and
+`retention_overdue` reports our own non-compliance nightly with nothing running nightly.
+Hosting is where §11.10 (data residency) stops being deferrable and where the offline
+screen's service worker meets a real origin and a real TLS certificate for the first time.
+§11.5 (scale) is the open decision nearest it.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -1005,6 +1088,17 @@ live and enforced by the engine today. **Checklist templates are code, not rows*
 is deliberately deferred until the standard list has been used and argued with, which the
 templates card says on the page. The nav still grows one entry per screen
 that exists.
+
+**The day-of screen queues, and nothing drains it in the background.** There is no Background
+Sync registration and no push: the outbox goes up when the tab is open and the network comes
+back, which is the ordinary case on a floor and is not every case. A phone put in a pocket at
+4pm with three captures on it still has three captures on it at 9pm — which is exactly why the
+count says "on this device" rather than "pending", and why the queue is on the screen rather
+than behind a spinner. It also **only captures leads and meetings offline**: confirming a
+crate at the booth, answering a shift invitation and every other write in the product are
+still server actions that need a connection, because each of them has a store function with
+rules the device does not carry. And a target-account alert is a line on the capture form,
+not a notification — nothing here asks for notification permission.
 
 **Three adapters have never met a live key**, and each says so in its own header: AeroAPI
 (step 13), EasyPost (step 14) and Salesforce (step 19). All three are written to published
@@ -1517,6 +1611,62 @@ silently. One key is now `AuthConfigError`.
   and `travelerScope` narrows a Member's own travel queries precisely so a colleague's fare
   is never on their screen. The tab is not rendered for a Member rather than rendered and
   refused.
+- **A cached screen must say how old it is, and stop making present-tense claims.** §5f's
+  unchecked flight, applied to a whole page. A day-of snapshot carries one instant, every
+  reader passes a clock, and `degradeVerdicts` takes the standing off a crate line past
+  forty-five minutes — while leaving the recorded facts, because *delivered to a dock,
+  unconfirmed at the booth* is a signature rather than a guess about a truck and blanking it
+  removes the most useful sentence on a move-in morning. `src/lib/dayof/snapshot.ts`.
+- **The day-of page's server half fetches nothing, and that is the design.** Its HTML is
+  cached and served again tomorrow, so data rendered into it would be a second copy of the
+  show's facts with no instant attached — and the freshness line would be a claim about the
+  half a person is not reading. One copy, in IndexedDB, stamped.
+- **A queued capture is not a recorded lead, and the two counts never merge.** §8c's whole
+  mitigation is that a thin number is visibly thin; a count including rows on a phone is that
+  failure with a friendlier cause. The word is "on this device" rather than "pending" —
+  a location, not a process. `src/lib/dayof/outbox.ts`.
+- **Every queued item is accounted for, and a rejected one is kept.** `reconcile` throws
+  rather than dropping something the server did not answer about: there is no file to re-read
+  and no row number to point at, and the person who had the conversation is the only record
+  left. A refused item stays, blocked and visible with the server's sentence on it, because
+  deleting it destroys the only copy of a real conversation and retrying it forever leaves a
+  badge that is always on.
+- **A re-send is a success, and it is `leads.external_ref` again.** The device mints its ref
+  when the person types and never changes it, so a retry after a lunch break, a browser kill
+  or a different network finds its own row. **`already` and `duplicate` stay different
+  answers** — only one of them is news, and collapsing them tells somebody their colleague
+  met the buyer when in fact their own phone did.
+- **A queued lead is written through `captureLead`, as the person who typed it.** Same
+  validation, same dedupe, same consent rules, same permission check — a leaner insert for
+  the offline path is how an offline lead ends up with a lawful basis nobody chose. And
+  deliberately **not** through the intake endpoint: an intake key writes leads attributed to
+  nobody, and that attribution is the entire input to §8c's coverage figure.
+- **A device's clock is trusted backwards and never forwards.** A lead typed at 10:14 in a
+  hall with no signal happened at 10:14, not when the wifi came back — but a fast clock would
+  file a conversation that has not happened yet, which sorts to the top of every list forever
+  and lands in a shift that has not run. The EasyPost replay's rule, from the client side.
+- **Target matching is exact after normalising legal suffixes, and never fuzzy.** The failure
+  of a loose match here is not a wrong row on a screen: it is a person at a booth telling a
+  stranger their company is one we came for, with no way to check it. "Group", "Partners" and
+  "Technologies" are deliberately not suffixes — stripping them merges two real accounts
+  silently. `src/lib/dayof/targets.ts`.
+- **Whether a target was met is derived from the leads, never stored.** There is no `met_at`
+  column. An erasure takes the evidence and the claim together, and "6 of 9 met" cannot
+  disagree with the list under it. The credit ledger's rule and the ROI attribution rule, from
+  a third direction. A must-meet with no owner escalates rather than going quiet — §5a's
+  unowned deadline exactly.
+- **Reading the target list is everybody's; editing it is not.** A target nobody at the booth
+  can see is a target nobody meets. Adding a must-meet moves the denominator of every "targets
+  met" figure the show will report, so it sits with skipping a task and waiving a deadline —
+  and it is edited on the show's Leads tab, by somebody sitting down, rather than on the
+  screen for people who are standing up.
+- **The service worker caches only the day-of pages.** A cache is a copy that outlives the
+  session allowed to read it, so caching `/cost` or `/travel` would leave a colleague's fares
+  on a device long after sign-out. The snapshot carries the actor it was built for, and a
+  mismatch **wipes** IndexedDB and every cache rather than filtering what is drawn.
+- **The offline screen only works if it was opened online first**, and the page says so. A
+  browser cannot cache a page it has never seen. That is a sentence to put in front of
+  somebody the week before the show, not a defect to engineer around.
 - **A clone never carries a confirmation, and never carries a shipment.** Cloned
   deadlines arrive unconfirmed, cloned attendees re-invited, and shipments, flights,
   lodging, expenses, and the booth number do not come at all. A cloned asset *reservation*
@@ -1580,6 +1730,9 @@ pnpm roi              # every show: cost against pipeline, and every figure it w
 pnpm roi <show id>    # one show, and every opportunity behind its figure, openable
 pnpm roi --sync       # match leads to the CRM, cache opportunities, write attribution back
 pnpm roi --sync --no-write  # read only; put nothing into a database we do not own
+pnpm day-of           # which show is on the floor, nearest to now first
+pnpm day-of <show id> # one show's snapshot, exactly as a device would hold it
+pnpm day-of <show id> --stale 90   # the same snapshot read later; watch the verdicts go
 pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
 pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
 pnpm assistant --tools  # the tool surface per role — the access model as a table
@@ -1589,7 +1742,8 @@ pnpm salesforce:capture        # the same loop for Salesforce (needs a Developer
 pnpm salesforce:capture --read-only   # probe everything; write nothing into their CRM
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 31 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 33 routes against a running `pnpm dev`; 200 + expected text
+                  # (/day-of/[id] is the one page whose *content* it cannot check)
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -1624,6 +1778,14 @@ src/app/api/intake/leads/    POST from a badge scanner: the only route that auth
                               without getActor(), and a retry answered as a success
 src/app/(app)/settings/intake/  issuing and revoking intake keys; admin, because a key is
                               a credential rather than data
+src/app/(app)/day-of/        the offline screen: a picker, and `[id]/_client.tsx` — the only
+                              page here that is not a Server Component, whose server half
+                              deliberately fetches nothing; `_device.ts` is IndexedDB and
+                              `_register.tsx` installs the worker
+src/app/api/day-of/          snapshot (GET: the whole screen as data) and sync (POST: a
+                              device's queue, every item answered)
+public/sw.js                  hand-written, caches the day-of pages and nothing else
+src/app/manifest.ts           the installable manifest; start_url is /day-of
 src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
 src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
 src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
@@ -1665,6 +1827,13 @@ src/lib/roi/                  the third north-star job — attribution.ts (pure:
 src/lib/integrations/crm/     provider interface with exactly one write method + a Salesforce
                               adapter + a HubSpot seam that throws + a `recorded` replay of a
                               conversion shape rather than of a pipeline
+src/lib/dayof/                the day-of model — targets.ts and outbox.ts (pure, and the
+                              first two modules in this product shipped to the *browser*:
+                              an exact-after-normalisation match, and a queue that loses
+                              nothing), snapshot.ts (one instant, and what stops being
+                              claimable when it ages), access.ts (the screen is anybody's,
+                              the target list is not), store.ts (one object in a fixed
+                              number of queries; the queue drained through `captureLead`)
 src/lib/leads/                capture — coverage.ts (pure: the count that says what it is
                               missing, and the withheld per-lead figure), consent.ts (pure:
                               a basis never defaulted, and erasure that keeps the count),

@@ -22,6 +22,7 @@
     "alerts": "tsx scripts/alerts.ts",
     "cost": "tsx scripts/cost.ts",
     "leads": "tsx scripts/leads.ts",
+    "day-of": "tsx scripts/day-of.ts",
     "roi": "tsx scripts/roi.ts",
     "assistant": "dotenv -e .env.local -- tsx scripts/assistant.ts",
     "smoke": "tsx scripts/smoke.ts",

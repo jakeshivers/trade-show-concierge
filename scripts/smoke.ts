@@ -75,6 +75,11 @@ async function routes(): Promise<Check[]> {
     { path: '/shipping', expect: 'dock opens' },
     { path: '/assets', expect: 'lost between shows' },
     { path: '/leads', expect: 'coverage behind it' },
+    { path: '/day-of', expect: 'while you still have a connection' },
+    // The only page here whose content is *not* server-rendered, so the phrase
+    // has to be one the shell prints before the client has read IndexedDB or
+    // reached the snapshot route — which is the whole design, not a limitation.
+    { path: `/day-of/${id}`, expect: 'device' },
     { path: '/assistant', expect: 'never books' },
     // Admin-only: with DEV_ACTOR_EMAIL set to a member this legitimately 404s,
     // which is the shell working rather than a smoke failure.

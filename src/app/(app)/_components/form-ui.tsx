@@ -46,7 +46,7 @@ export function Input({
   density = 'compact',
   className,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & Own) {
+}: React.ComponentPropsWithRef<'input'> & Own) {
   return <input {...props} className={controlClass(density, className)} />;
 }
 
@@ -54,7 +54,7 @@ export function Select({
   density = 'compact',
   className,
   ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & Own) {
+}: React.ComponentPropsWithRef<'select'> & Own) {
   return <select {...props} className={controlClass(density, className)} />;
 }
 
@@ -62,7 +62,7 @@ export function Textarea({
   density = 'comfortable',
   className,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & Own) {
+}: React.ComponentPropsWithRef<'textarea'> & Own) {
   return <textarea {...props} className={controlClass(density, className)} />;
 }
 

@@ -1,5 +1,8 @@
 import { getActor } from '@/lib/auth/actor';
 import { getLeadBoard } from '@/lib/leads/store';
+import { getTargetBoard } from '@/lib/dayof/store';
+import { canManageTargets } from '@/lib/dayof/access';
+import { summarizeTargets } from '@/lib/dayof/targets';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Badge, Card, Empty, Table, Td, Th, showDate, showDateTime } from '../../../_components/ui';
 import {
@@ -16,7 +19,9 @@ import {
   EraseForm,
   ImportForm,
   MeetingForm,
+  RemoveTargetForm,
   RetentionButton,
+  TargetForm,
   UndoDuplicateForm,
 } from './forms';
 
@@ -42,7 +47,12 @@ import {
 export default async function LeadsTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
-  const board = await getLeadBoard(actor, id);
+  const [board, targetBoard] = await Promise.all([
+    getLeadBoard(actor, id),
+    getTargetBoard(actor, id),
+  ]);
+  const targetSummary = summarizeTargets(targetBoard.standings);
+  const mayEditTargets = canManageTargets(actor);
   const { show } = detail;
   const { coverage, leads, meetings, imports, people, possiblePairs, may } = board;
   const perLead = mayQuotePerLead(coverage);
@@ -50,6 +60,78 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
+
+      {/* Who we came for. Above the lead list rather than below it, because the
+          list answers "who did we meet" and this answers "who did we not" — and
+          the second is the one nobody goes looking for. Reading it is
+          everybody's; editing it is an approver's, because adding a must-meet
+          moves the denominator of every figure it will ever produce. */}
+      <Card title="Target accounts" subtitle={targetSummary.sentence}>
+        {targetBoard.standings.length === 0 ? (
+          <Empty>
+            Nobody has said who this show is for. Without a list, &ldquo;we met the right people&rdquo;
+            has nothing behind it — and the day-of screen has nothing to warn anybody about.
+          </Empty>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Company</Th>
+                <Th>Priority</Th>
+                <Th>Owner</Th>
+                <Th>Met</Th>
+                {mayEditTargets && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {targetBoard.standings.map((t) => (
+                <tr key={t.target.id}>
+                  <Td>
+                    <span className="font-medium">{t.target.companyName}</span>
+                    {t.target.reason && (
+                      <span className="block text-xs text-text-muted">{t.target.reason}</span>
+                    )}
+                    {t.target.aliases.length > 0 && (
+                      <span className="block text-xs text-text-muted">
+                        also {t.target.aliases.join(', ')}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>
+                    <Badge tone={t.target.priority === 'must_meet' ? 'bad' : 'neutral'}>
+                      {t.target.priority.replace('_', ' ')}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    {t.target.ownerName ?? (
+                      <span className={t.unowned ? 'text-warn' : 'text-text-muted'}>unowned</span>
+                    )}
+                  </Td>
+                  <Td>
+                    {t.met ? (
+                      <>
+                        <Badge tone="good">met</Badge>
+                        <span className="ml-2 text-xs text-text-muted">
+                          {t.leads[0].fullName}
+                          {t.leads.length > 1 && ` +${t.leads.length - 1}`}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-text-muted">not yet</span>
+                    )}
+                  </Td>
+                  {mayEditTargets && (
+                    <Td>
+                      <RemoveTargetForm showId={id} targetId={t.target.id} />
+                    </Td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        {mayEditTargets && <TargetForm showId={id} people={targetBoard.people} />}
+      </Card>
       <Card title="Capture">
         <CoverageHeadline coverage={coverage} />
         <CoverageNotes coverage={coverage} />

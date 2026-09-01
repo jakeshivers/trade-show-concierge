@@ -3,11 +3,13 @@
 import { useActionState, useState } from 'react';
 import {
   addMeeting,
+  addTargetAccount,
   capture,
   commit,
   erase,
   markAsDuplicate,
   preview,
+  removeTargetAccount,
   runRetention,
   unmarkAsDuplicate,
   type ImportPreviewState,
@@ -326,5 +328,82 @@ export function ImportForm({ showId }: { showId: string }) {
         </form>
       )}
     </div>
+  );
+}
+
+/* ------------------------------ target accounts ----------------------------- */
+
+export function TargetForm({
+  showId,
+  people,
+}: {
+  showId: string;
+  people: { id: string; fullName: string }[];
+}) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addTargetAccount, {});
+  const [priority, setPriority] = useState('target');
+
+  return (
+    <form action={action} className="mt-3 space-y-2">
+      <input type="hidden" name="showId" value={showId} />
+      <div className="flex flex-wrap items-center gap-2">
+        <input name="companyName" required placeholder="Company" className={input} />
+        <input
+          name="aliases"
+          placeholder="Other spellings, comma separated"
+          className={`${input} min-w-56`}
+        />
+        <select
+          name="priority"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className={input}
+        >
+          <option value="must_meet">Must meet</option>
+          <option value="target">Target</option>
+          <option value="watch">Watch</option>
+        </select>
+        <select name="ownerId" className={input} defaultValue="">
+          <option value="">Nobody owns it yet</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.fullName}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Required for a must-meet, and the store enforces it: this is the
+            sentence somebody at the booth reads before they walk over. */}
+        <input
+          name="reason"
+          required={priority === 'must_meet'}
+          placeholder={
+            priority === 'must_meet'
+              ? 'Why — the sentence somebody at the booth reads'
+              : 'Why (optional)'
+          }
+          className={`${input} min-w-72`}
+        />
+        <Submit pending={pending} busy="Saving…">
+          Add target
+        </Submit>
+      </div>
+      <Message state={state} />
+    </form>
+  );
+}
+
+export function RemoveTargetForm({ showId, targetId }: { showId: string; targetId: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(removeTargetAccount, {});
+  return (
+    <form action={action} className="inline">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="targetId" value={targetId} />
+      <QuietSubmit pending={pending} busy="…">
+        Remove
+      </QuietSubmit>
+      <Message state={state} />
+    </form>
   );
 }
