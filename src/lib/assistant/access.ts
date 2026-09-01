@@ -1,5 +1,6 @@
 import type { Actor } from '@/lib/auth/actor';
 import { canManageLodging } from '@/lib/lodging/access';
+import { canSeeRoi } from '@/lib/roi/access';
 import { TOOLS, type AssistantTool } from './tools';
 
 /**
@@ -45,6 +46,13 @@ export function toolsFor(actor: Actor): AssistantTool[] {
       // The same split `lodging/access.ts` already draws for the screen.
       case 'draft_lodging':
         return canManageLodging(actor);
+      // ROI has a cost figure inside it, and a show's cost is every colleague's
+      // fare in one number — `travelerScope` narrows a Member's travel queries
+      // precisely so that number is never on their screen. `getRoiPortfolio`
+      // would refuse anyway; withholding the tool means the capability is never
+      // described, which is the difference between a refusal and a map.
+      case 'show_roi':
+        return canSeeRoi(actor);
       default:
         return true;
     }

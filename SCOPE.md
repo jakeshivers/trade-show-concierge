@@ -1,6 +1,6 @@
 # Trade Show Concierge — Scope & Expectations
 
-**Status:** draft for review · **Last updated:** 2026-08-31
+**Status:** draft for review · **Last updated:** 2026-09-01
 
 An enterprise system for planning and executing a company's trade show calendar —
 shows, readiness, people, lodging, and booth shipments — with live travel telemetry
@@ -853,8 +853,8 @@ between that the row cannot express.
 five days" stops being true when the crate scans. Nothing in the table could represent
 that, so the feed's first design question was who is allowed to take an alert down. Not a
 person: a dismiss button that cleared the board would be the acknowledged-and-forgotten
-failure with a nicer interface. The answer falls out of a property all five engines already
-have for their own reasons — **each plans over its whole population, not over what
+failure with a nicer interface. The answer falls out of a property every engine already
+has for its own reasons — **each plans over its whole population, not over what
 changed** (§5g states the sharpest version: an engine that speaks on transitions cannot
 report a stall, which is the failure with no transition in it). So a key an engine no
 longer plans is a condition that has ended, and the sweep resolves it. That precondition is
@@ -990,6 +990,85 @@ not, because it is irreversible. The assistant gets `lead_capture`, which return
 coverage and **no personal data at all**: `listShowLeads` is not a tool, because a model's
 context window is somewhere data goes and does not obviously come back from, and nothing
 anybody asks the concierge needs a stranger's phone number in it.
+
+### 5k. ROI — what a quotient has to refuse before it prints (step 19)
+
+§8 is the third north-star job and the reason §1 says jobs 1 and 2 make it nearly free.
+That claim is true and it is not the work. Both inputs arrived at this step already
+refusing to lie — `/cost` says **at least** when a figure is a floor (§8a), `/leads` says
+**at least** when a count is one (§5j) — and step 19 is the first arithmetic in this
+product where **two honest numbers produce a dishonest one.** What it owes both halves is
+to obey their refusals rather than route around them, which is harder than it sounds,
+because the entire purpose of a dashboard is to produce one number.
+
+**Two floors in a quotient do not cancel.** A lead floor makes cost-per-lead too *high*,
+which reads as a bad show; a cost floor makes it too *low*, which reads as a bargain. The
+tempting reading is that errors in opposite directions roughly offset, and it is the most
+dangerous mistake available here: neither magnitude is known, so their combination is not
+"roughly right" — it is unbounded in both directions while *looking* better founded than
+either input, because it is further from the missing data. `mayQuotePerLead` was written a
+step early for exactly this moment and it is obeyed; the cost floor is a second, separate
+refusal pointing the other way.
+
+**A replayed pipeline is not a pipeline, and a banner is not enough.** The other three
+`recorded` providers obey one rule — describe a *shape*, assert nothing about this
+workspace — and a screen saying "these readings are replayed" discharges it. An
+opportunity has no shape separable from its claim: "$290,000 sourced by MedTech" is a
+sentence about this company's pipeline, and it lands beside a real cost, in a headline, on
+the screen a budget is set from. So the replay is confined to a *conversion shape* — what
+fraction of booth conversations become opportunities, how long after, roughly how large,
+where they end up — projected onto the dates we actually met people; it invents no person
+it was not asked about; it hands back nothing dated in the future, the way the EasyPost
+replay hands back only scans that have happened; it refuses to report a write it did not
+make; and **every ratio derived from it is withheld as well as labelled.** A reader who has
+learned to skim a banner has not learned to skim a multiple.
+
+**Attribution coverage is a third floor, and it is the one nobody expects — because this
+product created it on purpose.** Pipeline is only as complete as the fraction of leads that
+can be matched to a CRM record, and §5j guarantees that fraction is never 100%: a lead with
+no recorded lawful basis is never sent to a third party, and an erased lead had its
+`crm_external_id` nulled deliberately. Matching on an id the CRM gave us transmits nothing
+about the person and is ungated; matching on an *email* transmits a stranger's address and
+is gated on `marketabilityOf`. So step 18's refusal stops being a badge on a screen and
+becomes the reason a number is smaller — and the two causes are never added together.
+**Withheld is us refusing; unmatched is the CRM answering**, and a single "match rate" that
+collapsed them would make a deliberate refusal look like a vendor's data-quality problem,
+which is the misreading that gets the refusal removed.
+
+**Sourced means first touch, and first touch is a fact about our own data.** The naive test
+— created after this show, inside the window — hands every recurring buyer's opportunity to
+the *most recent* show, every year, silently, because the newest show always passes it too.
+First touch is therefore decided against the earliest capture of that person **anywhere in
+the workspace**, which inverts §5j's rule that identity is within a show: identity is
+per-show for *counting* and across shows for *crediting*. Three more refusals follow. One
+opportunity is sourced to at most one show, ever, or the portfolio's sourced pipeline
+exceeds the pipeline. Influenced deliberately **does not sum** — the same deal is influenced
+by three shows, that is what the model means — so a portfolio prints the *distinct*
+influenced total and never the sum of the per-show figures. And an opportunity that existed
+before we met the person is influenced at most, never sourced, however soon after the show
+it closed. A fifth fell out of a test written to assert something else: when first touch
+lands outside the window, **the runner-up does not inherit the credit** — an opportunity
+nobody may honestly claim is claimed by nobody.
+
+**§8e is enforced rather than printed.** A show scored the week it ends always looks like a
+loss; that is a reporting artifact and it is the artifact most likely to get a good show
+cancelled. So a show inside the maturity horizon reports its figures and **withholds its
+verdict**, closed-won is not quoted at all before it has had time to land, and the portfolio
+is ranked by **cost** rather than by multiple — ranking by multiple puts every recent show
+at the bottom by construction. The seventh alert engine follows the same rule from the other
+side: it reports that the ROI *question* is unanswered — a show with a real cost whose leads
+have never been offered to a CRM — and **never alerts on a low multiple**, which would be
+this product telling somebody to cut a show over a figure it has just finished explaining is
+not final for a year.
+
+**The integration stays narrow by being structurally unable to widen.** §8b says read
+opportunities, write one attribution field, and never sync contacts or own the pipeline;
+the `CrmProvider` interface therefore has exactly one write method on it. §11.6 chose
+Salesforce and it is built; HubSpot is **declared and not built**, and every method on it
+throws rather than returning empty — because "we captured 41 leads and the CRM knows none of
+them" is a real and alarming finding this product exists to surface, so an unbuilt adapter
+that returned `[]` would manufacture that finding out of its own absence. Not-built and
+nothing-found have to stay different answers.
 
 ---
 
@@ -1409,6 +1488,35 @@ rather than pick one and pretend:
 Pick a default (recommend *sourced* — it's the number a CFO will trust), report both,
 and label the attribution window explicitly (recommend 180 days).
 
+**Resolved 2026-09-01 (§11.7): sourced, 180 days.** Both models are computed and reported;
+sourced leads because it is the one a skeptic cannot discount.
+
+**What step 19 established, building it.** The read/write split above survived contact
+intact and the interface enforces it — one write method, so the way not to become a second
+CRM is to be structurally incapable of it. Four things the section did not have:
+
+1. **Sourced is a fact about *our* data before it is a fact about the CRM.** "First touch"
+   cannot be evaluated per show. The same buyer walks the same booth annually, so a test of
+   "created after this show and inside the window" quietly hands every recurring
+   opportunity to the newest show, forever. First touch is decided against the earliest
+   capture of that person anywhere on the calendar — which inverts §5j's within-a-show
+   identity rule, for a stated reason: identity is per-show for counting and cross-show for
+   crediting.
+2. **Influenced does not sum, and saying so is not pedantry.** Three shows legitimately
+   influence one deal. Adding the per-show influenced figures triple-counts it, and that sum
+   is the number a spreadsheet produces. The portfolio prints the *distinct* total.
+3. **Our own consent posture is a hole in the pipeline figure, by design.** Matching by
+   email transmits a stranger's address to a third party, so it is gated on
+   `marketabilityOf`; matching on an id the CRM gave us is not. Every badge-scanner lead in
+   this workspace therefore never reaches a CRM and never appears in a pipeline figure. That
+   is correct and it has to be *named on the screen*, kept apart from the leads the CRM
+   simply did not know — collapsing our refusal into the vendor's answer is how the refusal
+   gets removed.
+4. **A replayed opportunity is a different object from a replayed crate.** §5k has the long
+   version; the short one is that a fixture's pipeline beside a real cost is the §8a
+   fabricated bill in the headline, so every ratio derived from replayed figures is withheld
+   rather than caveated.
+
 ### 8c. The weakest link — lead data quality
 
 Cost-per-lead is only as good as the lead count, and **the lead count is bad at most
@@ -1786,7 +1894,49 @@ invert phases A and C.
       a scanner makes), imports a CSV through the real parser, and sweeps **before and
       after** the import so a genuinely resolved lead alert exists. Six corrections folded
       into §5j above. 781 tests.
-- [ ] **19.** CRM read/write adapter, attribution, ROI dashboard with coverage indicators
+- [x] **19.** **CRM read/write adapter · attribution · the ROI dashboard** (§8, §5k).
+      `src/lib/integrations/crm/` is the fifth integration behind the usual interface, and
+      the first where the answer to §11.6 was "one at a time" rather than "one": `types.ts`
+      decides nothing and has **exactly one write method**, because §8b's "never own the
+      pipeline" is only durable if the interface cannot widen; `salesforce/` is REST v60 +
+      SOQL (wire / normalize / client, written to the published reference and **never run
+      against a live org**, exactly as AeroAPI and EasyPost still are); `hubspot/` is
+      **declared and throws**, because an unbuilt adapter returning `[]` would manufacture
+      the alarming finding this product exists to surface; `recorded/` replays a *conversion
+      shape* rather than a pipeline. `selectCrmProvider` has no fallback and answers
+      `hubspot` with "declared, not built, here is what finishing it takes" rather than a
+      spelling complaint.
+      `src/lib/roi/` is the model, split the way everything since step 8 has been.
+      `attribution.ts` is pure and holds five refusals — first touch is decided across the
+      **whole calendar** (or the newest show inherits every recurring buyer, silently and
+      annually), one opportunity is sourced to at most one show, influenced deliberately
+      **does not sum**, a deal that predates the conversation is influenced at most, and when
+      first touch falls outside the window the runner-up **does not inherit** it. `rollup.ts`
+      is pure and is where §5k lives: two floors in a quotient do not cancel, a replayed
+      pipeline withholds every ratio derived from it, matching coverage is a third floor this
+      product created on purpose, §8e's maturity horizon is enforced rather than printed, and
+      a multiple over an unrecorded cost is division by an absence. `alerts.ts` is the
+      **seventh engine** and the only one reporting an unanswered *question* rather than a
+      broken thing — and it deliberately never alerts on a low multiple. `store.ts` gates
+      email matching on `marketabilityOf`, which is where step 18's refusal stops being a
+      badge and starts being the reason a number is smaller; matched + unmatched + withheld
+      always equals the leads considered.
+      Schema: new `crm_links` (how a match was made, and whether the attribution was written
+      back), `crm_opportunities` (the CRM's facts, cached; **no attribution stored** — it is
+      derived at read time), `crm_sync_runs` (append-only, keeps every refusal, with
+      `withheld` kept apart from `unmatched`); `show_outcomes` gained `attribution_model`,
+      `source` and `replayed`. Screens: `/roi` in the nav, a **ROI** tab on the show — the
+      ninth, and not rendered for a Member — and `/settings/crm`. `pnpm roi` /
+      `pnpm roi <show id>` / `pnpm roi --sync` is the engine without a screen.
+      **The seed grew an eighth show, and that was the finding rather than a convenience:**
+      every show on the calendar was either in the future or six weeks closed, so *every* ROI
+      verdict was correctly withheld and the dashboard could not be shown working at all —
+      which is step 14's discovery in a different domain. MedTech Summit 2025 is fourteen
+      months back with a **complete** cost, and one buyer on it was met again at Automate
+      2025, so cross-show first touch is a row in this workspace rather than an assertion in
+      a test. The CRM half comes out of the **real sync** against the `recorded` provider.
+      The assistant gained `show_roi`, the second tool ever withheld from a Member.
+      Five corrections folded into §5k above, plus one repair in `alerts/store.ts`. 829 tests.
 
 ### Phase D — v1.5 and beyond
 
@@ -1824,10 +1974,34 @@ the benefit of the model without the setup cost blocking the spine.
 5. **Scale:** how many travelers and shows per year? Under ~50 travelers, some of the
    policy machinery can be simpler. Above a few hundred, background job durability
    needs real attention at step 4, not step 21.
-6. **Which CRM?** Salesforce and HubSpot are different enough that I'd build one well
-   rather than both adequately. This gates step 19.
-7. **Attribution default:** sourced (recommended) or influenced? And what window —
-   90, 180, or 365 days? Changes what every ROI number means.
+6. ~~**Which CRM?**~~ — **resolved 2026-09-01: Salesforce first, HubSpot stubbed.**
+   Some customers use each, so the answer is not one CRM forever; it is one CRM *built*
+   at a time, which is what "one well rather than both adequately" was protecting.
+   Salesforce is built behind `CrmProvider` and, like AeroAPI and EasyPost, has **never met
+   a live org** — its `wire.ts` says so, and names the three places a wrong field would hide
+   (per-org stage names, the `OpportunityContactRole` join that an Opportunity's non-existent
+   `ContactId` would silently replace, and `Amount` arriving as a JSON float where every
+   other provider sends a decimal string).
+   HubSpot is **declared and not built**, and every method on it throws rather than
+   returning empty — see §5k. Building it is a smaller job than it was before the seam
+   existed, and its own header lists what remains: the v4 associations API for the
+   contact→deal join, `GET /crm/v3/pipelines/deals` to resolve stage ids to won/lost (which
+   Salesforce's `IsWon`/`IsClosed` gives away free), and a custom property for the write.
+   One argument for doing it next rather than later: HubSpot has a free developer tier, so
+   it is the only one of the four unverified adapters that could realistically get the
+   capture script §12.5 built for Duffel.
+7. ~~**Attribution default**~~ — **resolved 2026-09-01: sourced, 180 days.** Both models
+   are computed and reported on every show; the default decides which one leads beside cost.
+   Sourced is conservative and is the number a CFO will not discount; 180 days is long
+   enough to outlast an ordinary enterprise cycle without crediting a show for a deal it
+   plausibly had nothing to do with. `show_outcomes` records the model and window *per show*
+   rather than as a global setting, so a figure can always say which produced it — the two
+   models differ by a factor of two or three on the same pipeline, and an unlabelled number
+   that changed models between readings is §8a's fabricated bill with a percentage sign on
+   it. The window is not stored on the opportunity: attribution is derived at read time from
+   capture dates, so changing it re-derives every figure rather than requiring a migration
+   and leaving the old answers lying around looking authoritative — the credit ledger's rule
+   that a balance is projected and never assigned, applied to pipeline.
 8. **Is staff time in the cost?** Including attendee-days × a loaded rate usually
    doubles the true cost of a show and is the honest number. Some organizations find
    that unwelcome. Your call whether it's on by default, optional, or absent.

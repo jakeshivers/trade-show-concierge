@@ -22,6 +22,7 @@
     "alerts": "tsx scripts/alerts.ts",
     "cost": "tsx scripts/cost.ts",
     "leads": "tsx scripts/leads.ts",
+    "roi": "tsx scripts/roi.ts",
     "assistant": "tsx scripts/assistant.ts",
     "smoke": "tsx scripts/smoke.ts",
     "duffel:capture": "tsx scripts/duffel-capture.ts",

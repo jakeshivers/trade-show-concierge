@@ -18,7 +18,7 @@ import {
  * The tabs are real routes rather than client state so a link to a show's
  * deadlines is a link to a show's deadlines. Steps 9–14 made each of them
  * editable in turn, step 16 gave Logistics its chain of custody, and step 18
- * added Leads — there is no read-only tab left. None of them promise an action
+ * added Leads and step 19 ROI — there is no read-only tab left. None of them promise an action
  * that does not exist yet, and Cost is not shown at all to somebody who may not
  * read it.
  */
@@ -38,6 +38,10 @@ const TABS = [
   // exists and says no is an invitation to ask why; a show's cost is every
   // colleague's fare in one number, and §3 draws that line around travel.
   { segment: 'cost', label: 'Cost', approverOnly: true },
+  // The ninth, and the last one, because it is the other eight added up. Not
+  // rendered for a Member for Cost's reason — an ROI figure has a cost figure
+  // inside it.
+  { segment: 'roi', label: 'ROI', approverOnly: true },
 ];
 
 export default async function ShowLayout({

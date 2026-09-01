@@ -12,6 +12,7 @@ import { getFlightBoard } from '@/lib/flights/store';
 import { getShipmentBoard } from '@/lib/shipping/store';
 import { getAssetRegister, getCollateral } from '@/lib/assets/store';
 import { getLeadPortfolio } from '@/lib/leads/store';
+import { getRoiPortfolio } from '@/lib/roi/store';
 import { listRequests, loadRequest, travelersFor, costCentersFor } from '@/lib/travel/queue';
 import { draftLodgingRecord, draftTravelRequest } from './draft';
 
@@ -230,6 +231,19 @@ export const TOOLS: AssistantTool[] = [
     schema: z.object({}),
     kind: 'read',
     run: (c) => getLeadPortfolio(c.actor, c.now, c.db),
+  }),
+  tool({
+    name: 'show_roi',
+    description:
+      'Cost against attributed pipeline, per show — and, for each per-unit figure, either ' +
+      'the number or the reason it is withheld. A show scored before it has been closed ' +
+      'ninety days reports its figures and no verdict; a pipeline read from a replay ' +
+      'withholds every ratio derived from it; and a figure over a cost floor or a lead ' +
+      'floor is withheld rather than caveated. Report the withheld ones as withheld, with ' +
+      'their reason, and never estimate one.',
+    schema: z.object({}),
+    kind: 'read',
+    run: (c) => getRoiPortfolio(c.actor, { asOf: c.now }, c.db),
   }),
   tool({
     name: 'travel_requests',

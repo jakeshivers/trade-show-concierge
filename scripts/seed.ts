@@ -52,6 +52,8 @@ import {
   sweepLeadAlerts,
 } from '../src/lib/leads/store';
 import { inferMapping, parseCsv, planImport } from '../src/lib/leads/parse';
+import { sweepRoiAlerts, syncCrm } from '../src/lib/roi/store';
+import { RecordedCrmProvider } from '../src/lib/integrations/crm/recorded/provider';
 
 const day = 24 * 60 * 60 * 1000;
 const now = new Date();
@@ -232,7 +234,8 @@ async function main() {
   });
 
   console.log('· shows');
-  const [automate, medtech, packexpo, sensors, dmwest, automate2025, roboticsSummit] = await db
+  const [automate, medtech, packexpo, sensors, dmwest, automate2025, roboticsSummit, medtech2025] =
+    await db
     .insert(s.shows)
     .values([
       {
@@ -388,6 +391,43 @@ async function main() {
         boothSize: '10x10',
         budgetCents: 3_400_000,
         goals: 'Considered for developer-audience reach.',
+      },
+      {
+        // Fourteen months ago, and it exists for the same kind of reason step 14
+        // grew the calendar a live show: the seed had nowhere for the feature to
+        // happen.
+        //
+        // §8e says a show's ROI is not final for 6-12 months, and step 19
+        // enforces that rather than printing it — a show inside the maturity
+        // horizon reports its figures and withholds its verdict. Every show on
+        // the calendar before this one was in the future or closed six weeks
+        // ago, so *every* verdict was correctly withheld and the ROI dashboard
+        // could not be shown working at all. That is not a seeding
+        // inconvenience; it is the finding. A product whose third north-star job
+        // takes a year to answer needs at least one show old enough to have
+        // answered it, or nobody can tell the refusals from a bug.
+        //
+        // It is also the only show here with a *complete* cost: every §8a line
+        // carries a figure and nothing structural is absent, which is what makes
+        // it the one show whose pipeline multiple is quotable. Every other show
+        // on this calendar is a floor, and a floor withholds the multiple.
+        orgId: org.id,
+        name: 'MedTech Summit 2025',
+        status: 'complete',
+        venueName: 'Minneapolis Convention Center',
+        city: 'Minneapolis',
+        region: 'MN',
+        country: 'US',
+        airportCode: 'MSP',
+        timezone: 'America/Chicago',
+        startsOn: at(-402, 9),
+        endsOn: at(-400, 15),
+        moveInAt: at(-403, 10),
+        moveOutAt: at(-400, 18),
+        boothNumber: '844',
+        boothSize: '10x20',
+        budgetCents: 5_900_000,
+        goals: 'Prior year. The only show on this calendar old enough to have an ROI.',
       },
     ])
     .returning();
@@ -1948,6 +1988,195 @@ async function main() {
     db,
   );
 
+  // ---------------------------------------------------------------------------
+  // MedTech Summit 2025 — the only show on this calendar with an ROI.
+  //
+  // Everything below exists to make one row of `/roi` mean something: a
+  // *complete* cost (every §8a line carries a figure, so the multiple is
+  // quotable rather than withheld), leads captured with a real lawful basis (so
+  // they can lawfully be matched to a CRM), and one buyer we also met again at
+  // Automate 2025 — which is what makes cross-show first touch a fact in this
+  // workspace rather than an assertion in a test.
+  // ---------------------------------------------------------------------------
+  console.log('\u00b7 MedTech Summit 2025 (the only show old enough to have an ROI)');
+  const m25Window = { from: at(-403, 12), to: at(-400, 19) };
+  for (const person of [shelley, priya, tomas] as const) {
+    const invited = await invite(medtech2025, person, 'Booth staff', m25Window);
+    await accept(invited, person, medtech2025, m25Window);
+  }
+  const m25Shifts = [
+    await shiftAt(medtech2025, at(-402, 9), at(-402, 13), 3),
+    await shiftAt(medtech2025, at(-402, 13), at(-402, 17), 3),
+  ];
+  for (const [shiftId, userId] of [
+    [m25Shifts[0], shelley.id],
+    [m25Shifts[0], priya.id],
+    [m25Shifts[0], tomas.id],
+    [m25Shifts[1], shelley.id],
+    [m25Shifts[1], priya.id],
+    [m25Shifts[1], tomas.id],
+  ] as const) {
+    await assignToShift(admin, shiftId, userId);
+  }
+
+  // A complete cost, line by line. `space`, `services` and `collateral` are
+  // expenses; `travel` comes from recorded flights and `lodging` from the hotel
+  // rows below. There are no shipments, which is why shipping is silent without
+  // being *missing* — `assessCoverage` only expects a line a show has rows for.
+  await db.insert(s.expenses).values([
+    { showId: medtech2025.id, category: 'Booth space', description: '10x20 inline, MedTech Summit 2025', amountCents: 2_180_000, paid: true, costCenterId: mkt.id, incurredOn: at(-470) },
+    { showId: medtech2025.id, category: 'Booth services', description: 'Electrical, carpet, AV', amountCents: 612_000, paid: true, costCenterId: mkt.id, incurredOn: at(-404) },
+    { showId: medtech2025.id, category: 'Collateral', description: 'Regulated-market brochure run', amountCents: 96_000, paid: true, costCenterId: mkt.id, incurredOn: at(-420) },
+  ]);
+  // One reservation per person, so no room-block assumption is made on our
+  // behalf — a lodging row is one reservation (§8a refusal 4) and a block
+  // recorded once with three guests would be an undercount the rollup has to
+  // name rather than fix.
+  for (const [person, code] of [
+    [shelley, 'NWR-2211004'],
+    [priya, 'NWR-2211005'],
+    [tomas, 'NWR-2211006'],
+  ] as const) {
+    const { id } = await addLodging(admin, medtech2025.id, {
+      hotelName: 'Hilton Minneapolis',
+      address: '1001 Marquette Ave S, Minneapolis, MN 55403',
+      confirmationCode: code,
+      checkInOn: localOn(at(-403, 15), MSP),
+      checkInAt: localAt(at(-403, 15), MSP),
+      checkOutOn: localOn(at(-400, 11), MSP),
+      checkOutAt: localAt(at(-400, 11), MSP),
+      nightlyRate: '241.00',
+      costCenterId: mkt.id,
+    });
+    await assignRoom(admin, id, person.id);
+  }
+  await db.insert(s.flights).values(
+    [shelley, priya, tomas].flatMap((person) => [
+      {
+        showId: medtech2025.id,
+        userId: person.id,
+        airlineCode: 'DL',
+        airlineName: 'Delta Air Lines',
+        flightNumber: '1602',
+        originAirport: 'SFO',
+        destinationAirport: 'MSP',
+        originTimeZone: 'America/Los_Angeles',
+        destinationTimeZone: 'America/Chicago',
+        legDirection: 'to_show' as const,
+        scheduledDeparture: at(-403, 8),
+        scheduledArrival: at(-403, 14),
+        cabin: 'economy',
+        priceCents: 41_200,
+        costCenterId: mkt.id,
+      },
+      {
+        showId: medtech2025.id,
+        userId: person.id,
+        airlineCode: 'DL',
+        airlineName: 'Delta Air Lines',
+        flightNumber: '1877',
+        originAirport: 'MSP',
+        destinationAirport: 'SFO',
+        originTimeZone: 'America/Chicago',
+        destinationTimeZone: 'America/Los_Angeles',
+        legDirection: 'from_show' as const,
+        scheduledDeparture: at(-400, 19),
+        scheduledArrival: at(-400, 21),
+        cabin: 'economy',
+        priceCents: 41_200,
+        costCenterId: mkt.id,
+      },
+    ]),
+  );
+
+  // Captured with a recorded basis and a written notice, which is what makes
+  // them lawfully matchable at all. Contrast the badge-scanner rows on the live
+  // show, every one of which carries `unknown` and is therefore withheld from
+  // the CRM forever — that contrast is the entire §5j-meets-§8b argument, and it
+  // is visible on the ROI screen as a number rather than as a policy.
+  const m25Notice = 'Told at the booth: we will follow up about the products discussed.';
+  const m25Leads = [
+    { by: priya, name: 'Renata Oyelaran', email: 'r.oyelaran@meridian-medical.test', company: 'Meridian Medical', title: 'Director, Quality' },
+    { by: priya, name: 'Callum Fitzhugh', email: 'cfitzhugh@atlas-biotech.test', company: 'Atlas Biotech', title: 'VP Manufacturing' },
+    { by: shelley, name: 'Ingeborg Alvarsson', email: 'i.alvarsson@nordwall-devices.test', company: 'Nordwall Devices', title: 'Head of Ops' },
+    { by: tomas, name: 'Ruben Castellanos', email: 'rcastellanos@caldera-labs.test', company: 'Caldera Labs', title: 'Automation Lead' },
+    // Met here first, and met *again* at Automate 2025 fourteen months later
+    // (below). The whole reason this person is in the seed: an opportunity that
+    // opened off this conversation belongs to this show, and a model that
+    // credited the most recent show would hand it to Automate every year,
+    // silently and flatteringly. `roi/attribution.ts` refusal 1, as a row rather
+    // than as a test.
+    { by: tomas, name: 'Wilhelmina Boateng', email: 'w.boateng@stellar-surgical.test', company: 'Stellar Surgical', title: 'Procurement' },
+    { by: shelley, name: 'Perry Nakashima', email: 'pnakashima@ridgeline-auto.test', company: 'Ridgeline Automotive', title: 'Manufacturing Engineer' },
+  ] as const;
+  for (const [i, c] of m25Leads.entries()) {
+    await captureLead(
+      actorFor(c.by),
+      medtech2025.id,
+      {
+        fullName: c.name,
+        email: c.email,
+        phone: null,
+        company: c.company,
+        title: c.title,
+        notes: null,
+        interests: null,
+        externalRef: null,
+        basis: 'consent',
+        consentNotice: m25Notice,
+      },
+      new Date(at(-402, 10).getTime() + i * 45 * 60_000),
+      db,
+    );
+  }
+  // The second meeting with the same buyer, fourteen months later, at a
+  // different show — captured at the booth with a real basis, so it links to the
+  // same CRM contact. Automate 2025 therefore reads `influenced` on that
+  // opportunity and MedTech 2025 keeps the `sourced` credit, because the deal
+  // already existed by the time Automate met them. Two refusals demonstrated by
+  // one row.
+  await captureLead(
+    actorFor(priya),
+    automate2025.id,
+    {
+      fullName: 'Wilhelmina Boateng',
+      email: 'w.boateng@stellar-surgical.test',
+      phone: null,
+      company: 'Stellar Surgical',
+      title: 'Director, Procurement',
+      notes: 'Second conversation — was at MedTech last year.',
+      interests: null,
+      externalRef: null,
+      basis: 'consent',
+      consentNotice: m25Notice,
+    },
+    at(-46, 11),
+    db,
+  );
+
+  for (const [subject, company] of [
+    ['Meridian Medical — validation walkthrough', 'Meridian Medical'],
+    ['Atlas Biotech — line integration scoping', 'Atlas Biotech'],
+  ] as const) {
+    await recordMeeting(
+      actorFor(priya),
+      medtech2025.id,
+      {
+        subject,
+        company,
+        isExistingCustomer: false,
+        scheduledAt: at(-402, 11),
+        occurredAt: at(-402, 11),
+        noShowAt: null,
+        leadId: null,
+        ownerId: priya.id,
+        notes: null,
+      },
+      now,
+      db,
+    );
+  }
+
   console.log('· lead alerts (produced by running the real sweep, twice)');
   const leadSweep = await sweepLeadAlerts(org.id, now, db);
   console.log(
@@ -1964,6 +2193,40 @@ async function main() {
   // it. So somebody orders the carpet, the register no longer has anything to
   // say about that deadline, and the row it left behind is closed by the next
   // sweep — which is exactly what a crate arriving or a delay recovering does.
+  // The CRM half comes out of the real sync against the `recorded` provider, for
+  // the reason step 9 set for travel requests and step 13 for flight status:
+  // hand-written `crm_opportunities` rows would be pipeline no CRM ever
+  // reported, filed as evidence in the table the whole ROI story rests on.
+  //
+  // Two things this run demonstrates that no test can. Seven of eighteen leads
+  // are **withheld** — every badge-scanner row carries `unknown` consent, so
+  // nothing about those people is sent anywhere, ever. And the replay writes no
+  // attribution back, because there is no CRM on the other end of it to write to.
+  console.log('\u00b7 crm sync (real sync, recorded provider, no key)');
+  const capturedFirstAt = new Map<string, Date>();
+  for (const row of await db
+    .select({ email: s.leads.email, capturedAt: s.leads.capturedAt })
+    .from(s.leads)) {
+    if (!row.email) continue;
+    const seen = capturedFirstAt.get(row.email);
+    if (!seen || row.capturedAt < seen) capturedFirstAt.set(row.email, row.capturedAt);
+  }
+  const crmSync = await syncCrm(
+    admin,
+    new RecordedCrmProvider(
+      (email) => capturedFirstAt.get(email) ?? null,
+      () => now,
+    ),
+    { replayed: true, writeAttribution: true, now },
+    db,
+  );
+  const roiSweep = await sweepRoiAlerts(org.id, now, db);
+  console.log(
+    `  ${crmSync.matched} matched, ${crmSync.unmatched} unmatched, ${crmSync.withheld} withheld ` +
+      `(no lawful basis) \u00b7 ${crmSync.opportunitiesRead} opportunit(ies) read \u00b7 ` +
+      `${roiSweep.raised} ROI alert(s)`,
+  );
+
   console.log('· one deadline gets done, and the alert it raised resolves itself');
   const carpet = await db.query.showDeadlines.findFirst({
     where: and(eq(s.showDeadlines.showId, automate.id), eq(s.showDeadlines.kind, 'furniture_carpet')),
@@ -1999,7 +2262,7 @@ async function main() {
     flightAlerts: flightSync.alertsWritten,
     shipmentScans: shipmentSync.scansAdded,
     shipmentAlerts: shipmentSync.alertsWritten,
-    shows: 7,
+    shows: 8,
     costCenters: costCenters.length,
     policyLayers: 3,
     assets: 5,
@@ -2012,6 +2275,10 @@ async function main() {
     leadScanRetries: retried,
     leadsImported: imported.written,
     leadAlerts: leadSweep.raised,
+    crmMatched: crmSync.matched,
+    crmWithheld: crmSync.withheld,
+    crmOpportunities: crmSync.opportunitiesRead,
+    roiAlerts: roiSweep.raised,
     leadAlertsResolved: leadSweep.resolved,
   };
   console.log('\n✓ seed complete', counts);

@@ -6,18 +6,19 @@ import { syncShipmentTracking } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
 import { sweepAssetAlerts } from '@/lib/assets/store';
 import { sweepLeadAlerts } from '@/lib/leads/store';
+import { sweepRoiAlerts } from '@/lib/roi/store';
 import { runCreditMaintenance } from '@/lib/travel/credits';
 import type { AlertSource } from './feed';
 
 type Db = ReturnType<typeof getDb>;
 
 /**
- * All six engines, in one call. The thing `pnpm alerts --sweep` runs and the
+ * All seven engines, in one call. The thing `pnpm alerts --sweep` runs and the
  * thing step 21's scheduler will run.
  *
  * It exists because the engines have to run **together and completely** for the
  * feed to mean anything. Each one resolves the conditions it no longer plans
- * (see `store.ts`), so running five of six leaves the sixth's rows standing
+ * (see `store.ts`), so running six of seven leaves the seventh's rows standing
  * with no statement about whether they are still true — which is survivable and
  * is exactly what `standingOf`'s `unchecked` standing is for, but only if a
  * reader can tell. So a run reports every engine's outcome, including the two
@@ -93,6 +94,18 @@ export async function runAllSweeps(
     raised: leads.raised,
     resolved: leads.resolved,
     detail: `${leads.planned.length} lead condition(s) hold tonight`,
+  });
+
+  // The seventh, and the only one that reports an unanswered question rather
+  // than a broken thing: a show with a real cost and no return side. It needs
+  // no provider — it reports on the *absence* of a sync, which is precisely the
+  // condition a provider-gated engine could never raise.
+  const roi = await sweepRoiAlerts(orgId, now, db);
+  out.push({
+    source: 'roi',
+    raised: roi.raised,
+    resolved: roi.resolved,
+    detail: `${roi.planned.length} ROI condition(s) hold tonight`,
   });
 
   const credits = await runCreditMaintenance(db, orgId, now);

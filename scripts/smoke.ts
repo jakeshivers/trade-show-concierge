@@ -52,15 +52,21 @@ async function routes(): Promise<Check[]> {
     { path: `/shows/${id}/lodging`, expect: 'otel' },
     { path: `/shows/${id}/travel`, expect: 'ravel' },
     { path: `/shows/${id}/logistics`, expect: 'Shipments' },
-    { path: `/shows/${id}/leads`, expect: 'lawful basis' },
+    // Case matters, and this one moved: the lower-case phrase came from a
+    // sentence that only renders when a show *has* an unknown-basis lead, so it
+    // silently depended on which show sorted first. The column heading is there
+    // whenever the tab resolved its data, which is what this check is for.
+    { path: `/shows/${id}/leads`, expect: 'Lawful basis' },
     { path: `/shows/${id}/clone`, expect: 'lone' },
     // Approver-only, like /cost. As a Member both of these render the refusal
     // instead of the figures, which is the access model working rather than a
     // smoke failure — same caveat as /settings/security below.
     { path: `/shows/${id}/cost`, expect: 'has cost so far' },
+    { path: `/shows/${id}/roi`, expect: 'Was it worth it' },
     { path: '/readiness', expect: 'eadiness' },
     { path: '/alerts', expect: 'engines' },
     { path: '/cost', expect: 'made up' },
+    { path: '/roi', expect: 'attribution window' },
     { path: '/itinerary', expect: 'tinerary' },
     { path: '/travel', expect: 'ravel' },
     { path: '/travel/new', expect: 'equest' },
@@ -74,6 +80,9 @@ async function routes(): Promise<Check[]> {
     // which is the shell working rather than a smoke failure.
     { path: '/settings/security', expect: 'Sign-in methods' },
     { path: '/settings/intake', expect: 'intake' },
+    // Approver-only, like /cost and /roi: a sync reads a customer's pipeline
+    // and writes back into it.
+    { path: '/settings/crm', expect: 'Attribution' },
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });

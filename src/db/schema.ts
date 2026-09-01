@@ -1975,8 +1975,192 @@ export const showOutcomes = pgTable(
     revenueForecastCents: integer('revenue_forecast_cents'),
     revenueClosedWonCents: integer('revenue_closed_won_cents'),
     attributionWindowDays: integer('attribution_window_days').notNull().default(180),
+    /**
+     * `sourced` (the default, §11.7) or `influenced`. Recorded per show rather
+     * than as a global setting because a figure has to be able to say which
+     * model produced it — the two differ by a factor of two or three on the same
+     * pipeline, and an unlabelled number that changed models between readings is
+     * the §8a fabricated bill with a percentage sign on it.
+     */
+    attributionModel: text('attribution_model').notNull().default('sourced'),
+    /**
+     * Where these figures came from: `manual` for a number somebody typed, or a
+     * provider name for a synced one.
+     *
+     * They are deliberately **not merged** with the derived figures the ROI
+     * rollup computes from `crm_opportunities`. Two editable copies of one
+     * number is how the number gets wrong (§5e's room-block cutoff, one domain
+     * over), so a typed pipeline figure that disagrees with a synced one is
+     * *named as a disagreement* rather than silently resolved in either
+     * direction.
+     */
+    source: text('source').notNull().default('manual'),
+    /**
+     * True when these figures came from a replay rather than from a CRM.
+     *
+     * The other three `recorded` providers replay a *shape* — a journey, a
+     * delay, a tool plan — and asserting it about this workspace is harmless. A
+     * replayed opportunity has no shape separable from its claim: "$340,000
+     * sourced by MedTech" is a sentence about this company's pipeline, and it
+     * would land beside a real cost under the app's own byline. So a replayed
+     * figure is marked here, all the way to the screen, and the ROI rollup
+     * withholds every ratio derived from it.
+     */
+    replayed: boolean('replayed').notNull().default(false),
     asOf: timestamp('as_of', { withTimezone: true }).notNull().defaultNow(),
   },
+);
+
+/* --------------------------------- the CRM --------------------------------- */
+
+/**
+ * The link between a lead we captured and the record the customer's CRM already
+ * holds — and the first row in this product that records *how* we know two
+ * strangers are the same person.
+ *
+ * `leads.crm_external_id` has existed since step 1 and is not enough. It says
+ * which record, and says nothing about how the match was made, when, or whether
+ * a person agreed with it. That matters because the two match methods are not
+ * equally trustworthy and because one of them is not always allowed: matching on
+ * an id the CRM itself gave us costs nothing, and matching on an email means
+ * sending a stranger's email address to a third-party system, which
+ * `marketabilityOf` gates. A lead captured with no lawful basis is therefore
+ * **unmatchable** rather than merely unmatched, and this table is where that
+ * distinction becomes a fact somebody can read rather than a rule in a file.
+ *
+ * `attribution_written_at` is the §8b write half: one field back onto the CRM
+ * record saying which show it came from, so the CRM can answer the question too.
+ * It is a timestamp rather than a boolean because "we told Salesforce in March"
+ * and "we told Salesforce this morning" are different answers to a support
+ * question, and because a re-write after a stage change has to be detectable.
+ */
+export const crmLinks = pgTable(
+  'crm_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    leadId: uuid('lead_id')
+      .notNull()
+      .references(() => leads.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    /** `contact` | `lead` — Salesforce keeps them apart and we have to say which. */
+    objectType: text('object_type').notNull().default('contact'),
+    externalId: text('external_id').notNull(),
+    /** `external_id` | `email` | `manual`. See the header: they differ in cost. */
+    matchMethod: text('match_method').notNull(),
+    matchedAt: timestamp('matched_at', { withTimezone: true }).notNull().defaultNow(),
+    attributionWrittenAt: timestamp('attribution_written_at', { withTimezone: true }),
+    attributionValue: text('attribution_value'),
+    /**
+     * True when the link came from a replay rather than from a CRM. Carried on
+     * the row rather than inferred from an env var at read time, because the
+     * environment changes and this row is evidence about the moment it was
+     * written.
+     */
+    replayed: boolean('replayed').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One lead links to one CRM record. A second link would let one conversation
+    // be attributed twice, which is the failure §8b's whole model exists to avoid.
+    uniqueIndex('crm_links_lead_idx').on(t.leadId),
+    index('crm_links_external_idx').on(t.orgId, t.externalId),
+  ],
+);
+
+/**
+ * An opportunity the CRM owns, cached here so a dashboard can be drawn without
+ * a round trip to Salesforce for every row.
+ *
+ * Everything in this table is the CRM's fact, copied. **Nothing here is an
+ * attribution**: which show sourced this opportunity is derived at read time in
+ * `roi/attribution.ts` from capture dates and the configured window, never
+ * stored. That is the credit ledger's rule (`remaining_value_cents` is a
+ * projection, never assigned) applied to pipeline, and it has a specific payoff:
+ * changing the attribution window from 180 days to 365 re-derives every figure
+ * instead of requiring a migration and leaving the old answers lying around
+ * looking authoritative.
+ *
+ * `stage_kind` is normalized because stage *names* are per-org free text —
+ * "Closed Won", "6 - Closed/Won", "Won (Renewal)" — and a dashboard that has to
+ * know a customer's stage vocabulary is a dashboard that is wrong at the second
+ * customer.
+ */
+export const crmOpportunities = pgTable(
+  'crm_opportunities',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    externalId: text('external_id').notNull(),
+    name: text('name').notNull(),
+    /** The customer's own stage label, kept verbatim so a person recognises it. */
+    stage: text('stage').notNull(),
+    /** `open` | `won` | `lost`. What the dashboard is allowed to reason about. */
+    stageKind: text('stage_kind').notNull(),
+    amountCents: integer('amount_cents'),
+    currency: text('currency').notNull().default('USD'),
+    /** The CRM's contact/lead id, which is what joins this to `crm_links`. */
+    contactExternalId: text('contact_external_id'),
+    /** When the opportunity was created in the CRM. First touch is measured off this. */
+    crmCreatedAt: timestamp('crm_created_at', { withTimezone: true }),
+    closeDate: timestamp('close_date', { withTimezone: true }),
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }),
+    ownerName: text('owner_name'),
+    replayed: boolean('replayed').notNull().default(false),
+    syncedAt: timestamp('synced_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('crm_opps_external_idx').on(t.orgId, t.provider, t.externalId),
+    index('crm_opps_contact_idx').on(t.orgId, t.contactExternalId),
+  ],
+);
+
+/**
+ * One sync, recorded whole — including what it could not do.
+ *
+ * `lead_imports`' shape, reached from a fifth direction, and for the identical
+ * reason: a sync that reports "matched 41 leads" and silently skipped nine is a
+ * pipeline figure that is wrong in the direction nobody checks. Every lead
+ * considered lands in exactly one of matched / unmatched / withheld, the three
+ * add up to `leadsConsidered`, and the arithmetic is on the screen.
+ *
+ * **`withheld` is the column this product needed and a generic sync would not
+ * have.** It is leads we deliberately did not send — no lawful basis recorded,
+ * or already erased — and it is kept apart from `unmatched` because they are
+ * opposite findings: unmatched is the CRM's answer, and withheld is ours.
+ * Collapsing them would make step 18's refusal look like a data-quality problem
+ * with the vendor.
+ */
+export const crmSyncRuns = pgTable(
+  'crm_sync_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    provider: text('provider').notNull(),
+    replayed: boolean('replayed').notNull().default(false),
+    startedById: uuid('started_by_id').references(() => users.id, { onDelete: 'set null' }),
+    leadsConsidered: integer('leads_considered').notNull().default(0),
+    matched: integer('matched').notNull().default(0),
+    unmatched: integer('unmatched').notNull().default(0),
+    withheld: integer('withheld').notNull().default(0),
+    opportunitiesRead: integer('opportunities_read').notNull().default(0),
+    attributionsWritten: integer('attributions_written').notNull().default(0),
+    /** Every refusal and every failure, with the lead it belongs to and the reason. */
+    problems: jsonb('problems').$type<{ leadId: string | null; reason: string }[]>(),
+    /** Set when the run itself failed. A half-run that reported success is how a board goes quiet. */
+    failedReason: text('failed_reason'),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [index('crm_sync_runs_org_idx').on(t.orgId, t.startedAt)],
 );
 
 /* ------------------------------ the assistant ------------------------------ */
@@ -2321,6 +2505,20 @@ export const leadImportsRelations = relations(leadImports, ({ one, many }) => ({
   show: one(shows, { fields: [leadImports.showId], references: [shows.id] }),
   importedBy: one(users, { fields: [leadImports.importedById], references: [users.id] }),
   leads: many(leads),
+}));
+
+export const crmLinksRelations = relations(crmLinks, ({ one }) => ({
+  org: one(organizations, { fields: [crmLinks.orgId], references: [organizations.id] }),
+  lead: one(leads, { fields: [crmLinks.leadId], references: [leads.id] }),
+}));
+
+export const crmOpportunitiesRelations = relations(crmOpportunities, ({ one }) => ({
+  org: one(organizations, { fields: [crmOpportunities.orgId], references: [organizations.id] }),
+}));
+
+export const crmSyncRunsRelations = relations(crmSyncRuns, ({ one }) => ({
+  org: one(organizations, { fields: [crmSyncRuns.orgId], references: [organizations.id] }),
+  startedBy: one(users, { fields: [crmSyncRuns.startedById], references: [users.id] }),
 }));
 
 export const intakeKeysRelations = relations(intakeKeys, ({ one }) => ({

@@ -100,6 +100,16 @@ describe('access', () => {
     expect(toolsFor(admin).map((t) => t.name)).toContain('draft_lodging');
   });
 
+  it('withholds ROI from a member, because it has a cost figure inside it', () => {
+    // The second tool ever withheld, and for the reason `cost/access.ts`
+    // already settled: a show's cost is every colleague's fare in one number,
+    // and `travelerScope` narrows a Member's own travel queries precisely so
+    // that number is never on their screen. An aggregate would walk around the
+    // narrowing rather than through it.
+    expect(toolsFor(member).map((t) => t.name)).not.toContain('show_roi');
+    expect(toolsFor(admin).map((t) => t.name)).toContain('show_roi');
+  });
+
   it('never describes a withheld tool to the model', async () => {
     const model = scripted([{ text: 'ok' }]);
     await runTurn({ actor: member, model, db, now: NOW, history: [], question: 'hello' });

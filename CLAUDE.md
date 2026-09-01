@@ -73,8 +73,11 @@ what it is missing rather than with the number; and leads & meetings — capture
 can do, a count that says "at least" and names who recorded nothing, an import in which
 every row read is accounted for, a lawful basis that is never manufactured out of a blank
 column, an erasure that removes the person without moving the count, and a REST intake
-endpoint whose principal is deliberately not an `Actor`.
-781 tests, no keys required.
+endpoint whose principal is deliberately not an `Actor`; and ROI — a CRM adapter narrow
+enough that it cannot become a CRM, an attribution model that decides first touch across the
+whole calendar, and a dashboard whose most important output is the list of figures it
+refuses to print.
+829 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -99,6 +102,91 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 19 added, and where:** `src/lib/integrations/crm/` — the fifth integration
+behind the usual interface, and the first where §11.6's "one well rather than both
+adequately" resolved to *one at a time* rather than to one. `types.ts` decides nothing and
+carries **exactly one write method**, because §8b's "never own the pipeline" only survives
+contact with a second customer if the interface is structurally unable to widen; it also
+splits `matchByExternalId` from `matchByEmail`, because one sends nothing about a person
+and the other sends a stranger's address to a third party. `salesforce/` is REST v60 + SOQL
+(wire / normalize / client, written to the published reference and **never run against a
+live org**, in the same words AeroAPI's and EasyPost's headers use). `hubspot/client.ts` is
+**declared and throws on every method**. `recorded/` replays a conversion *shape*, not a
+pipeline. `roi/provider.ts` selects between them with **no fallback**, and answers
+`hubspot` with what finishing it takes rather than a spelling complaint.
+
+`src/lib/roi/` is the model, split the way everything since step 8 has been.
+`attribution.ts` is pure and is the honest hard part: five refusals, of which the first —
+first touch is decided across the **whole calendar** — is the one a naive implementation
+gets wrong forever and silently. `rollup.ts` is pure and holds §5k: the two-floors rule,
+the replayed-pipeline withholding, matching coverage as a third floor, §8e's maturity
+horizon as an enforcement rather than a footnote, and `Quotable` — a figure or the sentence
+saying why there is not one. `alerts.ts` is the **seventh engine**, reports an unanswered
+question rather than a broken thing, and deliberately never alerts on a low multiple.
+`store.ts` gates email matching on `marketabilityOf` and keeps `withheld` apart from
+`unmatched` in every count it produces. `access.ts` inherits the cost gate rather than
+choosing a new one, and the assistant gained `show_roi` — **the second tool ever withheld
+from a Member**, for the same reason the Cost tab is not rendered for one.
+
+Schema: new `crm_links` (how a match was made, and whether the attribution went back),
+`crm_opportunities` (the CRM's facts, cached — and **no attribution stored**, because it is
+derived at read time so changing the window re-derives rather than migrates), and
+`crm_sync_runs` (append-only, keeps every refusal); `show_outcomes` gained
+`attribution_model`, `source` and `replayed`. Screens: `/roi` in the nav, a **ROI** tab on
+the show — the ninth, and not rendered for a Member — and `/settings/crm`. `pnpm roi` /
+`pnpm roi <show id>` / `pnpm roi --sync` is the engine without a screen. **The seed grew an
+eighth show and that was the finding**: every show was either in the future or six weeks
+closed, so every ROI verdict was correctly withheld and the dashboard could not be shown
+working at all. MedTech Summit 2025 is fourteen months back with a *complete* cost — the
+only show on the calendar whose multiple is quotable — and one buyer on it was met again at
+Automate 2025, so cross-show first touch is a row rather than an assertion in a test.
+
+**The five corrections step 19 turned up, and one repair:**
+
+1. **Two floors in a quotient do not cancel; they widen.** A lead floor pushes cost-per-lead
+   up and a cost floor pushes it down, and the tempting reading is that they roughly offset.
+   Neither magnitude is known, so the combination is unbounded in both directions while
+   *looking* better founded than either input — it is further from the missing data. So a
+   figure built on two floors is withheld rather than averaged or caveated, and
+   `mayQuotePerLead`, written a step early for exactly this, is obeyed rather than routed
+   around.
+2. **A replayed opportunity is a different object from a replayed crate, and a banner is not
+   enough.** The other three replays describe a *shape* and asserting it here is harmless. A
+   pipeline figure has no shape separable from its claim: "$290,000 sourced by MedTech" is a
+   sentence about this company, landing beside a real cost in a headline. So the replay is a
+   *conversion* shape projected onto dates we really met people, it invents no person it was
+   not asked about, it hands back nothing dated in the future (the EasyPost rule), it
+   **refuses to report a write it did not make**, and every ratio derived from it is withheld
+   as well as labelled.
+3. **First touch is a fact about our own data, and the naive test favours the newest show
+   forever.** "Created after this show, inside the window" hands every recurring buyer's
+   opportunity to whichever show met them most recently — annually, silently, in the
+   flattering direction. First touch is the earliest capture of that person *anywhere*,
+   which inverts §5j: identity is within a show for **counting** and across shows for
+   **crediting**. Two more fell out: influenced deliberately does not sum, so the portfolio
+   prints the distinct total; and when first touch lands outside the window the runner-up
+   does not inherit the credit — found by a test written to assert something else.
+4. **Our own consent posture is a hole in the pipeline figure, on purpose, and it must not
+   look like the vendor's fault.** Matching by email transmits personal data, so it is gated
+   on `marketabilityOf`; every badge-scanner lead in this workspace therefore never reaches
+   a CRM. That is step 18 working. **Withheld is us refusing and unmatched is the CRM
+   answering**, and a single "match rate" collapsing them would present a deliberate refusal
+   as a data-quality problem — which is the misreading that gets the refusal deleted.
+5. **An unbuilt adapter must not be able to produce a finding.** The obvious HubSpot stub
+   returns `[]` and `noMatch`. But "we captured 41 leads and the CRM knows none of them" is
+   a real, alarming, correct answer this product exists to surface — so a stub returning it
+   out of its own absence is §8a's fabricated bill wearing the costume of a placeholder, on
+   the screen a budget is set from. Every method throws. Not-built and nothing-found have to
+   stay different answers.
+
+**The repair:** `alerts/store.ts` kept a hand-written `SOURCES` array beside the union in
+`feed.ts`, and adding `'roi'` to the type compiled everywhere, wrote correct rows, and read
+every one of them back as `unknown` — so a whole engine's output was labelled "Other" and
+`linkFor` sent it to the wrong page. Nothing failed. It was caught by reading the CLI's
+output, which is how step 17 found `onConflictDoNothing`. The guard is now derived from
+`SOURCE_LABEL`, whose `Record<AlertSource, string>` the compiler already checks
+exhaustively, so one check does both jobs.
 
 **What step 18 added, and where:** `src/lib/leads/` — capture, and the first table in this
 product holding personal data about somebody who is not our user. Split the way everything
@@ -481,7 +569,7 @@ is still next. The plumbing half:
   `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
 - **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
   `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all 28 routes against a running `pnpm dev` and checks 200 plus
+- **`pnpm smoke`** fetches all routes against a running `pnpm dev` and checks 200 plus
   a phrase only present once the page resolved its data.
 
 And the visual half:
@@ -847,15 +935,16 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 19 — **CRM read/write adapter, attribution, and the ROI dashboard**
-(`SCOPE.md` §10). Both halves of §8's question now exist and both refuse to lie: `/cost`
-says "at least" when a figure is a floor, and `/leads` says "at least" when a count is. Step
-19 divides one by the other, which is the first arithmetic in this product where two honest
-numbers can produce a dishonest one — `mayQuotePerLead` in `src/lib/leads/coverage.ts` is
-already the refusal, and step 19 has to obey it rather than route around it. The CRM half is
-§8b: read opportunities linked to leads we captured, write one attribution field back, and
-never try to become the CRM. §11.6 (which CRM) and §11.7 (sourced vs. influenced, and the
-window) are open and gate it.
+**Next:** step 20 — **the offline day-of PWA** (`SCOPE.md` §10). It is the first step that
+is a change to how the client *works* rather than another model behind another screen: show
+floor wifi is genuinely unusable, so offline is an architecture decision (§2) and not a
+screen. §8c's mitigation 2 lands here — manual lead entry in under ten seconds — and it is
+the one that actually moves the count that §5j and §5k both spend their length apologising
+for. What it needs from what exists: `leads/access.ts` already puts capture in anybody's
+hands, `intake.ts` already answers a retry as a success (which is offline sync's hardest
+case, solved once for scanners), and `/shows/[id]/team` already knows whose shift is on.
+§11.5 (scale) and §11.10 (data residency, now a hosting question only) are the open
+decisions nearest it; neither gates it.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -865,19 +954,24 @@ the person whose trip it is. The assistant does not stream (a server action retu
 whole answer, which keeps every tool call inside the request as the actor `getActor()`
 resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
 logistics are all writable as of steps 10–14, and Logistics grew chain of custody and
-collateral at step 16, Cost arrived at step 17 as the seventh tab and Leads at step 18 as
-the eighth — **there is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every seeded show is in the
+collateral at step 16, Cost arrived at step 17 as the seventh tab, Leads at step 18 as the
+eighth and ROI at step 19 as the ninth — **there is no read-only tab and no dead control
+left.** **Booth presence has no seed rows**: every seeded show is in the
 future and `shift_presence` is a record of what happened, so the check-in control appears on
 a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**Nothing pushes a lead to a CRM, and the verdict that will gate it is already
-on the screen:** every lead row carries `outbound` — `marketabilityOf`'s answer to "may this
-row leave the building", with the reason and the fix — and every seeded lead from a scanner
-fails it, because a badge vendor's export carries no consent column. It is computed on the
-row rather than at the point of export deliberately: the moment somebody can still fix it is
-the moment they are looking at the lead, and by the time step 19's exporter asks, the person
-who stood at the booth has gone home. Wiring the CRM is step 19 (§8b), and what it must do
-is *read* that verdict rather than re-derive one — nothing exports today, so the rule is
-enforced by the screen and not yet by an exporter. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
+**A lead reaches a CRM only if it may, and as of step 19 that is enforced by the code path
+rather than only by the screen:** every lead row carries `outbound` — `marketabilityOf`'s
+answer to "may this row leave the building", with the reason and the fix — and `roi/store.ts`
+*reads that same verdict* rather than re-deriving one. Matching by email transmits personal
+data and is gated on it; matching on an id the CRM itself gave us is not, because it sends
+nothing about the person. Every seeded scanner lead fails the check, because a badge
+vendor's export carries no consent column, and those leads are consequently absent from
+every pipeline figure — named on `/roi` as **withheld by us**, deliberately apart from the
+leads the CRM did not know. The verdict is still computed on the row rather than at the
+point of export, for the original reason: the moment somebody can fix it is the moment they
+are looking at the lead, and by the time a sync asks, the person who stood at the booth has
+gone home. **Nothing has been written into a real CRM**, because the Salesforce adapter has
+never met a live org and the `recorded` provider refuses to report a write it did not make. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
 same reason no engine runs on one: `pnpm leads --retention` and a button on the tab are the
 only things that erase, which is honest about the fact that this workspace has no scheduler
 and will not until step 21. **Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
@@ -895,12 +989,25 @@ is deliberately deferred until the standard list has been used and argued with, 
 templates card says on the page. The nav still grows one entry per screen
 that exists.
 
-**Two adapters have never met a live key, and say so in their own headers.** The AeroAPI
-flight-status adapter (step 13) and the EasyPost tracking adapter (step 14) are both written
-to published schemas and tested against fixtures we wrote ourselves — the closed loop step
-12.5 named, which proves internal consistency and structurally cannot catch a wrong field
-name. Neither has a capture script yet; `pnpm duffel:capture` is the shape the two of them
-need before either is trusted with a real crate or a real gate.
+**Three adapters have never met a live key, and say so in their own headers.** The AeroAPI
+flight-status adapter (step 13), the EasyPost tracking adapter (step 14) and the Salesforce
+CRM adapter (step 19) are all written to published schemas and tested against fixtures we
+wrote ourselves — the closed loop step 12.5 named, which proves internal consistency and
+structurally cannot catch a wrong field name. None has a capture script yet;
+`pnpm duffel:capture` is the shape of the script all three need before any is trusted with a
+real crate, a real gate, or a real pipeline.
+
+**Salesforce is the one where a wrong field name would look like the truth**, which is why
+its `wire.ts` names the three places it could hide. A wrong field on a tracking payload
+produces a crate with no scans and looks broken immediately. A wrong field here produces a
+dashboard where nothing is ever attributed — every show showing a real cost and no
+pipeline — which is *indistinguishable from the honest finding §8c says is the normal case*.
+The three suspects: stage names are per-org free text, so classification reads `IsWon` /
+`IsClosed` and never a name; an Opportunity has **no** `ContactId` and the join is
+`OpportunityContactRole`, so reading the former would compile, return `undefined` forever,
+and attribute nothing; and `Amount` arrives as a JSON float where every other provider in
+this codebase sends a decimal string, so it is stringified through `money/decimal.ts` rather
+than multiplied by 100.
 
 **The Anthropic adapter (step 15) has never met a live key either, and is in a different
 category.** It uses the vendor's own SDK, so there is no hand-written wire schema to be
@@ -1271,6 +1378,72 @@ silently. One key is now `AuthConfigError`.
   no personal data; `listShowLeads` is not a tool. A model's context window is somewhere
   data goes and does not obviously come back from, and nothing anybody asks the concierge
   needs a stranger's phone number in it.
+- **Two floors in a quotient do not cancel.** A lead floor pushes cost-per-lead *up* and a
+  cost floor pushes it *down*, and neither magnitude is known — so the combination is
+  unbounded in both directions while looking better founded than either input. A figure over
+  two floors is **withheld**, never averaged and never caveated. `mayQuotePerLead` was
+  written a step early for this exact division and step 19 obeys it rather than routing
+  around it. `src/lib/roi/rollup.ts`, `SCOPE.md` §5k.
+- **A replayed pipeline withholds its ratios, not just its banner.** The other three
+  `recorded` providers replay a shape, and a banner discharges the rule. An opportunity has
+  no shape separable from its claim — "$290,000 sourced by MedTech" is a sentence about this
+  company, next to a real cost, in a headline. So the CRM replay carries a *conversion*
+  shape onto dates we really met people, invents nobody it was not asked about, returns
+  nothing dated in the future, **refuses to report a write it did not make**, and every
+  figure derived from it is withheld. A reader who has learned to skim a banner has not
+  learned to skim a multiple.
+- **First touch is decided across the whole calendar, never within a show.** "Created after
+  this show and inside the window" hands every recurring buyer's opportunity to whichever
+  show met them most recently — annually, silently, flatteringly. §5j's identity rule
+  inverts here: within a show for **counting**, across shows for **crediting**. One
+  opportunity is sourced to at most one show ever, or the portfolio's sourced pipeline
+  exceeds the pipeline; and when first touch falls outside the window, nobody sources it —
+  the runner-up does not inherit. `src/lib/roi/attribution.ts`.
+- **Influenced pipeline does not sum, and a portfolio must never add it up.** The same deal
+  is legitimately influenced by three shows; that is what the model means. The portfolio
+  prints the value of the **distinct** opportunities any show influenced, which is always
+  smaller than the sum of the per-show figures and is the only one with a referent.
+- **Matching by email is an outbound transfer; matching by id is not.** An id the CRM gave
+  us sends nothing about the person. An email sends a stranger's address to a third party,
+  so it is gated on `marketabilityOf` — step 18's refusal, biting on a number. The interface
+  keeps them as two methods so no adapter can quietly collapse them into one convenient
+  `match()`. `src/lib/roi/store.ts`.
+- **Withheld is us refusing; unmatched is the CRM answering.** They are never added, never
+  shown as one "match rate", and never described in the same sentence. Collapsing them
+  presents a deliberate refusal as a vendor's data-quality problem, which is the misreading
+  that gets the refusal removed. A third state, `unsynced`, is "nobody has looked", and only
+  that one is fixable by pressing a button.
+- **A show inside the maturity horizon reports its figures and withholds its verdict.** §8e:
+  ROI is not final for 6–12 months, so a show scored the week it ends always looks like a
+  loss. Closed-won is not quoted before it has had time to land, and the portfolio is ranked
+  by **cost** rather than by multiple — ranking by multiple puts every recent show at the
+  bottom by construction, and somebody cancels one.
+- **Nothing alerts on a low multiple, deliberately.** It is the obvious thing to alert on and
+  it would be this product telling somebody to cut a show over a figure it has just finished
+  explaining is not final for a year. The seventh engine reports that the ROI *question* is
+  unanswered — a real cost whose leads have never been offered to a CRM. It does not answer
+  it. `src/lib/roi/alerts.ts`.
+- **An unbuilt adapter must be incapable of returning a result.** "We captured 41 leads and
+  the CRM knows none of them" is a real and alarming finding this product exists to surface,
+  so a stub returning `[]` manufactures it out of its own absence — §8a's fabricated bill
+  wearing the costume of a placeholder. Every HubSpot method throws, `isConfigured()` is
+  false even with a key, and `selectCrmProvider` answers `hubspot` with what building it
+  takes rather than "not a CRM this app has", because the second sentence is false.
+- **The CRM interface has exactly one write method, and that is the design.** §8b says never
+  sync contacts, own the pipeline, or duplicate CRM objects. An interface with
+  `upsertContact` on it is an invitation, and the second customer asks for it. The way not to
+  become a CRM is to be structurally unable to.
+- **Attribution is derived at read time and never stored.** `crm_opportunities` holds the
+  CRM's facts; which show sourced one is computed from capture dates and the window, so
+  changing the window re-derives every figure instead of requiring a migration and leaving
+  the old answers lying around looking authoritative. The credit ledger's rule — a balance is
+  a projection, never assigned — applied to pipeline.
+- **A runtime guard over an enum is derived from the exhaustive record, never hand-written
+  beside it.** `alerts/store.ts` kept its own `SOURCES` array; adding a source to the type
+  compiled everywhere, wrote correct rows, and read every one back as `unknown`. Nothing
+  failed and a whole engine's output was mislabelled. `SOURCE_LABEL` is a
+  `Record<AlertSource, string>` the compiler already checks, so the guard reads its keys and
+  one check does both jobs.
 - **Only a sweep resolves an alert; a person only ever says they have seen it.**
   `acknowledged_at` is "I read this" and `resolved_at` is "this stopped being true", and a
   screen that let one set the other would be the acknowledged-and-forgotten failure with a
@@ -1363,13 +1536,17 @@ pnpm assets <show id> # one show's reservations and allocations
 pnpm assets --sweep   # write tonight's asset alerts; run twice, nothing is written again
 pnpm alerts           # what one person is actually owed, worst first
 pnpm alerts --as priya@…  # the same feed as somebody else; the access model, not a filter
-pnpm alerts --sweep   # run all five engines; prints what each raised *and resolved*
+pnpm alerts --sweep   # run all seven engines; prints what each raised *and resolved*
 pnpm cost             # every committed show's true cost, biggest first, with its coverage
 pnpm cost <show id>   # one show line by line, every gap named
 pnpm leads            # every show's capture, worst first, with what the count is missing
 pnpm leads <show id>  # one show: its leads, its meetings, and tonight's alerts
 pnpm leads --sweep    # write tonight's lead alerts; run twice, nothing is written again
 pnpm leads --retention # erase everything past its date — the count does not move
+pnpm roi              # every show: cost against pipeline, and every figure it will not print
+pnpm roi <show id>    # one show, and every opportunity behind its figure, openable
+pnpm roi --sync       # match leads to the CRM, cache opportunities, write attribution back
+pnpm roi --sync --no-write  # read only; put nothing into a database we do not own
 pnpm assistant "..."  # ask the concierge; prints every tool that ran and what it returned
 pnpm assistant --as priya@… "..."   # the same question as somebody else; the results differ
 pnpm assistant --tools  # the tool surface per role — the access model as a table
@@ -1377,7 +1554,7 @@ pnpm duffel:capture   # record what the real Duffel API says into fixtures/live/
 pnpm duffel:capture --search   # stop after search; create no orders
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 28 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 31 routes against a running `pnpm dev`; 200 + expected text
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
 pnpm lint
@@ -1394,10 +1571,18 @@ src/db/schema.ts              ~35 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
-src/app/(app)/alerts/        the feed: five engines' output, grouped, with the standing
+src/app/(app)/alerts/        the feed: seven engines' output, grouped, with the standing
                               of each — and no way for a person to resolve one
 src/app/(app)/cost/          the true-cost portfolio, and `_present.tsx` — the vocabulary
                               it and the show's Cost tab both render through
+src/app/(app)/roi/           cost against pipeline, ranked by cost rather than by multiple,
+                              and `_present.tsx` — where `Figure` is the only way a per-unit
+                              number reaches a page, so a withheld one cannot be printed
+                              anyway by the other screen
+src/app/(app)/shows/[id]/roi/    the ninth tab: both halves of §8 side by side, with every
+                              opportunity behind the figure openable
+src/app/(app)/settings/crm/  the connection, the attribution model, and every sync run with
+                              what it refused
 src/app/(app)/leads/         capture across the calendar, worst first, and `_present.tsx` —
                               the one sentence in front of every count, shared with the tab
 src/app/api/intake/leads/    POST from a badge scanner: the only route that authenticates
@@ -1427,12 +1612,24 @@ src/app/(app)/shows/[id]/team/  roster-forms · shift-forms · side-event-forms,
 src/lib/alerts/               the feed — feed.ts (pure: the five standings, ordering,
                               grouping a sentence rather than a fact, where each source
                               links), access.ts (no org-wide read), store.ts (the one
-                              writer the five engines share; records a plan and closes what
-                              it no longer contains), sweep.ts (all five, and the ones that
+                              writer every engine shares; records a plan and closes what
+                              it no longer contains), sweep.ts (all seven, and the ones that
                               could not run)
 src/lib/cost/                 true cost — rollup.ts (pure: the lines, the six refusals, and
                               coverage as a shape rather than a percentage), store.ts (every
                               show's inputs in a fixed number of queries), access.ts
+src/lib/roi/                  the third north-star job — attribution.ts (pure: five
+                              refusals, and first touch decided across the whole calendar
+                              rather than within a show), rollup.ts (pure: §5k — two floors
+                              do not cancel, a replayed pipeline withholds its ratios,
+                              maturity enforced rather than printed), alerts.ts (the seventh
+                              engine; never alerts on a low multiple), access.ts (inherits
+                              the cost gate), provider.ts (env → CRM, no fallback), store.ts
+                              (matching gated on `marketabilityOf`; withheld kept apart from
+                              unmatched)
+src/lib/integrations/crm/     provider interface with exactly one write method + a Salesforce
+                              adapter + a HubSpot seam that throws + a `recorded` replay of a
+                              conversion shape rather than of a pipeline
 src/lib/leads/                capture — coverage.ts (pure: the count that says what it is
                               missing, and the withheld per-lead figure), consent.ts (pure:
                               a basis never defaulted, and erasure that keeps the count),

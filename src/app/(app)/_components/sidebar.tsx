@@ -17,8 +17,10 @@ import {
   Plane,
   Receipt,
   Radar,
+  TrendingUp,
   ShieldCheck,
   KeyRound,
+  Share2,
   UserPlus,
 } from 'lucide-react';
 import { cn } from './cn';
@@ -78,6 +80,10 @@ const GROUPS: Group[] = [
       // §8's question, and both are a number that has to say what it is missing.
       { href: '/leads', label: 'Leads', Icon: UserPlus },
       { href: '/cost', label: 'True cost', Icon: Receipt, approverOnly: true },
+      // Last in Plan, and after both of its inputs, because that is what it is:
+      // cost divided by leads. An ROI figure contains a cost figure, so it
+      // inherits the cost gate rather than choosing a new one.
+      { href: '/roi', label: 'ROI', Icon: TrendingUp, approverOnly: true },
     ],
   },
   {
@@ -99,6 +105,7 @@ const GROUPS: Group[] = [
     items: [
       { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
       { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
+      { href: '/settings/crm', label: 'CRM', Icon: Share2, approverOnly: true },
     ],
   },
 ];

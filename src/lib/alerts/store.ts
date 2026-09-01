@@ -4,6 +4,7 @@ import * as s from '@/db/schema';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { canAcknowledge } from './access';
 import {
+  SOURCE_LABEL,
   orderFeed,
   summarizeFeed,
   type AlertKind,
@@ -184,16 +185,25 @@ export type AlertFeed = {
   summary: FeedSummary;
 };
 
-const SOURCES: AlertSource[] = [
-  'deadline',
-  'flight',
-  'shipping',
-  'asset',
-  'credit',
-  'lead',
-  'booking',
-  'unknown',
-];
+/**
+ * The guard over `alerts.source`, which is a text column and so can hold
+ * anything an older build wrote.
+ *
+ * Derived from `SOURCE_LABEL` rather than listed here, and that is a repair
+ * rather than a tidy-up. This used to be a hand-written array beside the union
+ * in `feed.ts`, and step 19's seventh engine walked straight into the trap:
+ * adding `'roi'` to the type compiled everywhere, wrote correct rows, and then
+ * read every one of them back as `unknown` — so the feed labelled a whole
+ * engine's output "Other" and `linkFor` sent it to the show page instead of the
+ * ROI tab. Nothing failed. It was found by reading the CLI's output, which is
+ * the same way step 17 found `onConflictDoNothing`.
+ *
+ * `SOURCE_LABEL` is a `Record<AlertSource, string>`, so the compiler already
+ * refuses a missing member. Reading the guard off its keys makes one exhaustive
+ * check do both jobs: a new source now cannot be added without a label, and
+ * cannot have a label without being recognised at read time.
+ */
+const SOURCES = Object.keys(SOURCE_LABEL) as AlertSource[];
 
 function asSource(raw: string): AlertSource {
   return (SOURCES as string[]).includes(raw) ? (raw as AlertSource) : 'unknown';
