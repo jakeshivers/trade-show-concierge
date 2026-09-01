@@ -2252,9 +2252,31 @@ the benefit of the model without the setup cost blocking the spine.
    that's cheap now and expensive later if wrong.
 4. **Hotels:** tracking-only in v1 as scoped, or does the agent book those too? Hotel
    booking is a separate provider integration and roughly doubles §6.
-5. **Scale:** how many travelers and shows per year? Under ~50 travelers, some of the
-   policy machinery can be simpler. Above a few hundred, background job durability
-   needs real attention at step 4, not step 21.
+5. ~~**Scale**~~ — **resolved 2026-09-01: roughly five shows a year for the anchor
+   customer, and that number may not be designed against.** (Read as shows per year; if
+   it meant travelers, the conclusion below is unchanged, which is part of why it is
+   safe to record.) The answer came with its own caveat and the caveat is the decision:
+   *a guideline, not a hard limit — this is going to be enterprise, so who knows what
+   other companies would use it for.*
+
+   **So the resolution is a refusal, not a number.** This entry used to offer a reward
+   for a small answer — "under ~50 travelers, some of the policy machinery can be
+   simpler" — and that offer is now **withdrawn**. Nothing may be simplified on the
+   strength of the anchor customer's size. A simplification bought against five shows is
+   invisible while the seed has eight and fails at the first customer with forty, which
+   is the class of failure this product keeps naming: correct on the data in front of
+   you, wrong in a direction nobody re-checks. The policy engine's layered resolution,
+   the org-scoped stores, and the append-only ledgers all stay as built.
+
+   **What the number does buy is permission to defer, not to simplify** — and the
+   difference is that a deferral is visible. One concrete instance already exists:
+   `POST /api/cron/nightly` is a `for` loop over every org inside one HTTP request with
+   `maxDuration = 300`. That is right at this size and is the first thing that stops
+   being right, because it degrades the wrong way — a slow org silently starves the orgs
+   after it in the loop, and the response still says 200 for the ones that ran. Whoever
+   does step 21's hosting half should read that route before choosing a scheduler, since
+   a platform with a job queue makes the fix a fan-out and a platform without one makes
+   it our problem. `SCOPE.md` §10.21.
 6. ~~**Which CRM?**~~ — **resolved 2026-09-01: Salesforce first, HubSpot stubbed.**
    Some customers use each, so the answer is not one CRM forever; it is one CRM *built*
    at a time, which is what "one well rather than both adequately" was protecting.

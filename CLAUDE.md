@@ -1188,9 +1188,17 @@ unasked. Do not pick any of them up speculatively.
   residency) stops being deferrable and where the day-of service worker meets a real origin
   and a real TLS certificate for the first time.
 
-§11.5 (scale) is the open decision nearest all three, and step 21 gave it a first concrete
-edge: the nightly job is a `for` loop over every org inside one HTTP request, which is right
-at this size and is the first thing that stops being right.
+§11.5 (scale) is **resolved as of 2026-09-01, and it resolved into a prohibition rather than
+a number**: roughly five shows a year for the anchor customer, offered as a guideline rather
+than a limit, for a product aimed at enterprise. So **nothing may be simplified on the
+strength of that size** — the old offer that "under ~50 travelers some of the policy
+machinery can be simpler" is withdrawn, because a simplification bought against five shows is
+invisible while the seed has eight and fails at the first customer with forty. What the
+number buys is permission to *defer*, which is visible, and step 21 left one concrete
+deferral: `POST /api/cron/nightly` is a `for` loop over every org inside one HTTP request
+with `maxDuration = 300`. It degrades the wrong way — a slow org starves the ones after it
+and the response still says 200 for those that ran — so read that route before choosing a
+host, since a platform with a job queue makes the fix a fan-out.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
