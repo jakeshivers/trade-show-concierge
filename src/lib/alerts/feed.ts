@@ -54,6 +54,14 @@ export type FeedAlert = {
   body: string | null;
   showId: string | null;
   showName: string | null;
+  /**
+   * Who it was addressed to; null means the whole org. Carried on the feed
+   * because step 21's transport has to refuse to route a *personal* alert to a
+   * shared channel, and that refusal has to be a pure function it can test
+   * rather than a column comment. Nothing on the screen renders it: a person's
+   * own feed is already narrowed to them.
+   */
+  userId: string | null;
   dedupeKey: string;
   createdAt: Date;
   lastSeenAt: Date;

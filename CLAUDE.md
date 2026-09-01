@@ -42,7 +42,9 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 ## Where we are
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
-has started.
+has started. Step 21 is **half done and marked `[~]` in §10**: the transport and the
+scheduler shipped, hosting and the SSO rollout did not and cannot here — both need a cloud
+account or a real IdP, and §9's ground rule forbids wiring one unasked.
 
 **Done:** steps 1–12 — local Postgres + schema + `getActor()` seam; the policy engine;
 the Duffel adapter with the booking schema corrected against real payload shapes; the
@@ -80,8 +82,12 @@ whole calendar, and a dashboard whose most important output is the list of figur
 refuses to print; and the offline day-of PWA — one screen that holds its own data, says how
 old it is, takes a capture with no network and re-sends it on the same rail a badge scanner
 retries on, and tells somebody at the booth that the person in front of them is one of the
-accounts the booth was bought for.
-882 tests, no keys required.
+accounts the booth was bought for; and the notification transport and the nightly job — a
+Slack adapter behind the usual interface, a planner that refuses five different ways before
+it interrupts anybody, a zero-key transport that composes the real message and delivers it
+to nobody rather than pretending, and a job whose *absence* is now a thing the alerts page
+can say out loud.
+932 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -106,6 +112,97 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 21 added, and where:** `src/lib/integrations/notify/` — the sixth integration
+behind the usual interface, and the first that carries something **out** of the workspace
+rather than asking a supplier a question. That inverts the risk the other five manage: a
+transport cannot report a false crate, but it can put a colleague's fare in a room that was
+never entitled to it, and unlike a wrong reading that cannot be corrected on the next poll.
+So `types.ts` takes a **resolved address and a rendered message and does nothing else** — no
+database, no audience, no idea what an alert is. `slack/` is the Web API (wire / client),
+written to the published reference and **never run against a live workspace**, in the same
+words AeroAPI's, EasyPost's and Salesforce's headers use; it asks for exactly three scopes
+and is write-only. `console/` is deliberately **not** a `recorded` provider (below).
+`notify/provider.ts` selects with no fallback, with one difference from the other five: unset
+is a legitimate state and resolves to `console`, while a *name this app does not have* still
+throws, because a typo must not quietly resolve to the transport that reaches nobody.
+
+`src/lib/notify/` is the model, split the way everything since step 8 has been.
+**`plan.ts` is the whole step**: pure, and five refusals — an `info` condition stays on the
+screen while a notice goes at any severity, eleven rows are one sentence (through
+`groupFeed`, never a second grouping), switching a transport on does not replay history,
+only somebody who was told is told it ended, and a personal alert never reaches a shared
+room. It takes **no user id and does no lookup**, so the only rows it can put in a message
+are rows a query already narrowed — `assistant/tools.ts`'s posture, one layer out.
+`store.ts` is the only caller of a transport and the only writer of the two tables.
+`access.ts` puts a destination in the **subject's own hands and not an admin's**.
+`src/lib/schedule/` is the job: `nightly.ts` (sweep → erase → carry, and it stops rather than
+delivering last night's answers as tonight's) and `principal.ts` (the second principal here
+that is not an `Actor`, and the first that erases).
+
+Schema: **`notification_channels`** (a person's destination, resolved by the transport and
+never typed; `kind` exists so the planner can refuse a channel), **`notification_deliveries`**
+(append-only, and the rail is `(alert, channel, phase, alert_created_at)` — the last segment
+inherits `alerts/store.ts`'s own recurrence decision rather than inventing a second one), and
+**`scheduled_runs`** (append-only; `trigger` keeps "somebody ran it" and "it runs" apart).
+`FeedAlert` gained `userId`, carried so the channel refusal can be a pure function.
+Routes: `POST /api/cron/nightly`, and `/api/cron` is public in Clerk mode for a sharper reason
+than `/api/intake` — a scheduler has no browser, so a Clerk bounce answers 302 and every
+hosted cron reads that as success. Screens: `/settings/notifications`, **the only entry under
+Settings that is not admin-only**, and one line on `/alerts` that the feed could never say
+about itself. `pnpm nightly` / `--dry` / `--deliver` / `--standing` is the job without a
+screen. The seed connects two people **through the real store**, runs the delivery pass
+**twice** (the second carries nothing — the rail holds), and records one `manual` run, which
+is the honest standing of a freshly seeded workspace.
+
+**The five corrections step 21 turned up, and one repair:**
+
+1. **A `recorded` transport is the one replay this codebase cannot have.** The other five
+   obey a single rule — describe a *shape*, assert nothing about this workspace — and they
+   work because what is replayed is a supplier's *answer*. A transport has no answer. What it
+   produces is an event in the world: somebody's phone buzzed. There is no shape of that
+   which is not simply a claim, and a fixture returning `sent` would fill the delivery log
+   with the exact lie the feature exists to prevent — a screen saying everybody was told, on
+   a workspace where nothing has ever been carried anywhere. So `console` composes the real
+   message, from the real alerts, through the real planner, and delivers it **to nobody**:
+   `outcome: 'rendered'`, `reachesPeople: false`, and `/settings/notifications` leads with
+   the sentence rather than hiding it.
+2. **Slack answers failures with HTTP 200, and the correct client for every other provider
+   here is the wrong one.** Duffel, AeroAPI, EasyPost and Salesforce all use status codes, so
+   `if (!res.ok) throw` is right four times and catastrophic the fifth: a bad token, a person
+   not in the workspace, an archived channel and a malformed payload all arrive as
+   `200 {"ok": false, "error": …}`. A client that checks `res.ok` records all of them as
+   delivered, and **that failure has no symptom** — the log fills with `sent`, the screen says
+   everybody was told, and nobody's phone ever buzzes. One `call()` reads `ok` before anything
+   else, and it is the one thing about this adapter a docs-written fixture *can* catch.
+3. **Idempotency had to be inherited rather than invented, and a recurrence is the proof.**
+   The tempting rail is "one delivery per alert". That is right for a condition holding nine
+   nights and wrong for one that resolved and came back — which is news, and which
+   `alerts/store.ts` already marks by restarting `created_at`. So the rail carries
+   `alert_created_at` and the transport gets both cases from the alert store's own decision. A
+   second, quietly different dedupe rule beside the first is the `SOURCE_LABEL` trap in
+   another costume.
+4. **Turning a transport on must not replay a year of alerts at somebody.** The obvious first
+   run against an existing workspace delivers every standing alert at once, and the person it
+   happens to turns the integration off inside a minute and is right to. Anything raised
+   before the destination existed is **suppressed with that reason recorded**, so the log can
+   say why somebody was not told rather than being silent about it — and a recurrence is
+   still news, because `created_at` restarts.
+5. **The order the refusals run in changes what a number means.** Judging "is there anywhere
+   to send this" before "is this worth an interruption" makes the run report a person with
+   nine `info` rows and no Slack account as nine missed notifications — a shortfall the
+   transport was never going to fill, growing every time an engine says something quiet. The
+   floor comes first, so `unreachable` counts **alerts worth carrying**; and the
+   never-told check comes before it too, so an absent destination is not blamed for a
+   resolution nobody was owed.
+
+**The repair:** `pnpm alerts --sweep`, `pnpm flights` and `pnpm shipping` ran without
+`dotenv`, while `next dev` loads `.env.local`. So the CLI and the app disagreed about the
+environment: `pnpm alerts --sweep` reported the flight and freight engines as **could not
+run** on a workspace where they were configured, and the endpoint running the same sweep a
+minute later ran them. "Could not run is not nothing to say" is a sentence the whole design
+leans on, and it was being produced by the script's own env loading rather than by the
+workspace. All four provider-selecting CLIs load `.env.local` now.
 
 **What step 20 added, and where:** `src/lib/dayof/` — the offline day-of screen, and the
 first step that changes how the *client* works rather than adding another model behind
@@ -1037,14 +1134,18 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** step 21 — **Slack adapter · hosting · SSO rollout** (`SCOPE.md` §10). Two of the
-three are owed by things already built: every engine writes an `alerts` row and **nothing
-transports one** (there is no email, no Slack, no push, and no scheduler — an alert is
-exactly as fresh as the last time somebody pressed *Re-check everything*), and
-`retention_overdue` reports our own non-compliance nightly with nothing running nightly.
-Hosting is where §11.10 (data residency) stops being deferrable and where the offline
-screen's service worker meets a real origin and a real TLS certificate for the first time.
-§11.5 (scale) is the open decision nearest it.
+**Next:** finish step 21 — **hosting and the SSO rollout**, the two halves that could not be
+built here (`SCOPE.md` §10.21, marked `[~]`). Both need something this workspace is not
+allowed to acquire unasked: hosting needs a cloud account, which §9's ground rule forbids
+wiring, and it is where §11.10 (data residency) stops being deferrable and where the day-of
+service worker meets a real origin and a real TLS certificate for the first time; the SSO
+rollout needs a live IdP connection and the domain-to-org mapping that goes with it, and
+that mapping is a **change to a ground rule** rather than a feature — today a verified
+session matching no `users` row gets no access and no row created for it, and domain-to-org
+provisioning is precisely a way to create one. Decide that deliberately, not in passing.
+§11.5 (scale) is the open decision nearest both: the nightly job is a `for` loop over every
+org inside one HTTP request, which is right at this size and is the first thing that stops
+being right. Then step 22's backlog.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -1071,13 +1172,25 @@ leads the CRM did not know. The verdict is still computed on the row rather than
 point of export, for the original reason: the moment somebody can fix it is the moment they
 are looking at the lead, and by the time a sync asks, the person who stood at the booth has
 gone home. **Nothing has been written into a real CRM**, because the Salesforce adapter has
-never met a live org and the `recorded` provider refuses to report a write it did not make. **`retention_overdue` alerts nightly and nothing erases on a schedule**, for the
-same reason no engine runs on one: `pnpm leads --retention` and a button on the tab are the
-only things that erase, which is honest about the fact that this workspace has no scheduler
-and will not until step 21. **Alerts are read on `/alerts` and have no transport** (step 21): nothing emails, Slacks or
-pushes, and nothing runs them on a schedule either — an alert is exactly as fresh as the
-last time somebody pressed *Re-check everything*, which is why `unchecked` is a standing
-and a figure on the page rather than a footnote. **Nothing rebooks a cancelled flight**, and the alert says so
+never met a live org and the `recorded` provider refuses to report a write it did not make. **`retention_overdue` is now enforced by the nightly job**, which is the promise §5j said
+was worse than none while nothing kept it: stage 2 of `runNightly` really erases, and what
+it erased goes into the run's summary, because an irreversible act performed by nobody has
+to leave a record made by something. Two callers skip it and both have the same reason — the
+test suite and the seed would each destroy the demo they exist to build.
+`pnpm leads --retention` is still the deliberate, typed version. **Nothing runs the nightly
+job on this machine**: without `CRON_SECRET` the endpoint refuses, and until a scheduler is
+pointed at a real origin the only things that run it are `pnpm nightly` and a button on
+`/settings/notifications` — which is why `manual_only` is a standing of its own. **Alerts now have a transport and a scheduler, and by default neither reaches anybody.**
+With no `SLACK_BOT_TOKEN` the transport is `console`, which composes every message from the
+real alerts and delivers it **to nobody** — recorded as `rendered`, never `sent`, so a
+workspace that has told nobody anything can never read as one that has. With no
+`CRON_SECRET` the nightly endpoint **refuses**, so the sweeps still run only when somebody
+presses *Re-check everything* — which is why `unchecked` is still a standing and a figure on
+the page, and why `/alerts` now also says whether anything has run the engines at all.
+`pnpm nightly --dry` prints the messages verbatim, which is the only way to read what a
+colleague would receive before installing a Slack app. **The transport is still unverified
+against a live workspace**, like AeroAPI, EasyPost and Salesforce, and says so in its
+header. **Nothing rebooks a cancelled flight**, and the alert says so
 rather than implying otherwise: the agent buys against a travel request and the ticket is
 already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
 later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
@@ -1100,12 +1213,18 @@ still server actions that need a connection, because each of them has a store fu
 rules the device does not carry. And a target-account alert is a line on the capture form,
 not a notification — nothing here asks for notification permission.
 
-**Three adapters have never met a live key**, and each says so in its own header: AeroAPI
-(step 13), EasyPost (step 14) and Salesforce (step 19). All three are written to published
+**Four adapters have never met a live key**, and each says so in its own header: AeroAPI
+(step 13), EasyPost (step 14), Salesforce (step 19) and Slack (step 21). All three are written to published
 schemas and tested against fixtures we wrote ourselves — the closed loop step 12.5 named,
 which proves internal consistency and structurally cannot catch a wrong field name.
 
-**Salesforce has the capture script; AeroAPI and EasyPost still do not.**
+**Salesforce has the capture script; AeroAPI, EasyPost and Slack still do not.** Slack's
+case is the mildest of the four and worth stating so nobody over-corrects: its one
+docs-catchable defect — the `{"ok": false}` envelope on an HTTP 200 — is covered by unit
+tests against a mock transport, and what remains unverified is whether the three scopes are
+the right three and whether `conversations.open` behaves as documented for a bot posting its
+first DM. A wrong answer there fails loudly on the first send, which is the opposite of
+Salesforce's failure mode.
 `pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts` are `pnpm duffel:capture`'s
 shape reused: they record a real org's answers into `fixtures/live-salesforce/` and check our
 wire types and the *unmodified* normalizer against them, skipping cleanly when there are no
@@ -1592,6 +1711,65 @@ silently. One key is now `AuthConfigError`.
   per recipient, so the audience was decided where the reasoning lives. A feed-level
   "everybody's alerts" would be a second, dumber audience model, and its first act would be
   showing a manager a Member's personal flight home. `src/lib/alerts/access.ts`.
+- **A row is not a message, and the transport refuses five ways before it interrupts
+  anybody.** An `info` condition stays on `/alerts` and a *notice* goes at any severity,
+  because a notice is an event that happened once. Eleven rows are one sentence, through the
+  feed's own `groupFeed` and never a second grouping. Switching a transport on does not
+  replay history. Only somebody who was told is told it ended. And a personal alert never
+  reaches a shared room — the only one of the five that is about entitlement rather than
+  noise. `src/lib/notify/plan.ts`, `SCOPE.md` §5m.
+- **A destination is the subject's own, and not an admin's.** Every engine addresses its
+  rows to a person, and `alerts/access.ts` refuses an org-wide read precisely so a Travel
+  Manager never sees a Member's personal flight home. An admin who could point that Member's
+  alerts at an address of their choosing reopens the same door from the transport side,
+  where nothing on the alerts screen would show it. The address is **resolved by the
+  transport from the person's own email, never typed**: a wrong Slack id does not bounce, it
+  is accepted, logged as sent, and never seen.
+- **A replayed transport is the one replay this codebase cannot have.** The other five
+  `recorded` providers replay a supplier's *answer*, and describing a shape asserts nothing.
+  A transport produces an event in the world — somebody's phone buzzed — and there is no
+  shape of that which is not a claim. `console` composes the real message and reports
+  **`rendered`**, never `sent`; `reachesPeople` is false; and the settings page says "nothing
+  has ever left this workspace" rather than hiding it.
+- **Slack reports failures with HTTP 200, so `res.ok` is the wrong check here and only
+  here.** A bad token, an unknown person, an archived channel and a malformed payload all
+  arrive as `200 {"ok": false}`. The failure has no symptom: the log fills with `sent` and
+  nobody's phone buzzes. Everything goes through one `call()` that reads `ok` first.
+  `src/lib/integrations/notify/slack/client.ts`.
+- **The delivery rail inherits the alert store's recurrence decision and never makes its
+  own.** `(alert, channel, phase, alert_created_at)`: a condition holding nine nights keeps
+  one `created_at` and is carried once; a condition that resolved and came back has its clock
+  restarted by `alerts/store.ts` and is carried again, because it is news again. A second
+  dedupe rule beside the first is the `SOURCE_LABEL` trap in another costume.
+- **A failed send is recorded as failed and retried when it is planned again, never in a
+  loop.** A rate limit clears by tomorrow and an archived channel does not; the transport
+  says which. Retrying a permanent failure forever is `outbox.ts`'s badge that is always on.
+- **The nightly job sweeps, then erases, then carries — and stops rather than delivering
+  last night's answers as tonight's.** The order is the argument: a `retention_overdue` alert
+  raised in stage 1 and satisfied in stage 2 is closed by tomorrow's stage 1, rather than
+  personal data being erased before the engine that reports on it has looked. Every run
+  writes its row before it does anything and closes it either way, because a half-failed
+  sweep that reported success is how a board goes quiet and one that reported nothing is the
+  same thing with no evidence left. `src/lib/schedule/nightly.ts`.
+- **A job that did not run is not a quiet night.** `scheduled_runs` is append-only and
+  `manual_only` is a standing of its own, because "somebody ran it yesterday" and "it runs"
+  are different assurances and only one will still be true next week. §5f's unchecked flight,
+  applied to the thing that runs the engines. Until step 21 a workspace whose scheduler had
+  been broken for a week and one with nothing wrong looked identical on `/alerts`.
+- **A missing `CRON_SECRET` is a refusal, not an open door.** That endpoint erases every lead
+  past its retention date, and an endpoint that destroys personal data because nobody set a
+  variable is step 7's `authMode()` bug on the write side. The principal it resolves to is a
+  `SchedulerPrincipal` and deliberately not an `Actor` — §5j's rule on a caller that erases
+  rather than appends — and the route takes **no org parameter**, so there is nothing to
+  enumerate and no way to misconfigure it into sweeping nobody while answering 200.
+- **`/api/cron` is public in Clerk mode for a sharper reason than `/api/intake`.** A
+  scheduler has no browser: a Clerk bounce answers 302 to a sign-in page, and every hosted
+  cron reads that as a success. The job would silently never run, nightly, with a green tick
+  beside it.
+- **A provider-selecting CLI loads `.env.local`, because otherwise it disagrees with the
+  app.** `pnpm alerts --sweep` used to report the flight and freight engines as *could not
+  run* on a workspace where they were configured — the sentence the whole design leans on,
+  produced by the script's own env loading rather than by the workspace.
 - **A cost figure that does not say what it is missing is a fabricated bill.** §5a's rule at
   the scale of a show. A total is only called a total when everything that exists carries a
   figure and nothing structural is absent; otherwise the word is *at least*, and the line
@@ -1730,6 +1908,10 @@ pnpm roi              # every show: cost against pipeline, and every figure it w
 pnpm roi <show id>    # one show, and every opportunity behind its figure, openable
 pnpm roi --sync       # match leads to the CRM, cache opportunities, write attribution back
 pnpm roi --sync --no-write  # read only; put nothing into a database we do not own
+pnpm nightly          # the whole nightly job: sweep, erase what is overdue, carry what is owed
+pnpm nightly --dry    # plan and compose; print every message verbatim, send and record nothing
+pnpm nightly --deliver  # the delivery pass only; run twice — the second carries nothing
+pnpm nightly --standing # when did the job last run, and does anything run it but you
 pnpm day-of           # which show is on the floor, nearest to now first
 pnpm day-of <show id> # one show's snapshot, exactly as a device would hold it
 pnpm day-of <show id> --stale 90   # the same snapshot read later; watch the verdicts go
@@ -1742,7 +1924,7 @@ pnpm salesforce:capture        # the same loop for Salesforce (needs a Developer
 pnpm salesforce:capture --read-only   # probe everything; write nothing into their CRM
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 33 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 34 routes against a running `pnpm dev`; 200 + expected text
                   # (/day-of/[id] is the one page whose *content* it cannot check)
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
@@ -1756,7 +1938,7 @@ Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 ## Layout
 
 ```
-src/db/schema.ts              ~35 tables, the domain model
+src/db/schema.ts              ~38 tables, the domain model
 src/app/(app)/               the app shell and its screens; never prerendered
 src/app/(app)/travel/        the request list, the form, the audit trail as a page,
                               and the approvals queue
@@ -1827,6 +2009,22 @@ src/lib/roi/                  the third north-star job — attribution.ts (pure:
 src/lib/integrations/crm/     provider interface with exactly one write method + a Salesforce
                               adapter + a HubSpot seam that throws + a `recorded` replay of a
                               conversion shape rather than of a pipeline
+src/lib/notify/               the transport — plan.ts (pure: the five refusals, and the
+                              grouping borrowed from the feed rather than rebuilt), store.ts
+                              (the only caller of a transport; the delivery log and its
+                              rail), access.ts (a destination is the subject's own),
+                              provider.ts (env → transport; unset is `console`, a wrong name
+                              still throws)
+src/lib/integrations/notify/  transport interface + a Slack Web API adapter that reads `ok`
+                              rather than the HTTP status + a `console` transport that
+                              composes the real message and delivers it to nobody
+src/lib/schedule/             the job — nightly.ts (sweep → erase → carry, and whether it
+                              ever ran), principal.ts (the second principal that is not an
+                              Actor, and the first that erases)
+src/app/api/cron/nightly/     POST from a scheduler: no org parameter, no GET, and a refusal
+                              when no secret is set
+src/app/(app)/settings/notifications/  where your alerts go, what ran the engines, and the
+                              delivery log — the only Settings entry that is not admin-only
 src/lib/dayof/                the day-of model — targets.ts and outbox.ts (pure, and the
                               first two modules in this product shipped to the *browser*:
                               an exact-after-normalisation match, and a queue that loses

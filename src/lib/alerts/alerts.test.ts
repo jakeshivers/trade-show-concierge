@@ -33,6 +33,7 @@ const alert = (over: Partial<FeedAlert> = {}): FeedAlert => ({
   title: 'No movement for 5 days',
   body: 'The carrier is still promising Thursday.',
   showId: 'show-1',
+  userId: 'user-1',
   showName: 'Automate 2026',
   dedupeKey: 'k1',
   createdAt: hoursAgo(2),

@@ -109,6 +109,11 @@ const GROUPS: Group[] = [
   {
     label: 'Settings',
     items: [
+      // Not admin-only, and it is the only entry here that is not. Where your
+      // own alerts go is yours to set — see `notify/access.ts` — and hiding it
+      // from a Member would mean the one person the app is meant to be almost
+      // invisible to is the one it can never reach.
+      { href: '/settings/notifications', label: 'Notifications', Icon: BellRing },
       { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
       { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
       { href: '/settings/crm', label: 'CRM', Icon: Share2, approverOnly: true },

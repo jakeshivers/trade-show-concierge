@@ -10,6 +10,8 @@ import {
   type AlertStanding,
   type FeedGroup,
 } from '@/lib/alerts/feed';
+import { describeRunStanding, getRunStanding } from '@/lib/schedule/nightly';
+import { getTransportStanding } from '@/lib/notify/store';
 import { Badge, Card, Empty, PageHeader, Stat, type Tone } from '../_components/ui';
 import { RefreshButton, SeenButton } from './forms';
 
@@ -64,6 +66,15 @@ export default async function AlertsPage() {
   const actor = await getActor();
   const asOf = new Date();
   const { alerts, summary } = await getAlertFeed(actor, { asOf });
+  // Step 21. Two facts the feed could never state about itself: whether anything
+  // ran the engines, and whether anything carries what they said. An empty feed
+  // means one thing on a workspace that sweeps nightly and something else
+  // entirely on one where nothing has ever run — and until now the page looked
+  // identical in both.
+  const [runStanding, transport] = await Promise.all([
+    getRunStanding(actor.orgId, asOf),
+    getTransportStanding(actor),
+  ]);
   const groups = groupFeed(alerts, asOf);
 
   const live = groups.filter((g) => {
@@ -124,9 +135,31 @@ export default async function AlertsPage() {
           />
         </div>
         <p className="mt-3 text-xs text-text-muted">
-          Nothing here runs on a schedule yet — a scheduler is step 21 — so an alert is
-          exactly as fresh as the last time somebody pressed <em>Re-check everything</em>.
-          That is why “unchecked” is a number on this page rather than a footnote.
+          <Badge
+            tone={
+              runStanding.standing === 'current'
+                ? 'good'
+                : runStanding.standing === 'failing'
+                  ? 'bad'
+                  : 'warn'
+            }
+          >
+            {runStanding.standing.replace('_', ' ')}
+          </Badge>{' '}
+          {describeRunStanding(runStanding)} That is why “unchecked” is a number on this page
+          rather than a footnote.{' '}
+          {transport.live ? (
+            <>
+              These are also carried to {transport.connected} of {transport.people} people on{' '}
+              {transport.name} — <Link href="/settings/notifications">notifications</Link>.
+            </>
+          ) : (
+            <>
+              And nothing carries them anywhere: no message has ever left this workspace.{' '}
+              <Link href="/settings/notifications">Notifications</Link> says what would change
+              that.
+            </>
+          )}
         </p>
       </Card>
 

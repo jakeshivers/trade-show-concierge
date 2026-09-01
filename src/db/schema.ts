@@ -910,6 +910,187 @@ export const alerts = pgTable(
   ],
 );
 
+/* ------------------------------ notifications ------------------------------ */
+
+/**
+ * Where one person is reachable outside this app. Step 21.
+ *
+ * For twenty steps seven engines wrote `alerts` rows and nothing carried one
+ * anywhere: an alert was exactly as fresh as the last time somebody opened
+ * `/alerts` and pressed *Re-check everything*. This table is the address book
+ * that makes a transport possible, and almost everything interesting about it
+ * is a refusal.
+ *
+ * **A person owns their own destination.** `access.ts` does not let an admin set
+ * somebody else's, and that is not politeness — every engine addresses its rows
+ * to a *person*, and `alerts/access.ts` refuses an org-wide read precisely so a
+ * Travel Manager never sees the delay alert on a Member's personal flight home.
+ * An admin who could point that Member's alerts at a channel they read would
+ * have re-opened the same door from the transport side, where nothing on the
+ * alerts screen would show it.
+ *
+ * **`kind` exists so the planner can refuse.** A `channel` destination is a
+ * legitimate thing to want — a shared #trade-show room for alerts that belong to
+ * nobody in particular — and it is also the exact shape of the leak above. So
+ * the column can hold one, `notify/plan.ts` will only route an alert whose
+ * `user_id` is null to it, and no engine writes such an alert today. The rule is
+ * enforced in a pure function with a test rather than described in a comment.
+ *
+ * **`verified_at` is the transport's answer, not ours.** A Slack member id typed
+ * into a form is a claim; the workspace resolving it is a fact. An unverified
+ * row is not used, because a message sent to a mistyped id fails silently at
+ * Slack's end and looks exactly like a quiet night.
+ */
+export const notificationChannels = pgTable(
+  'notification_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Whose alerts go here. Null is an org destination — see `kind`. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** `slack` today. The column exists so a second transport is a row. */
+    transport: text('transport').notNull(),
+    /** `dm` or `channel`. A personal alert may only ever go to a `dm`. */
+    kind: text('kind').notNull().default('dm'),
+    /** The Slack member id (`U…`) or channel id (`C…`). Never an email. */
+    address: text('address').notNull(),
+    /** What to call it on a screen. The transport's own label where it has one. */
+    label: text('label'),
+    /** When the transport confirmed this address exists. Null means unusable. */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    /**
+     * Turned off, and by whom. A destination is disabled rather than deleted so
+     * "why did these forty messages stop" stays answerable — the intake key's
+     * rule, and the declined show's.
+     */
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
+    disabledReason: text('disabled_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('notification_channels_user_idx').on(t.orgId, t.userId, t.transport),
+    index('notification_channels_org_idx').on(t.orgId, t.transport),
+  ],
+);
+
+/**
+ * What was actually carried, where, and what happened. Append-only.
+ *
+ * **Why a log rather than a flag on the alert.** An alert is a durable record
+ * that a notification was *owed*; a delivery is a claim that somebody's phone
+ * buzzed. Those are different facts with different lifetimes, and a
+ * `notified_at` column on `alerts` would have collapsed them — after which a
+ * transport that was never configured, one that failed, and one that succeeded
+ * are indistinguishable, and the honest sentence "no message has ever left this
+ * workspace" becomes unsayable.
+ *
+ * **The idempotency rail is `(alert, channel, phase, alert_created_at)`, and the
+ * last segment is the whole design.** A condition that holds for nine nights is
+ * one alert row whose `occurrences` climbs and whose `created_at` never moves —
+ * so it is sent once. A condition that *resolved and came back* is a recurrence,
+ * and `alerts/store.ts` marks that by restarting `created_at` — so it is sent
+ * again, because it is news again. The transport therefore inherits the
+ * recurrence decision the alert store already argued about instead of inventing
+ * a second, quietly different one beside it. That second copy is the bug
+ * `SOURCE_LABEL` was rewritten to prevent.
+ *
+ * **`outcome` distinguishes four things that a boolean would flatten.** `sent`
+ * is a transport reporting success. `rendered` is the zero-key console
+ * transport, which composed the message and delivered it to nobody — it must
+ * never be recorded as `sent`, for the same reason the `recorded` flight
+ * provider may not report a purchase. `undeliverable` is us having no address
+ * for somebody. `suppressed` is a deliberate refusal to send, carrying its
+ * reason: the alert is below the interruption floor, or it predates the day this
+ * transport was switched on.
+ */
+export const notificationDeliveries = pgTable(
+  'notification_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    alertId: uuid('alert_id')
+      .notNull()
+      .references(() => alerts.id, { onDelete: 'cascade' }),
+    /** Null when there was nowhere to send it — the `undeliverable` case. */
+    channelId: uuid('channel_id').references(() => notificationChannels.id, {
+      onDelete: 'set null',
+    }),
+    transport: text('transport').notNull(),
+    /** `raised` or `resolved`. Only somebody who was told is told it ended. */
+    phase: text('phase').notNull().default('raised'),
+    /**
+     * The alert's `created_at` at the moment this was planned. Restarted by a
+     * recurrence, which is exactly what makes a recurrence sendable again.
+     */
+    alertCreatedAt: timestamp('alert_created_at', { withTimezone: true }).notNull(),
+    /** `sent` · `rendered` · `undeliverable` · `suppressed` · `failed`. */
+    outcome: text('outcome').notNull(),
+    /** Why it was suppressed, or how it failed. Always present for both. */
+    detail: text('detail'),
+    /** One buzz can cover several alerts; this is what ties them together. */
+    messageRef: text('message_ref'),
+    /** The transport's own id for the message, where it returns one. */
+    providerMessageId: text('provider_message_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('notification_deliveries_rail_idx').on(
+      t.alertId,
+      t.channelId,
+      t.phase,
+      t.alertCreatedAt,
+    ),
+    index('notification_deliveries_org_idx').on(t.orgId, t.createdAt),
+  ],
+);
+
+/* -------------------------------- scheduling ------------------------------- */
+
+/**
+ * Every time the nightly job ran, whether it finished, and what it did.
+ * Append-only. Step 21.
+ *
+ * The reason this table exists rather than a `last_run_at` setting: **a job that
+ * did not run is not a quiet night.** `alerts/feed.ts` already has the sentence
+ * — an alert nobody has re-checked is not a current alert, which is why
+ * `unchecked` is a standing — but until now the only evidence of a sweep was the
+ * `last_seen_at` on rows that happened to be raised, so an org whose scheduler
+ * had been broken for a week and an org with nothing wrong looked identical on
+ * screen: no alerts, both.
+ *
+ * `trigger` separates a real schedule from somebody pressing a button, because
+ * "it ran last night" and "somebody ran it last night" are different assurances
+ * and only one of them will still be true next week.
+ *
+ * A run that throws still writes its row, with `ok` false and the error on it.
+ * A half-failed sweep that reported success is how a board goes quiet.
+ */
+export const scheduledRuns = pgTable(
+  'scheduled_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** `nightly` today. */
+    job: text('job').notNull(),
+    /** `schedule` (an external caller with the secret) or `manual`. */
+    trigger: text('trigger').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ok: boolean('ok').notNull().default(false),
+    /** Human-readable, one line per stage, in the words the CLI prints. */
+    summary: text('summary'),
+    error: text('error'),
+  },
+  (t) => [index('scheduled_runs_job_idx').on(t.orgId, t.job, t.startedAt)],
+);
+
 /* -------------------------------- expenses --------------------------------- */
 
 export const expenses = pgTable(

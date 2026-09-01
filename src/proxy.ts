@@ -22,7 +22,17 @@ import { authMode } from '@/lib/auth/mode';
 // `/api/intake` carries its own credential — an intake key, not a session — so
 // Clerk must not bounce it to a sign-in page. It is not unauthenticated: the
 // route refuses without a key, and `resolveIntakeKey` is the whole gate.
-const isPublic = createRouteMatcher(['/sign-in(.*)', '/sign-up(.*)', '/api/intake(.*)']);
+//
+// `/api/cron` is the same shape for the scheduler, and the reason is sharper: a
+// scheduler has no browser to be redirected, so a Clerk bounce would answer 302
+// to a sign-in page and every hosted cron reads that as a success. The job would
+// silently never run, nightly, with a green tick beside it.
+const isPublic = createRouteMatcher([
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/intake(.*)',
+  '/api/cron(.*)',
+]);
 
 const withClerk = clerkMiddleware(async (auth, request) => {
   if (!isPublic(request)) await auth.protect();

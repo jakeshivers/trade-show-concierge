@@ -15,6 +15,9 @@ import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
 import { setDeadlineStatus, sweepDeadlineAlerts } from '../src/lib/deadlines/store';
 import { acknowledgeAlert } from '../src/lib/alerts/store';
+import { connectMyChannel, deliverPending } from '../src/lib/notify/store';
+import { runNightly } from '../src/lib/schedule/nightly';
+import { ConsoleTransport } from '../src/lib/integrations/notify/console/provider';
 import { syncFlightStatuses } from '../src/lib/flights/store';
 import { RecordedStatusProvider } from '../src/lib/integrations/flightstatus/recorded/provider';
 import { instantToZoned } from '../src/lib/datetime/zoned';
@@ -2303,6 +2306,62 @@ async function main() {
     .limit(1);
   if (mine[0]) await acknowledgeAlert(actorFor(marcus), mine[0].id, now, db);
 
+  /* ------------------------------ notifications ----------------------------- */
+
+  // Step 21. Two people connect a destination **through the real store**, and
+  // the delivery pass runs for real — so the log holds rows a screen can be read
+  // against rather than rows typed here.
+  //
+  // The transport is `console`, which composes every message from the real
+  // alerts and delivers it to nobody. That is the honest state of this
+  // workspace and the seed does not dress it up: every row it writes says
+  // `rendered`, never `sent`, and `/settings/notifications` leads with the
+  // sentence "nothing has ever left this workspace". A seeded `sent` would be
+  // the one lie the whole feature exists to make impossible.
+  //
+  // Shelley is deliberately left unconnected, so the run reports somebody with
+  // alerts worth carrying and nowhere to carry them — which is the state most
+  // people in a real workspace are in on the first day, and the only one of the
+  // log's five outcomes that is fixable by anybody.
+  console.log('\n· notifications (real destinations, real delivery pass, nothing delivered)');
+  const rendering = new ConsoleTransport();
+  for (const person of [marcus, priya]) {
+    await connectMyChannel(actorFor(person), { transport: rendering, now }, db);
+  }
+  const carried = await deliverPending(org.id, { transport: rendering, now }, db);
+  console.log(
+    `  ${carried.messages} message(s) composed for ${carried.people} people · ` +
+      `${carried.rendered} rendered to nobody · ${carried.suppressed} suppressed · ` +
+      `${carried.undeliverable} with nowhere to go`,
+  );
+
+  // Run it a second time, the way the seed runs the lead sweep twice. Nothing is
+  // carried: a condition that held a moment ago and holds now is one alert row
+  // whose `created_at` never moved, and the delivery rail is keyed on that.
+  const again = await deliverPending(
+    org.id,
+    { transport: rendering, now: new Date(now.getTime() + 60_000) },
+    db,
+  );
+  console.log(`  a second pass a minute later carried ${again.messages} — the rail holds`);
+
+  // And one recorded run of the job itself, so `/alerts` has something true to
+  // say about what runs the engines. `trigger: 'manual'` is the accurate answer
+  // and the interesting one: the page then says "run by a person, not on a
+  // schedule", which is precisely this workspace's situation until somebody
+  // points a scheduler at `/api/cron/nightly`.
+  //
+  // Retention is skipped, and this is the second caller allowed to do that: the
+  // sweep really erases, and a seed that destroyed the overdue leads it had just
+  // created would leave `pnpm db:reset` with a worse demo than the one it built.
+  // `pnpm leads --retention` is where that is exercised, on purpose.
+  const nightly = await runNightly(
+    org.id,
+    { trigger: 'manual', now, transport: rendering, skipRetention: true },
+    db,
+  );
+  console.log(`  one recorded run: ${nightly.ok ? 'finished' : nightly.error}`);
+
   const counts = {
     users: people.length,
     alertsResolved: resweep.resolved,
@@ -2329,6 +2388,9 @@ async function main() {
     crmOpportunities: crmSync.opportunitiesRead,
     roiAlerts: roiSweep.raised,
     leadAlertsResolved: leadSweep.resolved,
+    notificationsComposed: carried.messages,
+    notificationsDelivered: carried.sent,
+    notificationsNowhereToGo: carried.undeliverable,
   };
   console.log('\n✓ seed complete', counts);
 }

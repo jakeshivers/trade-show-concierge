@@ -1150,6 +1150,85 @@ page it has never seen, so the offline screen works only if it was opened while 
 connection. That is not a defect to engineer around; it is a sentence to put in front of
 somebody in the week before the show.
 
+### 5m. Notification transport and the scheduler — what a written alert is still missing (step 21)
+
+Step 17 built the feed and named the gap it could not close: an alert is exactly as fresh
+as the last time somebody pressed *Re-check everything*, and nothing carries one anywhere.
+Three more steps wrote to that table. §5j then added the sharpest version — `retention_overdue`
+reports our own non-compliance **nightly**, in a product where nothing runs nightly. Step 21
+is the transport and the job.
+
+**A row is not a message, and the obvious implementation is wrong five ways.** Taking every
+unresolved row and sending it is available for the first time here, and this product has
+spent four steps arguing that an alert people learn to scroll past takes the next one with
+it. So `notify/plan.ts` is pure and is a set of refusals: conditions are carried at
+`warning` and above while an `info` condition stays on the screen it was always going to be
+read on; **notices go at any severity**, because a notice is an event that happened once and
+§6c rail 6's "your flight is ticketed" is exactly the message a traveler wants pushed;
+switching a transport on **does not replay history**, because the first run against a
+workspace with a year of alerts would deliver all of them at once and the person it happened
+to would turn it off inside the minute and be right to; **only somebody who was told is told
+it ended**, because "resolved: a thing you never heard about" is noise with the grammar of an
+update; and a **personal alert never goes to a shared room**, which is the only one of the
+five that is about entitlement rather than noise.
+
+That last one is `alerts/access.ts` reached from the outside. There is no org-wide alert
+read, deliberately, so that a Travel Manager never sees the delay alert on a Member's
+personal flight home — and a channel destination is an org-wide read wearing a different
+hat, invisible from the screen anybody would check. `notification_channels.kind` exists so
+the planner can refuse, in a pure function with a test, rather than in a column comment.
+The same argument makes **setting a destination the subject's own act and not an admin's**:
+an alert that can be pointed somewhere on your behalf is an alert somebody else can read.
+It is consequently one of the very few settings a Member controls, which is §1's corollary
+working rather than an exception to it — the way to be almost invisible to a Member is to
+reach them where they already are.
+
+**Eleven rows are one sentence, and the feed already knows.** §5i found this on real data:
+eleven identical "the airline moved DL 1422" rows addressed to one admin. The planner reuses
+`groupFeed` rather than grouping again — `review.ts`'s rule, where the screen and the agent
+share one predicate so they cannot disagree — and sends **at most one message per person per
+pass**, while the delivery log still records a row per alert. The phone buzzes once; "was
+Priya told about this crate" stays answerable at the granularity the engines write at.
+
+**Idempotency is inherited, not invented.** The rail is
+`(alert, channel, phase, alert_created_at)`, and the last segment is the design: a condition
+that holds for nine nights is one row whose `occurrences` climb and whose `created_at` never
+moves, so it is carried once; a condition that resolved and came back is a recurrence, which
+§5i's writer marks by **restarting `created_at`**, so it is carried again because it is news
+again. A second dedupe rule beside the alert store's is the `SOURCE_LABEL` trap in another
+costume, so there is not one.
+
+**The zero-key transport could not be a `recorded` one, and that is the finding.** The other
+five replays obey one rule — describe a *shape*, assert nothing about this workspace — and
+they work because what is replayed is a supplier's *answer*. A transport has no answer. What
+it produces is an event in the world: somebody's phone buzzed. There is no shape of that
+which is not simply a claim, so a replay returning `sent` would fill the log with the one lie
+this feature exists to make impossible. The `console` transport composes the real message
+from the real alerts and delivers it **to nobody**, recording `rendered`; `reachesPeople` is
+false on it; and `/settings/notifications` leads with "nothing has ever left this workspace",
+which is true of almost every install of this product and is a working state rather than a
+broken one.
+
+**The scheduler makes a promise enforceable, and takes on the only irreversible act in the
+product.** `runNightly` sweeps every engine, erases every lead past its retention date, then
+carries what is owed — in that order, so an alert raised in stage 1 and satisfied in stage 2
+is closed by tomorrow's stage 1 rather than personal data being erased before the engine that
+reports on it has looked. It **stops** rather than delivering last night's answers as though
+they were tonight's. `POST /api/cron/nightly` authenticates with `CRON_SECRET` into a
+`SchedulerPrincipal` that is deliberately not an `Actor` — §5j's argument unchanged, on a
+caller that erases rather than appends — takes **no org parameter** so there is nothing to
+enumerate and nothing to misconfigure into sweeping nobody, and **refuses when no secret is
+set**, because an endpoint that destroys personal data because a variable is unset is step 7's
+`authMode()` bug on the write side.
+
+**And a job that did not run is not a quiet night.** `scheduled_runs` is append-only and
+`getRunStanding` reports `never`, `manual_only`, `current`, `overdue` or `failing` —
+`manual_only` being its own answer because "somebody ran it yesterday" and "it runs" are
+different assurances and only one will still be true next week. It is §5f's unchecked flight
+applied to the thing that reports the flights, applied in turn to the thing that runs the
+engines. Until now a workspace whose scheduler had been broken for a week and a workspace
+with nothing wrong looked identical on `/alerts`: no alerts, both.
+
 ---
 
 ## 6. The booking agent
@@ -2076,7 +2155,38 @@ invert phases A and C.
       of an offline screen is not what it says when it is fresh. Eight corrections folded
       into §5l above, plus §8c's mitigation 2 and the §2 row it has been owed since the
       first table. 882 tests.
-- [ ] **21.** Slack adapter · hosting · SSO rollout
+- [~] **21.** Slack adapter · hosting · SSO rollout — **the transport and the scheduler
+      shipped; hosting and the SSO rollout did not, and cannot here.** The half that was
+      owed by things already built: `src/lib/integrations/notify/` is the sixth integration
+      behind the usual interface — the first that carries something *out* rather than asking
+      a supplier a question, which inverts the risk every other adapter manages. `types.ts`
+      takes a resolved address and a rendered message and does nothing else; `slack/` is the
+      Web API written to the published reference and **never run against a live workspace**,
+      where the one gotcha a docs-written fixture *can* catch is that **Slack answers
+      failures with HTTP 200 and `{"ok": false}`** — a client checking `res.ok`, which is
+      correct for every other provider here, records every refusal as a delivery, and that
+      failure has no symptom. `console/` is deliberately **not** a `recorded` provider: a
+      replayed answer is honest and a replayed *delivery* is a claim that somebody's phone
+      buzzed, so it composes the real message and reports `rendered`, never `sent`.
+      `notify/plan.ts` is pure and holds §5m's five refusals; `notify/store.ts` is the only
+      caller of a transport; `notify/access.ts` puts a destination in the subject's own hands
+      and nobody else's. `schedule/nightly.ts` is the three-stage job, `scheduled_runs` makes
+      "did it run" a query, and `POST /api/cron/nightly` is the seam a hosted scheduler calls
+      with `CRON_SECRET` — the second principal here that is not an `Actor`, and the first
+      that erases. New tables: `notification_channels`, `notification_deliveries`,
+      `scheduled_runs`. `/settings/notifications` is the only entry under Settings that is
+      not admin-only. `pnpm nightly` / `--dry` / `--deliver` / `--standing` is the job
+      without a screen, and `--dry` prints the messages verbatim, which is the only way to
+      read what a colleague would receive before installing anything. 932 tests.
+      **One repair found on the way:** `pnpm alerts --sweep`, `pnpm flights` and
+      `pnpm shipping` did not load `.env.local` while the app did, so the CLI reported two
+      engines "could not run" on a workspace where they were configured — the sentence the
+      whole design leans on, produced by the script's own env loading rather than by the
+      workspace. **Still owed:** hosting (a cloud account, which §9's ground rule forbids
+      wiring unasked, and where §11.10's residency decision stops being deferrable and the
+      day-of service worker meets a real origin) and the SSO rollout (a real IdP connection
+      and the domain-to-org mapping, neither verifiable without one). §11.5 is the open
+      decision nearest both.
 - [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
       share links · room-block optimizer · gamification · LLM deadline extraction

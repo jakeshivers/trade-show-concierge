@@ -251,6 +251,7 @@ export async function getAlertFeed(
     body: r.alert.body,
     showId: r.alert.showId,
     showName: r.showName ?? null,
+    userId: r.alert.userId,
     dedupeKey: r.alert.dedupeKey,
     createdAt: r.alert.createdAt,
     lastSeenAt: r.alert.lastSeenAt,
