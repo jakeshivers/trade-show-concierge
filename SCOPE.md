@@ -2182,11 +2182,16 @@ invert phases A and C.
       `pnpm shipping` did not load `.env.local` while the app did, so the CLI reported two
       engines "could not run" on a workspace where they were configured — the sentence the
       whole design leans on, produced by the script's own env loading rather than by the
-      workspace. **Still owed:** hosting (a cloud account, which §9's ground rule forbids
-      wiring unasked, and where §11.10's residency decision stops being deferrable and the
-      day-of service worker meets a real origin) and the SSO rollout (a real IdP connection
-      and the domain-to-org mapping, neither verifiable without one). §11.5 is the open
-      decision nearest both.
+      workspace. **Still owed, and deliberately so as of 2026-09-01:** hosting (a cloud
+      account, which §9's ground rule forbids wiring unasked, and where §11.10's residency
+      decision stops being deferrable and the day-of service worker meets a real origin) and
+      the SSO rollout (see §11.2 — there is no IdP to connect, and the domain-to-org mapping
+      it needs is a change to a ground rule rather than a feature). **The Slack adapter
+      stays unverified on purpose**: there is no workspace to run it against, so it keeps
+      the header AeroAPI, EasyPost and Salesforce carry, and the app keeps reaching nobody
+      by default. Nothing constructs a Slack client without `SLACK_BOT_TOKEN` and every
+      method on it throws before touching the network without one. §11.5 is the open
+      decision nearest both remaining halves.
 - [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
       share links · room-block optimizer · gamification · LLM deadline extraction
@@ -2208,8 +2213,20 @@ the benefit of the model without the setup cost blocking the spine.
 2. ~~**Auth provider**~~ — **resolved: Clerk.** Per-org login-method control decided it.
    Partly settled at step 7: the *policy* half is built and provider-agnostic, and
    enabling a SAML/OIDC connection is Clerk configuration rather than our code, so
-   SSO needs no further build here. What still waits for step 21 is the rollout —
-   a real IdP connection, and the domain-to-org mapping that goes with it.
+   SSO needs no further build here. What waited for step 21 was the rollout — a real
+   IdP connection, and the domain-to-org mapping that goes with it.
+
+   **Update 2026-09-01: there is no IdP to roll out to, so the rollout is deferred
+   rather than attempted.** No enterprise SSO client exists for this workspace, so the
+   connection cannot be made and the domain-to-org mapping cannot be checked against
+   one. That is the right answer rather than a shortfall, for a reason worth stating:
+   **domain-to-org provisioning is a change to a ground rule, not a feature.** Today a
+   verified session that matches no `users` row gets no access *and no row created for
+   it*. Mapping `@customer.com` to an org is precisely a mechanism for creating one, so
+   writing it against an imagined IdP would mean inventing both the rule and the
+   evidence for it. It waits for a real connection. The login-method gate keeps failing
+   closed in the meantime, which is the behaviour that matters if this is ever switched
+   on before anybody re-reads this paragraph.
 3. **Approval routing:** single Travel Manager queue for the org, or per-department
    approvers? Recommending a single queue for v1; per-department is a schema addition
    that's cheap now and expensive later if wrong.

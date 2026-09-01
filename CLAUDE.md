@@ -1134,18 +1134,27 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next:** finish step 21 — **hosting and the SSO rollout**, the two halves that could not be
-built here (`SCOPE.md` §10.21, marked `[~]`). Both need something this workspace is not
-allowed to acquire unasked: hosting needs a cloud account, which §9's ground rule forbids
-wiring, and it is where §11.10 (data residency) stops being deferrable and where the day-of
-service worker meets a real origin and a real TLS certificate for the first time; the SSO
-rollout needs a live IdP connection and the domain-to-org mapping that goes with it, and
-that mapping is a **change to a ground rule** rather than a feature — today a verified
-session matching no `users` row gets no access and no row created for it, and domain-to-org
-provisioning is precisely a way to create one. Decide that deliberately, not in passing.
-§11.5 (scale) is the open decision nearest both: the nightly job is a `for` loop over every
-org inside one HTTP request, which is right at this size and is the first thing that stops
-being right. Then step 22's backlog.
+**Next:** step 22's backlog. **Step 21's remaining two halves are deferred by decision, not
+left undone** (2026-09-01, `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack
+workspace and no SSO client**, and hosting needs a cloud account that §9's ground rule
+forbids wiring unasked. Do not pick any of them up speculatively.
+
+- **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified,
+  like AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`.
+  The default transport is `console`, which composes the real message and delivers it to
+  nobody. **Do not add a `recorded` Slack provider** — the whole argument for `console`
+  existing is that a replayed *delivery* is a claim somebody's phone buzzed.
+- **The SSO rollout waits for a real IdP**, and the domain-to-org mapping it needs is a
+  **change to a ground rule** rather than a feature: today a verified session matching no
+  `users` row gets no access *and no row created for it*, and domain-to-org provisioning is
+  precisely a way to create one. Decide that deliberately, with a live connection in front
+  of you, not in passing.
+- **Hosting** is where §11.10 (data residency) stops being deferrable and where the day-of
+  service worker meets a real origin and a real TLS certificate for the first time.
+
+§11.5 (scale) is the open decision nearest all three, and step 21 gave it a first concrete
+edge: the nightly job is a `for` loop over every org inside one HTTP request, which is right
+at this size and is the first thing that stops being right.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -1180,7 +1189,10 @@ test suite and the seed would each destroy the demo they exist to build.
 `pnpm leads --retention` is still the deliberate, typed version. **Nothing runs the nightly
 job on this machine**: without `CRON_SECRET` the endpoint refuses, and until a scheduler is
 pointed at a real origin the only things that run it are `pnpm nightly` and a button on
-`/settings/notifications` — which is why `manual_only` is a standing of its own. **Alerts now have a transport and a scheduler, and by default neither reaches anybody.**
+`/settings/notifications` — which is why `manual_only` is a standing of its own. **Alerts now have a transport and a scheduler, and by default neither reaches anybody — and
+that is the settled state, not a step on the way to one.** There is no Slack workspace and no
+SSO client for this project (2026-09-01), so the adapter stays written-and-unverified and the
+app stays reaching nobody unless somebody sets a token.
 With no `SLACK_BOT_TOKEN` the transport is `console`, which composes every message from the
 real alerts and delivers it **to nobody** — recorded as `rendered`, never `sent`, so a
 workspace that has told nobody anything can never read as one that has. With no
@@ -1224,7 +1236,9 @@ docs-catchable defect — the `{"ok": false}` envelope on an HTTP 200 — is cov
 tests against a mock transport, and what remains unverified is whether the three scopes are
 the right three and whether `conversations.open` behaves as documented for a bot posting its
 first DM. A wrong answer there fails loudly on the first send, which is the opposite of
-Salesforce's failure mode.
+Salesforce's failure mode. **And there is no workspace to capture against** — that is the
+standing decision as of 2026-09-01, not an oversight, so this adapter keeps its header until
+somebody has a real one.
 `pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts` are `pnpm duffel:capture`'s
 shape reused: they record a real org's answers into `fixtures/live-salesforce/` and check our
 wire types and the *unmodified* normalizer against them, skipping cleanly when there are no
