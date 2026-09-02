@@ -39,7 +39,28 @@ export function scoreOffer(ranked: Omit<RankedOffer, 'score'>, ctx: EvaluationCo
     if (hoursBefore < 12) score += (12 - hoursBefore) * 2_500;
   }
 
-  return score;
+  /**
+   * Whole cents, and this is not cosmetic.
+   *
+   * Every other term here is already an integer number of cents; `hoursBefore`
+   * is milliseconds divided by 3,600,000, so the arrival-buffer penalty is the
+   * one term that can produce a fraction. And `score` is an `integer` column in
+   * **both** `offer_snapshots` and `policy_evaluations` — so a fractional score
+   * does not rank slightly oddly, it fails the insert with `invalid input
+   * syntax for type integer` and takes the whole agent run down with it.
+   *
+   * Which makes this the worst possible shape of bug for this module: it fires
+   * only when `moveInAt` is set *and* the offer arrives inside twelve hours of
+   * move-in — the tight-connection case the arrival buffer exists to reason
+   * about. The agent crashed hardest on precisely the offers it was built to be
+   * careful with, and did it while writing the audit row rather than while
+   * deciding, so there was nothing left to read afterwards.
+   *
+   * It stayed hidden because the recorded fixtures happened to land outside the
+   * twelve hours; a one-day shift in `recorded/provider.ts` moved them inside
+   * and twenty of these appeared at once.
+   */
+  return Math.round(score);
 }
 
 export function rankOffers(offers: Offer[], ctx: Omit<EvaluationContext, 'offer'>): RankedOffer[] {

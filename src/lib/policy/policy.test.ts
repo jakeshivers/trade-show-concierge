@@ -154,6 +154,58 @@ describe('arrival buffer', () => {
   });
 });
 
+describe('the score is a whole number of cents', () => {
+  /*
+   * `offer_snapshots.score` and `policy_evaluations.score` are both `integer`,
+   * so a fractional score is not a ranking nuance — it fails the insert with
+   * `invalid input syntax for type integer` and takes the agent run down while
+   * it is writing the audit row.
+   *
+   * Every term in `scoreOffer` is already whole cents except the arrival-buffer
+   * penalty, which multiplies a float count of hours. So the crash fires only
+   * when a show has a move-in time *and* the offer lands inside twelve hours of
+   * it — the tight-arrival case the buffer exists to reason about, and the last
+   * one you would want the agent to fall over on.
+   */
+  const arrivingHoursBefore = (hours: number) =>
+    offer({
+      slices: [
+        {
+          segments: [
+            segment({
+              departsAt: new Date(MOVE_IN.getTime() - h(hours + 4)),
+              arrivesAt: new Date(MOVE_IN.getTime() - h(hours)),
+            }),
+          ],
+        },
+      ],
+    });
+
+  it('stays an integer for an arrival inside the buffer, at any fraction of an hour', () => {
+    for (const hours of [11.5, 7.25, 3.1, 1.0 / 3.0, 0.7]) {
+      const [ranked] = rankOffers([arrivingHoursBefore(hours)], ctx({}));
+      expect(Number.isInteger(ranked.score), `score ${ranked.score} for ${hours}h before move-in`).toBe(
+        true,
+      );
+    }
+  });
+
+  it('is an integer with no move-in time and with a roomy arrival too', () => {
+    const [roomy] = rankOffers([arrivingHoursBefore(48)], ctx({}));
+    expect(Number.isInteger(roomy.score)).toBe(true);
+    const [noMoveIn] = rankOffers([arrivingHoursBefore(2)], ctx({ moveInAt: undefined }));
+    expect(Number.isInteger(noMoveIn.score)).toBe(true);
+  });
+
+  it('still prefers the roomier arrival after rounding', () => {
+    // Rounding must not flatten the penalty into a tie, or the buffer stops
+    // being priced at all.
+    const [tight] = rankOffers([arrivingHoursBefore(1)], ctx({}));
+    const [roomy] = rankOffers([arrivingHoursBefore(11)], ctx({}));
+    expect(tight.score).toBeGreaterThan(roomy.score);
+  });
+});
+
 describe('traveler time constraints', () => {
   it('denies an offer arriving after the traveler must be on the ground', () => {
     const v = evaluate(

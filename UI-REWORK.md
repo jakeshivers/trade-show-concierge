@@ -855,3 +855,54 @@ for was rewritten; that is the **third** smoke expectation a copy pass has inval
 standing advice holds and is worth repeating here: **run `pnpm smoke` with `pnpm test`, not
 after somebody notices.** Prefer a heading or a stat label over a sentence, and never a string
 that only renders when the data happens to contain a finding.
+
+## §20 — Two bugs under a red suite, and only the second one mattered
+
+Not a UI finding. `pnpm db:reset && pnpm test` — the ground rule — was leaving nine tests
+red, and `pnpm booking:dry-run` died partway through scenario 2. Both were **pre-existing**
+(reproduced at `6fcd43e`) and had been hidden all session because the suite was running
+against a `.pglite` seeded hours earlier.
+
+**The first bug is a forty-minute hole in the replay.** `recorded/provider.ts` shifts a
+fixture onto the *UTC day* of `earliestDeparture` and keeps its naive local departure time —
+right for durations, overnight arrivals and local clock times, and silent about the resulting
+**instant**. The international fixture leaves SFO at 16:20 local, so it rebases to **23:20Z**;
+`pnpm test` and the dry-run both build their window from `now + 45 days`, so between 23:20Z
+and midnight UTC the offer departs *before* the window opens, is denied on `departure_window`,
+and the request comes back `no_options`. Eight tests fail, every day, for forty minutes — and
+pass the other twenty-three hours, which is how it survived twenty-five steps. **A replay that
+only works at certain times of day is not a replay, and a suite whose colour depends on when
+you run it is worse than one that is red.** `recorded.test.ts` pins the clock across that
+hour, because a test reading the wall clock reproduces this about 3% of the time.
+
+**The second bug is the one worth the evening, and fixing the first is what exposed it.**
+Shifting those offers by a day moved their arrivals inside twelve hours of move-in, and twenty
+inserts failed at once with `invalid input syntax for type integer: "100083278.33333333"`.
+
+`scoreOffer` builds a score in whole cents and then adds
+`(12 - hoursBefore) * 2_500`, where `hoursBefore` is milliseconds over 3,600,000. That term is
+the only fractional one — and `score` is an **`integer` column in both `offer_snapshots` and
+`policy_evaluations`**. So a fractional score is not a ranking nuance: the insert fails, and it
+fails inside `snapshotOffers` while the agent is writing its audit row, which takes down the
+whole run and leaves nothing to read afterwards.
+
+**It fires only when a show has a move-in time and the offer arrives within twelve hours of
+it** — the tight-arrival case the buffer rule exists to reason about. The agent crashed hardest
+on precisely the offers it was built to be careful with. Nothing caught it because the recorded
+fixtures happened to land outside the twelve hours; the one-day shift moved them inside and
+made it unmissable.
+
+Three things worth keeping from how this went:
+
+- **The first fix looked like a regression and was a diagnosis.** Applying it took failures
+  from 9 to 31, and the honest first read — "my change broke twenty-two tests" — was wrong.
+  They were all the same new crash, surfacing a latent defect the old dates had been hiding.
+  Worth remembering before reverting on a count.
+- **`pnpm dev` and `pnpm test` cannot share `.pglite`.** Several runs mid-investigation
+  reported PGlite `Aborted()` failures that were pure contention, and they cost real time by
+  looking exactly like the bug under investigation. `CLAUDE.md` warns about `db:reset` under a
+  running server; the same applies to the suite. **Stop the dev server before trusting a test
+  count.**
+- **The wall clock is an input.** The failure window was 23:20–00:00 UTC and this machine is
+  on `MDT`, so an early misread of the offset made the theory look disproved when it was
+  right. `date -u` first.

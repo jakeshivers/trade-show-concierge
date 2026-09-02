@@ -86,6 +86,46 @@ function rebase(raw: DuffelOffer, departOn: Date, expiresAt: Date): DuffelOffer 
   };
 }
 
+/**
+ * Shift a recorded itinerary so it really is *inside* the window that was asked
+ * for — which `rebase` alone does not guarantee.
+ *
+ * `rebase` aligns the offer to the **UTC day** of `earliestDeparture` and keeps
+ * the fixture's naive local departure time. That is right for everything it was
+ * built to protect: clock times, durations and overnight arrivals all survive a
+ * whole-day shift. What it never compares is the resulting **instant** against
+ * the window, and a requested departure is an instant with a time of day on it.
+ *
+ * The international fixture leaves SFO at 16:20 local, so it rebases to 23:20Z.
+ * Any search whose earliest departure falls later than that on the same UTC day
+ * gets an offer departing *before* the window opens — denied on
+ * `departure_window`, and the request comes back `no_options`.
+ *
+ * `pnpm test` and `pnpm booking:dry-run` both build their window from
+ * `now + 45 days`, so for the forty minutes between 23:20Z and midnight UTC the
+ * escalation scenario could not be reached and eight tests failed — and passed
+ * every other hour, which is how it survived twenty-five steps. **A replay that
+ * only works at certain times of day is not a replay**, and a suite whose colour
+ * depends on when it runs is worse than one that is red.
+ *
+ * The correction is another whole day, because whole days is the property the
+ * shifting exists to preserve. `recorded.test.ts` pins the clock across that
+ * hour, since a test that read the wall clock would reproduce this about 3% of
+ * the time.
+ */
+function rebaseIntoWindow(
+  raw: DuffelOffer,
+  constraints: { earliestDeparture: Date },
+  expiresAt: Date,
+): DuffelOffer {
+  const shifted = rebase(raw, constraints.earliestDeparture, expiresAt);
+  const departs = normalizeOffers([shifted])[0]?.slices[0]?.segments[0]?.departsAt;
+  if (departs && departs.getTime() < constraints.earliestDeparture.getTime()) {
+    return rebase(raw, new Date(constraints.earliestDeparture.getTime() + DAY_MS), expiresAt);
+  }
+  return shifted;
+}
+
 export type RecordedProviderOptions = {
   /** Recorded wire payloads to replay. Defaults to the Duffel v2 fixtures. */
   payloads?: DuffelOffer[];
@@ -129,9 +169,8 @@ export class RecordedFlightProvider implements FlightProvider {
     });
 
     return {
-      offers: normalizeOffers(
-        matching.map((raw) => rebase(raw, constraints.earliestDeparture, expiresAt)),
-      ).map((offer) => ({ ...offer, provider: this.name })),
+      offers: normalizeOffers(matching.map((raw) => rebaseIntoWindow(raw, constraints, expiresAt)))
+        .map((offer) => ({ ...offer, provider: this.name })),
       searchId: `rec_srh_${searchedAt.getTime()}`,
       searchedAt,
     };
