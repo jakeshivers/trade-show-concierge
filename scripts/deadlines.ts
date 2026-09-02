@@ -19,10 +19,24 @@ import {
   type AlertableDeadline,
 } from '../src/lib/deadlines/alerts';
 import { sweepDeadlineAlerts } from '../src/lib/deadlines/store';
+import { zonedDateInput } from '../src/lib/datetime/zoned';
 
 const db = getDb();
 const usd = (c: number | null | undefined) => (c == null ? '—' : `$${(c / 100).toFixed(2)}`);
-const day = (d: Date) => d.toISOString().slice(0, 10);
+/**
+ * A deadline's date, in the zone the deadline is *kept* in.
+ *
+ * This was `d.toISOString().slice(0, 10)` for eleven steps, which is the exact
+ * ground rule CLAUDE.md names — and it was invisible the whole time because every
+ * seeded deadline had a daytime hour, so UTC and the show's calendar agreed.
+ * Step 22 made it visible in a minute: an extracted deadline whose manual printed
+ * no time is filed at 23:59 local, and 23:59 in Chicago is tomorrow in UTC, so
+ * the CLI reported every one of them a day late. A register that moves a date by
+ * a day is the failure the §5a engine exists to prevent, arriving through the
+ * tool built to inspect it. The view layer had four copies of this same bug and
+ * `scripts/` had a fifth, where nothing was watching.
+ */
+const day = (d: Date, timeZone: string) => zonedDateInput(d, timeZone);
 
 async function theOrg() {
   const org = await db.query.organizations.findFirst();
@@ -70,7 +84,7 @@ async function overview(now: Date) {
             ? 'open'
             : 'unconfirmed';
     console.log(
-      `  ${day(d.dueAt)}   ${show.name.slice(0, 20).padEnd(20)} ${d.title.slice(0, 35).padEnd(35)} ` +
+      `  ${day(d.dueAt, show.timezone)}   ${show.name.slice(0, 20).padEnd(20)} ${d.title.slice(0, 35).padEnd(35)} ` +
         `${usd(d.penaltyEstimateCents).padStart(9)}  ${(owner?.fullName ?? '—').padEnd(12)} ${state}`,
     );
   }

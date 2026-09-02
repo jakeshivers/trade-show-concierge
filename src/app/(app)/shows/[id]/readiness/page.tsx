@@ -18,6 +18,10 @@ import {
 import { loadShow } from '../detail';
 import { AddTaskForm, EditTaskForm, StatusControl, TemplateForm } from './forms';
 import { AddDeadlineForm, DeadlineRow } from './deadline-forms';
+import { ExtractionHistory, ReadManualForm } from './manual-forms';
+import { canExtractManual } from '@/lib/manual/access';
+import { extractorIsConfigured } from '@/lib/manual/provider';
+import { listExtractions } from '@/lib/manual/store';
 
 /**
  * Readiness — the checklist, writable as of step 10, and the deadline register.
@@ -39,9 +43,10 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
   const now = new Date();
-  const [checklist, register] = await Promise.all([
+  const [checklist, register, extractions] = await Promise.all([
     getChecklist(actor, id, now),
     getRegister(actor, id, now),
+    listExtractions(actor, id),
   ]);
   const { show } = detail;
   const { readiness, entries, may, people } = checklist;
@@ -198,6 +203,28 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                     </p>
                   )}
 
+                  {/*
+                    The evidence, on the row, next to the control that confirms
+                    it. Confirming is what promotes this date into a figure the
+                    engine quotes in dollars, and a person can only confirm
+                    against something — so the page and the quote are here rather
+                    than a screen away. Both were checked against text we
+                    extracted before the row existed; a quote that was not on the
+                    page it claimed never became a row at all.
+                  */}
+                  {d.extractedFromDocument && d.sourceSnippet && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      <span className="font-medium">Read from p{d.sourcePage}:</span>{' '}
+                      <q className="italic">{d.sourceSnippet}</q>
+                    </p>
+                  )}
+                  {d.dueTimeAssumed && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      The manual printed no time of day, so this is filed at end of day. Set
+                      the time before confirming — a warehouse that shuts at 4:00pm and a
+                      register that says 5pm differ by a drayage charge.
+                    </p>
+                  )}
                   {entry.pending && (
                     <p className="mt-1 text-xs text-text-muted">
                       <span className="font-medium">Alert:</span> {entry.pending.title} — to{' '}
@@ -218,6 +245,19 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
               );
             })}
           </ul>
+        )}
+
+        {canExtractManual(actor) && (
+          <div className="mt-4 border-t border-border pt-4">
+            <h3 className="text-sm font-medium">Read the exhibitor service manual</h3>
+            <p className="mt-1 mb-3 text-xs text-text-muted">
+              Every deadline it finds arrives <strong>unconfirmed</strong>, which is not a
+              formality: until somebody checks a row against the page it came from, the engine
+              chases it as a <em>date</em> and never quotes its penalty as an amount.
+            </p>
+            <ReadManualForm showId={id} configured={extractorIsConfigured()} />
+            <ExtractionHistory runs={extractions} />
+          </div>
         )}
 
         {register.may.edit ? (

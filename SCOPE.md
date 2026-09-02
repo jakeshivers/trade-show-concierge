@@ -444,6 +444,76 @@ anchor verifier, the candidate planner and the confirmation gate — and its hea
 `duffel/fixtures.ts`'s own words that it proves internal consistency and structurally cannot
 catch a layout the real manuals use and ours does not.
 
+**Corrections from building it (step 22).** The two risks above were settled before any
+code was written and both held. Six more turned up in the writing, and the first is the one
+that changes the shape of the feature.
+
+1. **An anchored deadline does not anchor its penalty, and the penalty is the half that
+   becomes a bill.** The anchor check proves the *date* was read off the page. It proves
+   nothing about a dollar figure quoted beside it — a model can reproduce a real sentence
+   perfectly and attach an amount that is nowhere in the document, and the snippet still
+   verifies. §5a's whole thesis is that "$2,800 surcharge if missed" gets acted on where a
+   date does not, so that is exactly the field that must not be inventable. The amount now
+   has to appear **inside the verified snippet**, compared on digits so "$3,125.00" and
+   "3125.00" are one claim. When it does not, the figure is dropped and `penaltyNote`
+   survives: "25–40% surcharge" is a true thing the manual said, and a dollar amount nobody
+   printed is a fabricated bill with a citation attached, which is worse than one without.
+2. **A time of day is never invented, and correction 1 of step 11 inverts here.** That
+   correction made a local time mandatory on every row, because a warehouse closing at
+   4:00pm rounded to 5pm is a drayage penalty. It was a rule about not *rounding a printed
+   hour*, and applied naively to extraction it does the opposite: most manuals print no hour
+   at all, so a helpful default would file an assumption in precisely the column the rule
+   exists to protect. An extracted row with no printed time is created at end of day and
+   **flagged**, alerts normally as a date, and **cannot be confirmed** until somebody sets
+   the hour — reading the hour off the manual is part of reading the deadline off the
+   manual. Editing the row is what clears the flag, because typing a time is a person
+   deciding what the hour is whether or not they changed it.
+3. **The seed cannot demonstrate this feature, and must not — the first step where that is
+   true.** Every step since 8 has built its screens' contents by running the real stores, and
+   §9 requires `pnpm db:reset && pnpm test` to work with zero keys. Those two cannot both
+   hold here: extraction needs a key, and the alternative — inserting extracted-looking rows
+   with hand-written snippets — would file deadlines claiming to have been read off a
+   document nothing has read, on the screen where somebody confirms them into quoted
+   penalties. That is the same argument that leaves this the one integration with **no
+   `recorded` provider**. So a fresh workspace's register is empty of extracted rows and
+   `pnpm manual <show id> <file.pdf>` is how it is shown working.
+4. **A deduplicated reading still counts as read, and only the probe found that.** The
+   coverage sweep asks "did the extractor account for this date", and the first version
+   scored only rows that survived deduplication. A manual prints its cutoffs in a summary
+   table and again in the section they belong to, `candidates.ts` correctly collapses the
+   second, and every repeated deadline therefore appeared on the unclaimed list as a
+   possible miss. An arbiter that cries wolf on a well-organised document is one nobody
+   reads, which is the single failure an arbiter cannot have. No test caught it because the
+   tests were written to the rule; running `pnpm manual:probe` and reading the output caught
+   it in one line, which is what step 17 found with `onConflictDoNothing` and step 19 with
+   `SOURCE_LABEL`.
+5. **A wrong kind is corrected rather than rejected.** The taxonomy is ours, so a misfiled
+   row is a labelling mistake and discarding a real February cutoff over it would be trading
+   a date for a category. It lands as `other` with the model's word recorded beside it. The
+   opposite call is right for a date that will not parse, because there is nothing to
+   recover.
+6. **A test that asserts a property of the seed by reading every row stops being true the
+   moment somebody uses the product.** `tests/foundation.test.ts` required every
+   `advance_order` deadline to carry a dollar figure — correct about `scripts/seed.ts`, and
+   it queried the whole table. The first extracted deadline broke it, legitimately: a manual
+   that says "surcharged 30%" printed a percentage, and correction 1 is why no amount was
+   computed from it. The assertion is scoped to hand-entered rows now, which is what it
+   always meant.
+
+**One repair, and it is this document's own ground rule.** `scripts/deadlines.ts` rendered
+due dates with `toISOString().slice(0, 10)` — the exact call the datetime rule names — and
+had done since step 11. It was invisible for eleven steps because every seeded deadline
+carries a daytime hour, so UTC and the show's calendar agreed. An extracted deadline filed
+at 23:59 local is tomorrow in UTC, so the register printed **every one of them a day late**:
+a register that moves a date by a day is the failure this engine exists to prevent, arriving
+through the tool built to inspect it. The UI rework found four copies of this in `src/app`;
+this was a fifth, in `scripts/`, where nothing was watching. The remaining
+`toISOString().slice(0, 10)` calls in `scripts/` are on **date-only columns** — a credit's
+`expiresOn`, a lead's capture day — where UTC midnight is the stored value and the call is
+correct; `scripts/leads.ts` is the one arguable case left, and it is left alone deliberately
+because fixing it requires choosing *whose* zone a lead was captured in, which belongs to
+whoever owns §5j rather than to this step.
+
 ### 5b. Unused ticket credit recovery
 
 **5–11% of corporate air spend is forfeited every year in expired flight credits**, and
@@ -2259,13 +2329,19 @@ invert phases A and C.
       the next `restrict` FK is added. It had been broken since step 1 and was invisible
       because `pnpm db:reset` deletes `.pglite` first, so the statement only ever ran against
       an empty database in the path the docs recommend.
-- [ ] **22.** **LLM deadline extraction** (§5a's post-v1 half). Read an exhibitor service
+- [x] **22.** **LLM deadline extraction** (§5a's post-v1 half). Read an exhibitor service
       manual PDF and propose register rows a human confirms. The two risks were settled
       before any code was written and are recorded at the end of §5a: `unpdf` is the parser
       (MIT, zero deps, per-page text), the model is sent **text we extracted rather than the
       document**, so every candidate's snippet is checkable against a page we hold, and
       `pnpm manual:probe` plays `pnpm duffel:capture`'s part by reporting what a
       deliberately stupid date sweep found that the extractor did not claim.
+      **Shipped**, and it is the first integration with **no `recorded` provider and no
+      seeded demonstration** — both refused for the same reason, that a replayed extraction
+      is an assertion about a document nothing read. Six further corrections and one repair
+      are at the end of §5a; the sharpest is that an anchored deadline does not anchor its
+      *penalty*, so an amount that is not printed inside the verified snippet is dropped
+      while the manual's own words about it survive.
 - [ ] **23.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
       share links · room-block optimizer · gamification

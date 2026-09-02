@@ -1505,6 +1505,61 @@ export const bookingControls = pgTable(
  * `penaltyEstimateCents` is what makes this a decision rather than a nag.
  * See SCOPE.md §5a.
  */
+/**
+ * One reading of one exhibitor service manual. Append-only, and it keeps every
+ * refusal.
+ *
+ * Same shape and the same reason as `lead_imports`: **an extraction that cannot
+ * account for what it read reports a smaller register with exactly the
+ * confidence of a complete one.** `proposed` is what the model offered,
+ * `accepted + rejected + duplicates` always equals it, and `problems` keeps each
+ * rejection with the page it was on and the reason — never summarized to a count.
+ *
+ * The row is written even when nothing was accepted, because "I uploaded the
+ * manual and nothing happened" and "the manual was read and held no deadlines we
+ * could verify" are different facts and only one of them is a problem with the
+ * document.
+ *
+ * `unreadablePages` is deliberately not folded into a coverage percentage. A
+ * scanned page is not a page with no deadlines on it; it is a page nobody has
+ * read, and it is the one thing here that a person can act on immediately.
+ */
+export const manualExtractions = pgTable(
+  'manual_extractions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    extractedById: uuid('extracted_by_id').references(() => users.id, { onDelete: 'set null' }),
+    filename: text('filename').notNull(),
+    /** Bytes, so an obviously truncated upload is visible after the fact. */
+    fileBytes: integer('file_bytes').notNull().default(0),
+    pageCount: integer('page_count').notNull().default(0),
+    /** Pages with no text layer. Not read, which is not the same as empty. */
+    unreadablePages: jsonb('unreadable_pages').$type<number[]>(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    proposed: integer('proposed').notNull().default(0),
+    accepted: integer('accepted').notNull().default(0),
+    rejected: integer('rejected').notNull().default(0),
+    duplicates: integer('duplicates').notNull().default(0),
+    /**
+     * True when the model ran out of output room. A half-read manual yields
+     * fewer deadlines with the confidence of a full read, so this is carried on
+     * the record rather than inferred later from a suspiciously round number.
+     */
+    truncated: boolean('truncated').notNull().default(false),
+    /** Every rejection, with the page it was on. Never summarized away. */
+    problems: jsonb('problems').$type<{ page: number; title: string; reason: string; detail: string }[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('manual_extractions_show_idx').on(t.showId, t.createdAt)],
+);
+
 export const showDeadlines = pgTable(
   'show_deadlines',
   {
@@ -1526,6 +1581,33 @@ export const showDeadlines = pgTable(
     sourceUrl: text('source_url'),
     // Set when extracted from a manual PDF; a human must confirm before it alerts.
     extractedFromDocument: boolean('extracted_from_document').notNull().default(false),
+    /** Which run proposed it. Null for every hand-typed and derived row. */
+    extractionId: uuid('extraction_id').references(() => manualExtractions.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * Where in the document this was read, and the words it was read from.
+     *
+     * These two are what make confirming an extracted row mean anything. A
+     * person cannot confirm a date against a model's assertion that it read one;
+     * they confirm it against a page number and a quote, and the quote was
+     * checked against text *we* extracted before this row existed
+     * (`lib/manual/anchor.ts`). A snippet that did not occur on the page it
+     * claimed never became a row at all.
+     */
+    sourcePage: integer('source_page'),
+    sourceSnippet: text('source_snippet'),
+    /**
+     * True when the manual printed no time of day and 23:59 was filled in.
+     *
+     * §5a requires a time on every row because a 4:00pm warehouse cutoff rounded
+     * to 5pm is a drayage penalty — a rule about not *rounding* a printed hour.
+     * Most manuals print no hour at all, so an extracted row would otherwise file
+     * an assumption in exactly the column that rule protects. Confirmation is
+     * refused while this is set: reading the hour off the manual is part of
+     * reading the deadline off the manual.
+     */
+    dueTimeAssumed: boolean('due_time_assumed').notNull().default(false),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
     /**
@@ -2762,6 +2844,16 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
   show: one(shows, { fields: [meetings.showId], references: [shows.id] }),
   owner: one(users, { fields: [meetings.ownerId], references: [users.id] }),
   lead: one(leads, { fields: [meetings.leadId], references: [leads.id] }),
+}));
+
+export const manualExtractionsRelations = relations(manualExtractions, ({ one, many }) => ({
+  org: one(organizations, { fields: [manualExtractions.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [manualExtractions.showId], references: [shows.id] }),
+  extractedBy: one(users, {
+    fields: [manualExtractions.extractedById],
+    references: [users.id],
+  }),
+  deadlines: many(showDeadlines),
 }));
 
 export const leadImportsRelations = relations(leadImports, ({ one, many }) => ({

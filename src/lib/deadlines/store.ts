@@ -207,6 +207,9 @@ export async function editDeadline(
       penaltyNote: valid.penaltyNote,
       ownerId: valid.ownerId,
       sourceUrl: valid.sourceUrl,
+      // Typing a time is a person deciding what the hour is, whether or not they
+      // changed it. That is precisely what the flag was waiting for.
+      dueTimeAssumed: false,
       ...(moved ? { confirmedAt: null, confirmedById: null } : {}),
       updatedAt: now,
     })
@@ -274,6 +277,23 @@ export async function setDeadlineConfirmed(
     );
   }
   const { deadline } = await requireDeadline(actor, deadlineId, db);
+
+  // An extracted row whose manual printed no time of day was filed at 23:59 and
+  // flagged. Confirming it would assert that end-of-day was read off the
+  // document, when what was actually read was a date — and the hour is the half
+  // §5a made mandatory, because a warehouse that shuts at 4:00pm and a register
+  // that says 5pm differ by a drayage penalty. So the hour has to be looked at
+  // before the row can be promoted into a figure the engine quotes. Editing the
+  // deadline is what clears the flag, and the edit form says which time came from
+  // the manual and which did not.
+  if (confirmed && deadline.dueTimeAssumed) {
+    throw new DeadlineError(
+      'This deadline was read from the manual as a date with no time of day, so it was filed ' +
+        'at 23:59. Set the time — from the manual if it prints one, or end of day deliberately ' +
+        'if it does not — and then confirm it. Confirming is what lets the engine quote this ' +
+        'row’s penalty, and an hour on this register is a drayage charge.',
+    );
+  }
 
   await db
     .update(s.showDeadlines)

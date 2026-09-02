@@ -23,6 +23,8 @@
     "cost": "tsx scripts/cost.ts",
     "leads": "tsx scripts/leads.ts",
     "day-of": "tsx scripts/day-of.ts",
+    "manual": "dotenv -e .env.local -- tsx scripts/manual.ts",
+    "manual:probe": "dotenv -e .env.local -- tsx scripts/manual.ts --probe",
     "nightly": "dotenv -e .env.local -- tsx scripts/nightly.ts",
     "roi": "dotenv -e .env.local -- tsx scripts/roi.ts",
     "assistant": "dotenv -e .env.local -- tsx scripts/assistant.ts",
@@ -48,6 +50,7 @@
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
+    "unpdf": "^1.8.1",
     "zod": "^4.5.4"
   },
   "devDependencies": {

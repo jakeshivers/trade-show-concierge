@@ -42,7 +42,8 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 ## Where we are
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
-has started. Step 21 is **half done and marked `[~]` in §10**: the transport and the
+has started. **Step 22 (LLM deadline extraction) is done** — §5a's post-v1 half, and the
+first feature here that the seed deliberately cannot demonstrate. Step 21 is **half done and marked `[~]` in §10**: the transport and the
 scheduler shipped, hosting and the SSO rollout did not and cannot here — both need a cloud
 account or a real IdP, and §9's ground rule forbids wiring one unasked.
 
@@ -87,7 +88,7 @@ Slack adapter behind the usual interface, a planner that refuses five different 
 it interrupts anybody, a zero-key transport that composes the real message and delivers it
 to nobody rather than pretending, and a job whose *absence* is now a thing the alerts page
 can say out loud.
-932 tests, no keys required.
+957 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -112,6 +113,106 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 22 added, and where:** `src/lib/manual/` and
+`src/lib/integrations/extract/` — LLM deadline extraction, §5a's post-v1 half and the
+missing half of this product's own #1 feature. The two risks `CLAUDE.md` flagged as
+decide-first were settled and committed **before any code was written**, and both held;
+they are recorded at the end of `SCOPE.md` §5a along with the six corrections that turned
+up afterwards.
+
+`pdf.ts` is the only file in this product that touches a PDF. It reads a document into
+**numbered pages of plain text** and does nothing else, and that narrowness is the design:
+the model is sent text *we* extracted and never the document, because §5a's rule is that a
+human confirms every extracted deadline and **a person can only confirm against something**.
+Had the PDF gone to the model, its page-and-quote citation would be model output —
+indistinguishable on screen from a real one, and confirming against a hallucinated quote
+*launders* a guess into a figure the engine quotes as established, which is exactly what
+"moving a confirmed date withdraws the confirmation" exists to prevent. `anchor.ts` is
+therefore the file that makes the feature safe to confirm at all: a snippet either occurs on
+the page it cites or the deadline never becomes a row, `wrong_page` is kept apart from
+`not_found`, and the match is on normalized whitespace and never fuzzy. `candidates.ts` is
+the whole argument — six refusals, and **accepted + rejected + duplicate always equals what
+came in** (`leads/parse.ts`'s rule). `coverage.ts` is the arbiter and is deliberately
+stupid. `store.ts` writes the run before it writes any deadline. `access.ts` deliberately
+does *not* get the anybody-can-do-it split, for two reasons at once.
+
+`integrations/extract/types.ts` is the seventh integration and is a **new interface rather
+than a widened `AssistantModel`**: it performs one exchange with a document and **no tools
+at all**, because folding it into the assistant's interface would put a tool list within
+reach of a code path whose input is a file from outside the company. `anthropic/client.ts`
+uses structured output (`output_config.format`) rather than a tool, for the same reason, and
+like the assistant's adapter has **no `wire.ts` and no invented fixtures** — the vendor ships
+the types. Unlike every other adapter here it **has been run against a live key**, which is
+why step 22 was picked over Slack, SSO, hosting, AeroAPI and EasyPost.
+
+Schema: new append-only **`manual_extractions`** (`lead_imports`' shape and its reason —
+proposed, accepted, rejected, duplicates, every rejection with its page, and `truncated`
+because a half-read manual reports fewer deadlines with the confidence of a full one), and
+`show_deadlines` gained `extraction_id`, `source_page`, `source_snippet` and
+`due_time_assumed`. Screens: the readiness tab grew a **Read the exhibitor service manual**
+card that leads with the refusals rather than the count, and every extracted row now renders
+its page and its verbatim quote **next to the control that confirms it**. `next.config.ts`
+raises the Server Action body limit to match `MAX_MANUAL_BYTES`, so the refusal comes from
+the store with a sentence rather than from the framework with a body-size error.
+`pnpm manual <show id> <file.pdf>` is the engine without a screen and
+`pnpm manual:probe <file.pdf> --opens …` is the capture-equivalent. **The seed deliberately
+does not extract anything** — see correction 3.
+
+**The six corrections step 22 turned up, and one repair:**
+
+1. **An anchored deadline does not anchor its penalty, and the penalty is the half that
+   becomes a bill.** The anchor proves the *date* was read off the page and proves nothing
+   about a figure quoted beside it: a model can reproduce a real sentence perfectly and
+   attach an amount that is nowhere in the document, and the snippet still verifies. §5a's
+   thesis is that "$2,800 surcharge if missed" gets acted on where a date does not, so that
+   is precisely the field that must not be inventable. An amount now has to appear **inside
+   the verified snippet**, compared on digits so "$3,125.00" and "3125.00" are one claim, and
+   when it does not the figure is dropped while `penaltyNote` survives — "25–40% surcharge"
+   is a true thing the manual said, and a dollar amount nobody printed is a fabricated bill
+   *with a citation attached*, which is worse than one without.
+2. **A time of day is never invented, and step 11's rule inverts.** That step made a local
+   time mandatory because a warehouse closing at 4:00pm rounded to 5pm is a drayage penalty —
+   a rule about not *rounding a printed hour*. Most manuals print no hour at all, so applied
+   naively it files an assumption in the exact column it exists to protect. An extracted row
+   with no printed time is created at end of day, **flagged**, alerts normally as a date, and
+   **cannot be confirmed** until somebody sets the hour. Editing clears the flag, because
+   typing a time is a person deciding what the hour is whether or not they changed it.
+3. **The seed cannot demonstrate this feature, and must not — the first step where that is
+   true.** Every step since 8 built its screens' contents through the real stores, and §9
+   requires `pnpm db:reset && pnpm test` to work with zero keys. Both cannot hold here:
+   extraction needs a key, and the alternative — seeding extracted-looking rows with
+   hand-written snippets — would file deadlines claiming to have been read off a document
+   nothing read, on the screen where somebody confirms them into quoted penalties. Same
+   argument that leaves this the one integration with **no `recorded` provider**.
+4. **A deduplicated reading still counts as read, and only the probe found it.** The sweep
+   asks "did the extractor *see* this date", and the first version scored only surviving
+   rows — so every cutoff a well-organised manual prints twice appeared on the unclaimed list
+   as a possible miss. An arbiter that cries wolf is the one failure an arbiter cannot have.
+   No test caught it because the tests were written to the rule; reading `pnpm manual:probe`
+   output caught it in one line, which is how step 17 found `onConflictDoNothing` and step 19
+   found `SOURCE_LABEL`.
+5. **A wrong kind is corrected rather than rejected.** The taxonomy is ours, so a misfiled
+   row is a labelling mistake and discarding a real February cutoff over it trades a date for
+   a category. It lands as `other` with the model's word recorded. The opposite call is right
+   for a date that will not parse, because there is nothing there to recover.
+6. **A test that asserts a seed property by reading every row stops being true the moment
+   somebody uses the product.** `tests/foundation.test.ts` required every `advance_order`
+   deadline to carry a dollar figure — correct about `scripts/seed.ts`, and it queried the
+   whole table. The first extracted deadline broke it legitimately, by correction 1. It is
+   scoped to hand-entered rows now, which is what it always meant.
+
+**The repair, and it is this file's own ground rule.** `scripts/deadlines.ts` rendered due
+dates with `toISOString().slice(0, 10)` and had done since step 11. Invisible for eleven
+steps because every seeded deadline carries a daytime hour, so UTC and the show's calendar
+agreed — and visible within a minute of the first extracted deadline, which is filed at
+23:59 local and is therefore *tomorrow* in UTC. The register printed every one of them **a
+day late**: a register that moves a date by a day is the failure the §5a engine exists to
+prevent, arriving through the tool built to inspect it. The UI rework found four copies of
+this in `src/app`; this was a fifth, in `scripts/`, where nothing was watching. The other
+`toISOString().slice(0, 10)` calls under `scripts/` are on **date-only columns** and are
+correct; `scripts/leads.ts` is the one arguable case left and is deliberately untouched,
+because fixing it means choosing *whose* zone a lead was captured in.
 
 **What step 21 added, and where:** `src/lib/integrations/notify/` — the sixth integration
 behind the usual interface, and the first that carries something **out** of the workspace
@@ -1134,36 +1235,36 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next: step 22, and the pick is LLM deadline extraction** (`SCOPE.md` §5a's post-v1
-addition, listed last in §10.22). Recommended 2026-09-01 and not started. Three reasons, in
-order:
+**Next: step 23, and the pick is the drayage estimator.** `SCOPE.md` §10.23 lists it in the
+backlog beside duty of care, sponsorship campaigns, the public API, impersonation,
+multi-workspace, custom fields, share links, the room-block optimizer and gamification. Three
+reasons, in order:
 
-- **It is the missing half of this product's own #1 feature.** `RESEARCH.md` §3a ranks the
-  service-manual deadline engine "highest ROI feature found — $2.5–3.5k/show, unique", and
-  its table calls LLM extraction the v2 add-on. Today somebody types that register by hand,
-  which is precisely the tedious work §1's first job exists to kill.
-- **Everything it needs is already built and enforced, not merely planned.**
-  `show_deadlines.extracted_from_document` and `confirmed_at` are live columns; the rule
-  that nothing extracted is quoted in dollars until a human confirms is enforced by step
-  11's engine, which chases an unconfirmed deadline as a **date** and never as an amount;
-  the register is writable and confirmation is already a first-class act; and §6a's boundary
-  was exercised at step 15 — `llm/types.ts` performs one exchange and runs no loop.
-- **It is the only substantial item verifiable end to end on localhost.** There is a working
-  `ANTHROPIC_API_KEY`, so unlike Slack, SSO, hosting, AeroAPI and EasyPost this one does not
-  ship written-to-the-docs-and-hoped.
+- **It is the largest silent line in a figure this product already prints.** `/cost` leads
+  with what it is missing, and drayage — freight handled between the dock and the booth — is
+  routinely the biggest cost on a show that nobody can state in advance. Every input it needs
+  is already modelled: step 14 holds the crates with their weights and pieces, step 16 holds
+  what is inside them, and step 17 holds the rollup that would report it.
+- **It is pure, and it needs no keys and no accounts.** Same shape as `policy/`,
+  `readiness/score.ts` and `cost/rollup.ts`: a deterministic model with its refusals in it,
+  testable end to end on a clean clone. After a step whose central risk was an unverifiable
+  external answer, that is worth something on its own.
+- **Its hard part is a refusal this codebase already knows how to make.** A drayage estimate
+  is built from a rate card nobody has entered, so the first thing it has to do is decline to
+  print a number — `Quotable` from `roi/rollup.ts` and the *at least* rule from
+  `cost/rollup.ts` are the shapes, and getting a plausible-looking invented figure into the
+  true-cost headline is exactly the failure §5a spends its whole length arguing against.
 
-**The two risks to settle before writing code, because both are the closed loop step 12.5
-named.** Nothing in `package.json` reads a PDF, so this needs the first parsing dependency
-in the project; and a real exhibitor manual is somebody's copyrighted document, so the test
-corpus has to be **synthetic** — which means the suite proves internal consistency and
-structurally cannot catch a layout the real manuals use and ours does not. Decide what plays
-the part `pnpm duffel:capture` plays elsewhere *before* building, not after.
+**The alternative, if that is the wrong shape: HubSpot** (§11.6). A free developer tier makes
+it the only unverified adapter that could realistically get the capture script Duffel and
+Salesforce have — closing a known gap rather than opening a new one. Every method throws
+today, deliberately, so nothing regresses while it waits.
 
-Two alternatives, if that is the wrong shape: the **drayage estimator** (pure, no keys, and
-it feeds the true-cost rollup's biggest silent line — smaller and less differentiating), or
-**HubSpot** (§11.6: a free developer tier makes it the only unverified adapter that could
-realistically get the capture script Duffel and Salesforce have — closing a known gap rather
-than opening a new one).
+**And one thing step 22 leaves open rather than done:** the extractor has never read a real
+exhibitor manual. Everything structural about it is verified — the anchor, the accounting,
+the refusals — and **recall is not**, by construction. The first time somebody points
+`pnpm manual:probe` at a real manual is worth treating as the deliverable it is: read the
+unclaimed list, and expect the prompt to need work rather than the code.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on
@@ -1199,6 +1300,15 @@ deferral: `POST /api/cron/nightly` is a `for` loop over every org inside one HTT
 with `maxDuration = 300`. It degrades the wrong way — a slow org starves the ones after it
 and the response still says 200 for those that ran — so read that route before choosing a
 host, since a platform with a job queue makes the fix a fan-out.
+
+**Extraction from the manual PDF is built as of step 22**, and the sentence this file
+carried for twenty-one steps — that the columns exist and the rule is enforced but nothing
+writes them — is retired. What replaces it is narrower: the extractor has met a live key and
+works, and what is **unverified is recall against a layout nobody in this repo has seen**,
+because the only corpus here is synthetic and was written by whoever wrote the prompt.
+`pnpm manual:probe <file.pdf>` is what measures that, and it is the only capture script in
+this project whose output is meant to be *read* rather than asserted on: most lines on its
+unclaimed list are not deadlines, and the one that is, is a miss.
 
 **Deliberately not built, and visible as such:** the free-text request box §6a describes
 is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
@@ -1251,10 +1361,10 @@ against a live workspace**, like AeroAPI, EasyPost and Salesforce, and says so i
 header. **Nothing rebooks a cancelled flight**, and the alert says so
 rather than implying otherwise: the agent buys against a travel request and the ticket is
 already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
-later cannot erase it. **Extraction from the manual PDF is not built** — §5a's post-v1 LLM
-step — but the columns it writes (`extracted_from_document`, `confirmed_at`) and the rule
-it must obey (nothing extracted is quoted in dollars until a human confirms it) are both
-live and enforced by the engine today. **Checklist templates are code, not rows**: the library in
+later cannot erase it. **Extraction from the manual PDF is built** as of step 22, and the rule
+it had to obey — nothing extracted is quoted in dollars until a human confirms it — is
+enforced by the step 11 engine exactly as written, with no change to it: an extracted row
+arrives unconfirmed and is chased as a *date*. **Checklist templates are code, not rows**: the library in
 `src/lib/readiness/templates.ts` is versioned in git and an org-editable template builder
 is deliberately deferred until the standard list has been used and argued with, which the
 templates card says on the page. The nav still grows one entry per screen
@@ -1458,6 +1568,39 @@ silently. One key is now `AuthConfigError`.
 - **A deadline carries a time of day, read in the show's zone.** A task can be due "the
   4th" and land at 5pm local; a warehouse that closes at 4:00pm cannot, and the hour is a
   drayage penalty.
+- **The model is sent text we extracted, never the document.** §5a's confirmation gate is
+  the only thing between a guessed date and a quoted penalty, and a person can only confirm
+  against something. If the PDF went to the provider, its page-and-quote citation would be
+  model output — a hallucinated quote reads exactly like a real one, and confirming against
+  it *launders* the guess. So `manual/pdf.ts` reads the pages here, and every candidate's
+  snippet is checked against the page it cites before anybody sees it. A snippet that is not
+  there never becomes a row. `src/lib/manual/anchor.ts`.
+- **An anchored deadline does not anchor its penalty.** The anchor proves the date was read
+  off the page and says nothing about a figure quoted beside it — and the figure is the half
+  that becomes a bill. An amount must appear **inside the verified snippet** (compared on
+  digits, so "$3,125.00" and "3125.00" are one claim) or it is dropped while the manual's own
+  words survive. A dollar amount nobody printed, carrying a citation, is worse than one
+  without. `src/lib/manual/candidates.ts`.
+- **An extracted deadline's time of day is never invented, and it blocks confirmation.**
+  Step 11's rule was about not *rounding* a printed hour; most manuals print none, so a
+  default files an assumption in the column that rule protects. A row with no printed time is
+  end-of-day, flagged, alerts as a date, and cannot be confirmed until somebody sets the
+  hour — editing is what clears the flag, because typing a time is a person deciding what the
+  hour is whether or not they changed it.
+- **There is no replayed extractor and no seeded extraction, for one reason.** The other five
+  `recorded` providers replay a supplier's answer, and describing a shape asserts nothing. An
+  extraction is nothing *but* assertions about one document, landing where somebody confirms
+  them into quoted penalties. So `selectDeadlineExtractor` has no zero-key mode, and
+  `scripts/seed.ts` extracts nothing — the first feature here the seed cannot demonstrate,
+  and the alternative would have been hand-written snippets claiming to have been read off a
+  document nothing read.
+- **The coverage sweep is the arbiter and must stay stupid.** Fabrication is dead without any
+  corpus, because we hold the page text. A **miss** is what is left, it is silent, and no
+  synthetic corpus can catch it — the corpus and the prompt are written by the same person.
+  So `coverage.ts` is a high-recall, low-precision date regex that knows nothing about the
+  prompt and cannot be tuned into agreement, it reports mentions **with their line** so
+  triage is a glance, and a deduplicated reading counts as *read* — an arbiter that cries
+  wolf on a well-organised manual is one nobody reads.
 - **Marking a deadline "does not apply" is an edit, not a status.** It takes money out of
   the show's exposure, so it needs a written reason and the authority to change the plan —
   the same rule `skipped` needed, reached from an unrelated direction.
@@ -1982,6 +2125,11 @@ pnpm nightly          # the whole nightly job: sweep, erase what is overdue, car
 pnpm nightly --dry    # plan and compose; print every message verbatim, send and record nothing
 pnpm nightly --deliver  # the delivery pass only; run twice — the second carries nothing
 pnpm nightly --standing # when did the job last run, and does anything run it but you
+pnpm manual                    # which shows have had a manual read, and which never have
+pnpm manual <show id> <file.pdf>   # read a manual into that show's register, unconfirmed
+pnpm manual <show id>          # every reading of it, with what each one refused
+pnpm manual:probe <file.pdf> --opens YYYY-MM-DD   # the capture-equivalent: what a stupid
+                  # date sweep found in the document that the extractor did not claim
 pnpm day-of           # which show is on the floor, nearest to now first
 pnpm day-of <show id> # one show's snapshot, exactly as a device would hold it
 pnpm day-of <show id> --stale 90   # the same snapshot read later; watch the verdicts go
@@ -2115,6 +2263,22 @@ src/lib/shows/                the planning core — pure clone planner, pure int
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
                               built-in templates + idempotent apply planner, the edit
                               rules, who may edit vs. report, the pace model, the store
+src/lib/manual/               §5a's other half — pdf.ts (the only file here that touches a
+                              PDF; numbered pages, and why the model never gets the
+                              document), anchor.ts (a citation is checked against text we
+                              hold, or the deadline never exists), candidates.ts (six
+                              refusals, and every candidate accounted for), coverage.ts
+                              (the arbiter: a deliberately stupid date sweep that cannot be
+                              tuned into agreeing with us), access.ts, provider.ts (env →
+                              extractor, no fallback and no zero-key mode), store.ts,
+                              fixtures.ts (a synthetic manual, and a PDF writer, both
+                              proving only that our halves agree)
+src/lib/integrations/extract/ extractor interface with no tools at all + an Anthropic
+                              adapter using structured output — and deliberately **no
+                              `recorded` provider**, because a replayed extraction is an
+                              assertion about a document nothing has read
+src/app/(app)/shows/[id]/readiness/manual-forms.tsx  reading a manual, and the list of dates
+                              in it that nothing claimed
 src/lib/deadlines/            the §5a engine — alerts.ts (pure: thresholds, audience,
                               tense, dedupe-by-date, the one exposure model), edit.ts
                               (local time of day, the written reason), access.ts, store.ts
