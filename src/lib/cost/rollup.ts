@@ -49,6 +49,8 @@
  *    not do. So it is reported in days, outside the total, and says why.
  */
 
+import type { DrayageEstimate, Quotable } from '@/lib/drayage/estimate';
+
 export type CostCategory =
   | 'space'
   | 'services'
@@ -124,6 +126,29 @@ export type Coverage = {
   silent: CostCategory[];
 };
 
+/**
+ * The drayage estimate, **beside the total and never inside it**.
+ *
+ * `creditFundedCents` and `consumedCents` are already outside `totalCents`
+ * because they are real money in the wrong period. This is outside for a sharper
+ * reason: it is money **nobody has been billed**, and the one thing this page
+ * exists to refuse is a made-up number in the figure people quote. So it is
+ * reported, labelled, and never added.
+ *
+ * `billedCents` is what makes it worth keeping after the invoice lands. See
+ * `isDrayageCategory`.
+ */
+export type DrayageMemo = {
+  /** A figure, or the sentence saying why there is not one. Never a zero. */
+  estimate: Quotable;
+  /** Something was left out — an unweighed crate, an unrecorded packing. */
+  isFloor: boolean;
+  /** Whether the card has been checked against *this year's* manual. */
+  confirmed: boolean;
+  /** The contractor's actual bill, if it has been filed. Inside the total. */
+  billedCents: number | null;
+};
+
 export type ShowCost = {
   showId: string;
   showName: string;
@@ -147,6 +172,8 @@ export type ShowCost = {
   consumedCents: number;
   /** §11.8 is open, so this is a count of days and never a sum of money. */
   attendeeDays: number | null;
+  /** Outside `totalCents`, deliberately. See `DrayageMemo`. */
+  drayage: DrayageMemo;
   coverage: Coverage;
   isFloor: boolean;
 };
@@ -167,6 +194,12 @@ export type CostInputs = {
   enteredFlights: { priceCents: number | null }[];
   lodgings: { nightlyRateCents: number | null; nights: number | null; guests: number }[];
   shipments: { costCents: number | null; direction: string }[];
+  /**
+   * What `lib/drayage/estimate.ts` made of this show's freight, or null where
+   * nothing asked it. Passed in rather than computed here so the portfolio and
+   * the show's tab cannot produce two different figures — `store.ts`'s rule.
+   */
+  drayage: DrayageEstimate | null;
   /** What came off the shelf for this show, and what a unit costs. */
   collateral: { issued: number; unitCostCents: number | null }[];
   attendees: {
@@ -186,6 +219,21 @@ export type CostInputs = {
  * in `other` rather than being dropped. A cost line that silently discards rows
  * is worse than an untidy one.
  */
+/**
+ * Is this expense the general contractor's material-handling bill?
+ *
+ * Free text, like every other category here, so this matches rather than
+ * switches. It exists for one reason: once the real bill is filed, the estimate
+ * beside it stops being a prediction and becomes a **comparison**, and that is
+ * the most useful thing this feature produces. "Estimated $2,400, billed $3,900"
+ * is a question worth asking, and the answer is usually freight that went in
+ * pad-wrapped.
+ */
+export function isDrayageCategory(category: string): boolean {
+  const c = category.toLowerCase();
+  return c.includes('drayage') || c.includes('material handling');
+}
+
 export function bucketExpense(category: string): CostCategory {
   const c = category.toLowerCase();
   if (c.includes('space') || c.includes('booth fee') || c.includes('sponsor')) return 'space';
@@ -201,6 +249,7 @@ export function bucketExpense(category: string): CostCategory {
     return 'services';
   }
   if (c.includes('collateral') || c.includes('print') || c.includes('swag')) return 'collateral';
+  if (isDrayageCategory(c)) return 'shipping';
   if (c.includes('freight') || c.includes('ship')) return 'shipping';
   if (c.includes('hotel') || c.includes('lodging')) return 'lodging';
   if (c.includes('travel') || c.includes('flight') || c.includes('air')) return 'travel';
@@ -339,6 +388,20 @@ export function rollUpShowCost(input: CostInputs, asOf: Date = new Date()): Show
       count: unpricedCrates,
     });
   }
+  // The largest silent line there is, named on the line a reader is actually
+  // looking at. A memo underneath the total is not where somebody reading the
+  // shipping figure will find out that the contractor's charge — routinely more
+  // than the freight itself — is not in it.
+  if (input.shipments.length > 0 && input.drayage && !input.drayage.total.ok) {
+    shipping.gaps.push({
+      category: 'shipping',
+      kind: 'absent',
+      what:
+        'Drayage is not in this figure — the general contractor’s charge for moving freight ' +
+        'between the dock and the booth, which on most shows costs more than the freight did',
+      count: 1,
+    });
+  }
   // Only once the show is over. Before that a missing return crate is not
   // missing — nobody books the leg home in February — and §5g's own alert waits
   // for move-out for the same reason. A gap that fires on every future show is
@@ -393,6 +456,7 @@ export function rollUpShowCost(input: CostInputs, asOf: Date = new Date()): Show
   const ordered = CATEGORY_ORDER.map((c) => line(c));
   const totalCents = ordered.reduce((n, l) => n + l.cents, 0);
   const paidCents = ordered.reduce((n, l) => n + l.paidCents, 0);
+  const drayage = drayageMemo(input);
   const coverage = assessCoverage(ordered, input);
 
   return {
@@ -405,8 +469,48 @@ export function rollUpShowCost(input: CostInputs, asOf: Date = new Date()): Show
     creditFundedCents,
     consumedCents,
     attendeeDays,
+    drayage,
     coverage,
     isFloor: coverage.verdict !== 'complete',
+  };
+}
+
+/**
+ * The drayage line, as a memo rather than a number in the total.
+ *
+ * Two things fall out of putting it here rather than in the shipping line. The
+ * estimate never touches `totalCents`, which is the point. And when there is
+ * freight and no quotable estimate, the *shipping* line gains a gap — because
+ * the reader who needs to know that drayage is missing is looking at the
+ * shipping figure, not at a memo underneath it. §8a's rule that a silent line is
+ * not a zero, applied to the largest silent line there is.
+ */
+function drayageMemo(input: CostInputs): DrayageMemo {
+  const billed = input.expenses.filter((e) => isDrayageCategory(e.category));
+  const billedCents = billed.length
+    ? billed.reduce((n, e) => n + e.amountCents, 0)
+    : null;
+
+  if (!input.drayage) {
+    return {
+      estimate: {
+        ok: false,
+        reason:
+          'Drayage has not been estimated for this show. It is the general contractor’s ' +
+          'charge for moving freight between the dock and the booth, and on most shows it is ' +
+          'the largest cost nobody has a figure for.',
+      },
+      isFloor: false,
+      confirmed: false,
+      billedCents,
+    };
+  }
+
+  return {
+    estimate: input.drayage.total,
+    isFloor: input.drayage.isFloor,
+    confirmed: input.drayage.confirmed,
+    billedCents,
   };
 }
 

@@ -1356,6 +1356,97 @@ with nothing wrong looked identical on `/alerts`: no alerts, both.
 
 ---
 
+### 5n. Drayage — what an estimate of somebody else's invoice may claim (step 23)
+
+**Drayage is the largest silent line in §8a**, and closing it is the first thing this
+product does that predicts a bill rather than recording one.
+
+The carrier's freight charge gets a crate to a dock. Drayage — *material handling* — is
+everything after that: the general contractor takes it off the truck, moves it to the booth,
+removes and stores the empty, returns it at tear-down, and carries it out. It is billed by
+the contractor rather than the carrier, off a rate card published in that show's own
+exhibitor service manual, and on a medium booth it routinely costs **more than the freight
+did**. A show can carry six crates, every one with a carrier cost recorded on the row, and
+still be missing the biggest number in its shipping figure — and §8a's rule is that a silent
+line is not a zero.
+
+The charge is weight in **hundredweight**, per shipment:
+
+    billable pounds = max(actual, the card's minimum), rounded UP to the next 100
+    charge          = (billable ÷ 100) × the rate for that consignment
+
+with a surcharge for freight that is not crated, another for receiving outside straight
+time, different rates for the advance warehouse and for direct-to-show-site, and — on most
+cards — a **round trip** charged on the way in.
+
+**Six refusals, and the second is the one a reasonable implementation gets wrong silently
+and forever.**
+
+1. **No rate card, no number.** The rate is per show, per contractor, and lives in a PDF.
+   Without it the answer is a sentence rather than zero — a $0 drayage line on a show with
+   six crates reads as *drayage was free*, which is §5a's fabricated bill with the sign
+   flipped.
+2. **Rounding is per shipment and never in aggregate.** Two 150 lb crates are two shipments:
+   each takes the 200 lb minimum, so 400 lb is billable. Summing first gives 300 lb and bills
+   three hundredweight — **25% light**, on a figure nobody has an invoice to check it against
+   yet, and light is the direction §5j already named as the one nobody audits. There is
+   nothing about the wrong version that looks wrong.
+3. **A crate with no weight is not a weightless crate.** `weight_lb` is nullable and real
+   freight records are full of nulls. Reading one as zero deletes it from the estimate while
+   the estimate still reads complete. It is counted, named, and it makes the figure a floor.
+   `numeric` arrives from the driver as a string, so this survives or dies on one line —
+   `Number(null)` is 0.
+4. **A round-trip card is one charge, not two.** The outbound crate and the return crate are
+   both real rows. Estimating over both against a round-trip card doubles the largest line on
+   the show. Which way a card works is therefore **typed from the manual and never
+   defaulted**, because either guess is a 100% error — `drayage_rate_cards.basis` has no
+   database default and the form has no pre-selected option.
+5. **Uncrated is a surcharge, and `unknown` is not `crated`.** Loose, pad-wrapped or
+   shrink-wrapped freight is surcharged 25–35%, and nothing in this app had ever recorded
+   which a crate is. `shipments.handling` therefore has a real `unknown` value, the surcharge
+   is never applied to it, and the unknowns are named as a reason the figure is a floor. This
+   is the *honest* half of §5j's rule rather than a violation of it: that rule forbids
+   defaulting to a **substantive** value, and defaulting to "nobody has said" is what it asks
+   for. Separately, a card that states no special-handling rate has not told us the surcharge
+   is nil — an uncrated crate under a silent card is a gap, not a crate billed at par.
+6. **An estimate is not an invoice, and it never joins the total.** It sits beside it the way
+   `creditFundedCents` and `consumedCents` do, for a sharper version of their reason: those
+   are real money in the wrong period, this is money **nobody has been billed**. Once the
+   real bill is filed as an expense the estimate stays next to it, which is where the feature
+   earns its place — *"estimated $2,400, billed $3,900"* is a question worth asking, and the
+   answer is usually refusal 5.
+
+**Two further corrections from building it.**
+
+**A condition with no clock is not an alert, and this feature gets no engine.** The obvious
+eighth engine says *this show has freight and no rate card*, which is true, actionable and
+exactly the kind of thing the alerts feed exists for. It is still wrong. Every one of the
+seven engines fires on something that **changes with time** — a date approaching, a scan
+going quiet, a credit expiring, a lead passing its retention. "No rate card" is true the
+moment freight is recorded, stays true until somebody types one, and never escalates. An
+alert that is permanently true and never sharpens is a nag, and §5a's whole argument is that
+one of those teaches a team to close the next alert unread. The cost screen already says it,
+in the place where somebody is reading a shipping figure, and a second voice on a different
+schedule is §5e's room-block cutoff in another costume.
+
+**A crate count derived from what was priced reports a show with six crates as having none.**
+Found by reading `pnpm drayage` rather than by a test. With no rate card the estimator prices
+nothing, so a count taken from the priced rows was zero — and *a show with no freight* and *a
+show whose freight nobody can price* rendered identically, which is the exact misreading the
+whole feature exists to prevent. `considered` is carried on the estimate, and the accounting
+holds: `perShipment + coveredByRoundTrip + unweighed + unpriceable === considered`, always.
+§5j's import rule, one table over.
+
+**Where it is.** `lib/drayage/estimate.ts` is the whole model and is pure;
+`drayage_rate_cards` is one row per show and an upsert rather than a history, because a rate
+card is a transcription of a document rather than a decision somebody made — what is worth
+keeping is whether it was *checked*, which `confirmed_at` holds and which any edit withdraws,
+exactly as re-dating a deadline does. Setting the rates belongs to whoever runs the show;
+**saying how a crate is packed belongs to anybody**, because that is knowable only by
+somebody standing next to it in the warehouse at 6am — `canConfirmReceipt`'s rule, and a gate
+there would leave every row at `unknown` forever until the sentence stopped meaning anything.
+Reading the estimate inherits `canSeeCost` rather than choosing a new rule.
+
 ## 6. The booking agent
 
 The core loop: **user states constraints → agent finds an itinerary → policy engine
@@ -2342,9 +2433,15 @@ invert phases A and C.
       are at the end of §5a; the sharpest is that an anchored deadline does not anchor its
       *penalty*, so an amount that is not printed inside the verified snippet is dropped
       while the manual's own words about it survive.
-- [ ] **23.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
-      API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
-      share links · room-block optimizer · gamification
+- [x] **23.** **Drayage estimator** (§5n). The largest silent line in §8a, closed — and the
+      first thing this product predicts rather than records. Six refusals in a pure model,
+      of which the load-bearing one is that hundredweight rounds **per shipment**: summing
+      two 150 lb crates before rounding bills 25% light, in the flattering direction, with
+      nothing about the wrong answer that looks wrong. The estimate never joins the total.
+      No eighth alert engine, deliberately — a condition with no clock is a nag.
+- [ ] **24.** Backlog: duty of care · sponsorship campaigns · public API + Zapier ·
+      impersonation (§3 rules) · multi-workspace · custom fields · external share links ·
+      room-block optimizer · gamification
 
 ### A correction to §2 and §3
 

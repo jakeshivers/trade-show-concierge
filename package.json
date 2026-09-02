@@ -21,6 +21,7 @@
     "assets": "tsx scripts/assets.ts",
     "alerts": "dotenv -e .env.local -- tsx scripts/alerts.ts",
     "cost": "tsx scripts/cost.ts",
+    "drayage": "tsx scripts/drayage.ts",
     "leads": "tsx scripts/leads.ts",
     "day-of": "tsx scripts/day-of.ts",
     "manual": "dotenv -e .env.local -- tsx scripts/manual.ts",

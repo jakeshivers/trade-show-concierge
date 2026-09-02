@@ -1,6 +1,8 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
+import { estimateDrayage } from '@/lib/drayage/estimate';
+import { estimable } from '@/lib/drayage/store';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { NotFoundError } from '@/lib/shows/store';
 import { canSeeCost } from './access';
@@ -40,13 +42,24 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
       enteredFlights: [],
       lodgings: [],
       shipments: [],
+      drayage: null,
       collateral: [],
       attendees: [],
     });
   }
   if (ids.length === 0) return inputs;
 
-  const [expenses, bookings, flights, lodgings, guests, shipments, allocations, attendees] =
+  const [
+    expenses,
+    bookings,
+    flights,
+    lodgings,
+    guests,
+    shipments,
+    rateCards,
+    allocations,
+    attendees,
+  ] =
     await Promise.all([
       db.select().from(s.expenses).where(inArray(s.expenses.showId, ids)),
 
@@ -86,6 +99,13 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
         .where(inArray(s.lodgings.showId, ids)),
 
       db.select().from(s.shipments).where(inArray(s.shipments.showId, ids)),
+
+      // The drayage estimate is built here, off the shipment rows this query
+      // already returns, rather than by a second caller loading them again. Two
+      // code paths that each compute the largest line on a show is exactly how
+      // the portfolio and the show's own tab end up disagreeing — the reason
+      // this file loads everything at once in the first place.
+      db.select().from(s.drayageRateCards).where(inArray(s.drayageRateCards.showId, ids)),
 
       // Consumption comes off the append-only ledger, not off `quantity_allocated`
       // — promising stock is a claim and issuing it is a movement (§5h), and only
@@ -165,9 +185,38 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
       guests: guestCount.get(l.id) ?? 0,
     });
   }
+  const freightByShow = new Map<string, ReturnType<typeof estimable>[]>();
   for (const sh of shipments) {
     inputs.get(sh.showId)?.shipments.push({ costCents: sh.costCents, direction: sh.direction });
+    const list = freightByShow.get(sh.showId) ?? [];
+    list.push(estimable(sh));
+    freightByShow.set(sh.showId, list);
   }
+  // Every show gets a drayage estimate, including the ones with no card and the
+  // ones with no freight — `estimateDrayage` answers both with a sentence rather
+  // than a zero, and a null here would put that decision back in the rollup.
+  const cardByShow = new Map(rateCards.map((c) => [c.showId, c] as const));
+  for (const show of shows) {
+    const card = cardByShow.get(show.id);
+    const input = inputs.get(show.id);
+    if (input) {
+      input.drayage = estimateDrayage(
+        card
+          ? {
+              advanceCwtCents: card.advanceCwtCents,
+              showSiteCwtCents: card.showSiteCwtCents,
+              minimumLb: card.minimumLb,
+              basis: card.basis,
+              specialHandlingPct: card.specialHandlingPct,
+              overtimePct: card.overtimePct,
+              confirmedAt: card.confirmedAt,
+            }
+          : null,
+        freightByShow.get(show.id) ?? [],
+      );
+    }
+  }
+
   for (const a of allocations) {
     // `issued` is a negative delta and `returned` a positive one, so what the
     // show actually consumed is the negation of the sum — and an allocation

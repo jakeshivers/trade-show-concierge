@@ -42,7 +42,7 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 ## Where we are
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
-has started. **Step 22 (LLM deadline extraction) is done** — §5a's post-v1 half, and the
+has started. **Steps 22 (LLM deadline extraction) and 23 (the drayage estimator) are done** — §5a's post-v1 half, and the
 first feature here that the seed deliberately cannot demonstrate. Step 21 is **half done and marked `[~]` in §10**: the transport and the
 scheduler shipped, hosting and the SSO rollout did not and cannot here — both need a cloud
 account or a real IdP, and §9's ground rule forbids wiring one unasked.
@@ -88,7 +88,7 @@ Slack adapter behind the usual interface, a planner that refuses five different 
 it interrupts anybody, a zero-key transport that composes the real message and delivers it
 to nobody rather than pretending, and a job whose *absence* is now a thing the alerts page
 can say out loud.
-957 tests, no keys required.
+978 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -113,6 +113,82 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 23 added, and where:** `src/lib/drayage/` — the drayage estimator, §5n, and the
+first thing this product **predicts** rather than records. It closes the largest silent line
+in §8a: the carrier's freight charge gets a crate to a dock, and drayage is everything after
+that — off the truck, to the booth, empty stored, empty returned, out again — billed by the
+general contractor off a rate card in that show's own manual, and on a medium booth it costs
+more than the freight did.
+
+`estimate.ts` is pure and is the whole step: hundredweight, the card's minimum, and **six
+refusals**. `edit.ts` validates a card (rates through `money/decimal.ts`, a decimal-point
+slip caught, blank ≠ zero). `access.ts` puts the rates with whoever runs the show and the
+**packing of a crate in anybody's hands**. `store.ts` is the only file touching rows,
+org-scoped through the show, and loads the portfolio in a fixed number of queries the way
+`cost/store.ts` does — and for its reason, since both now compute the same figure.
+
+Schema: new **`drayage_rate_cards`** (one row per show, upsert rather than history — a rate
+card is a transcription of a document rather than a decision, so what is worth keeping is
+whether it was *checked*; `confirmed_at` holds that and any edit withdraws it, exactly as
+re-dating a deadline does) and **`shipments.handling`** (`crated` / `uncrated` / `unknown`).
+`basis` has **no database default and no pre-selected option in the form**. Cost: `CostInputs`
+gained `drayage`, `ShowCost` gained a `DrayageMemo` that sits **beside** the total, and the
+*shipping line* gained a gap when there is freight and no quotable estimate — because the
+person who needs to know drayage is missing is reading the shipping figure, not a memo under
+it. Screens: a **Drayage** card on the Logistics tab with the arithmetic showing, a packing
+control on every crate, and a fourth memo on the Cost tab and `/cost`. `pnpm drayage` /
+`pnpm drayage <show id>` is the model without a screen. The seed writes a confirmed card on
+Automate, an **unchecked** one on the live show, and deliberately leaves Sensors Converge
+with real freight and no card at all.
+
+**The six refusals, and the second is the one that matters:**
+
+1. **No rate card, no number.** A $0 drayage line on a show with six crates reads as
+   *drayage was free* — §5a's fabricated bill with the sign flipped.
+2. **Rounding is per shipment and never in aggregate.** Two 150 lb crates are two shipments;
+   each takes the 200 lb minimum, so 400 lb is billable. Summing first gives 300 lb and bills
+   three hundredweight — **25% light**, on a figure nobody has an invoice to check yet, in
+   the direction §5j already named as the one nobody audits. Nothing about the wrong version
+   looks wrong.
+3. **A crate with no weight is not a weightless crate.** `weight_lb` is nullable, `numeric`
+   arrives as a string, and `Number(null)` is 0 — so this refusal lives or dies on one line
+   in `store.ts`. The crate is counted, named, and the figure becomes a floor.
+4. **A round-trip card is one charge, not two.** Estimating over the outbound *and* the
+   return crate doubles the biggest line on the show; reading a round-trip card as each-way
+   halves it. Either guess is a 100% error, so there is no default anywhere in the stack.
+5. **Uncrated is a surcharge and `unknown` is not `crated`.** This is the *honest* half of
+   §5j rather than a violation of it: that rule forbids defaulting to a **substantive**
+   value, and "nobody has said" is what it asks for. A card that states no special-handling
+   rate has not said the surcharge is nil either — an uncrated crate under a silent card is a
+   gap, not a crate billed at par.
+6. **An estimate is not an invoice and never joins the total.** `creditFundedCents` and
+   `consumedCents` are outside it because they are real money in the wrong period; this is
+   outside because **nobody has been billed it**. Once the real bill is filed the estimate
+   stays beside it, which is where the feature earns its place — "estimated $2,400, billed
+   $3,900" is a question worth asking, and the answer is usually refusal 5.
+
+**The two corrections step 23 turned up:**
+
+1. **A condition with no clock is not an alert, so this feature deliberately gets no
+   engine.** The obvious eighth engine says *this show has freight and no rate card* — true,
+   actionable, and exactly what the feed is for. It is still wrong. All seven existing
+   engines fire on something that **changes with time**: a date approaching, a scan going
+   quiet, a credit expiring, a lead passing its retention. "No rate card" is true the moment
+   freight is recorded, stays true until somebody types one, and never sharpens. A
+   permanently-true alert that never escalates is a nag, and §5a's whole argument is that one
+   of those teaches a team to close the next alert unread. `/cost` already says it, on the
+   line somebody is reading, and a second voice on a different schedule is §5e's room-block
+   cutoff in another costume.
+2. **A crate count derived from what was priced reports a show with six crates as having
+   none** — and it was found by reading `pnpm drayage`, not by a test. With no card the
+   estimator prices nothing, so a count taken from the priced rows was zero, and *a show with
+   no freight* and *a show whose freight nobody can price* rendered identically. That is the
+   exact misreading the feature exists to prevent, produced by its own output. `considered`
+   is on the estimate now and the accounting holds:
+   `perShipment + coveredByRoundTrip + unweighed + unpriceable === considered`. Third time a
+   defect has surfaced from reading CLI output rather than from a test — step 17's
+   `onConflictDoNothing`, step 19's `SOURCE_LABEL`, step 22's deduplicated reading.
 
 **What step 22 added, and where:** `src/lib/manual/` and
 `src/lib/integrations/extract/` — LLM deadline extraction, §5a's post-v1 half and the
@@ -1235,36 +1311,25 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next: step 23, and the pick is the drayage estimator.** `SCOPE.md` §10.23 lists it in the
-backlog beside duty of care, sponsorship campaigns, the public API, impersonation,
-multi-workspace, custom fields, share links, the room-block optimizer and gamification. Three
-reasons, in order:
+**Next: step 24, and the pick is HubSpot** (§11.6). Two reasons, and the first is that it
+closes a known gap rather than opening a new one:
 
-- **It is the largest silent line in a figure this product already prints.** `/cost` leads
-  with what it is missing, and drayage — freight handled between the dock and the booth — is
-  routinely the biggest cost on a show that nobody can state in advance. Every input it needs
-  is already modelled: step 14 holds the crates with their weights and pieces, step 16 holds
-  what is inside them, and step 17 holds the rollup that would report it.
-- **It is pure, and it needs no keys and no accounts.** Same shape as `policy/`,
-  `readiness/score.ts` and `cost/rollup.ts`: a deterministic model with its refusals in it,
-  testable end to end on a clean clone. After a step whose central risk was an unverifiable
-  external answer, that is worth something on its own.
-- **Its hard part is a refusal this codebase already knows how to make.** A drayage estimate
-  is built from a rate card nobody has entered, so the first thing it has to do is decline to
-  print a number — `Quotable` from `roi/rollup.ts` and the *at least* rule from
-  `cost/rollup.ts` are the shapes, and getting a plausible-looking invented figure into the
-  true-cost headline is exactly the failure §5a spends its whole length arguing against.
+- **It is the only unverified adapter that could realistically get a capture script.** A free
+  developer tier means `pnpm hubspot:capture` is buildable on this machine, the way
+  `pnpm salesforce:capture` was — and Salesforce is the adapter where a wrong field name
+  *looks like the truth*, so proving the same four questions against a second CRM is worth
+  more than it sounds. AeroAPI, EasyPost and Slack have no equivalent path.
+- **Nothing regresses while it waits, and the seam is already the right shape.** Every method
+  throws today, deliberately: §11.6 resolved to "one well rather than both adequately", and
+  `selectCrmProvider` answers `hubspot` with what building it takes rather than a spelling
+  complaint. The interface has exactly one write method and must keep exactly one.
 
-**The alternative, if that is the wrong shape: HubSpot** (§11.6). A free developer tier makes
-it the only unverified adapter that could realistically get the capture script Duffel and
-Salesforce have — closing a known gap rather than opening a new one. Every method throws
-today, deliberately, so nothing regresses while it waits.
-
-**And one thing step 22 leaves open rather than done:** the extractor has never read a real
-exhibitor manual. Everything structural about it is verified — the anchor, the accounting,
-the refusals — and **recall is not**, by construction. The first time somebody points
-`pnpm manual:probe` at a real manual is worth treating as the deliverable it is: read the
-unclaimed list, and expect the prompt to need work rather than the code.
+**Two alternatives.** **Duty of care** (§10.24's backlog) is the largest unbuilt item that is
+pure and needs no keys — who is where, and who is unaccounted for when something happens at a
+venue — and it composes the roster, the flight board and the day-of snapshot that already
+exist. **Or point `pnpm manual:probe` at a real exhibitor manual**, which is still the loose
+thread step 22 left: everything structural about extraction is verified and **recall is not**,
+by construction, and the first real manual is worth treating as a deliverable.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on
@@ -1698,6 +1763,33 @@ silently. One key is now `AuthConfigError`.
   `recorded` only when `SHIPMENT_TRACKING_PROVIDER=recorded` says so, otherwise an error
   naming the variable. The sentence it produces is "the booth will be there before the doors
   open".
+- **Drayage rounds per shipment, never in aggregate.** Two 150 lb crates are two shipments,
+  each takes the card's 200 lb minimum, and 400 lb is billable. Summing first gives 300 lb
+  and bills three hundredweight — 25% light, in the flattering direction, on a figure nobody
+  has an invoice to check against yet. Nothing about the wrong version looks wrong.
+  `src/lib/drayage/estimate.ts`.
+- **A drayage estimate never joins the cost total.** `creditFundedCents` and `consumedCents`
+  sit outside it because they are real money in the wrong period; this sits outside because
+  **nobody has been billed it**. It stays beside the invoice once the invoice lands, which is
+  the point — a gap between the two is usually freight that went in loose.
+- **There is no default for how a rate card charges.** Reading a round-trip card as each-way
+  halves the largest line on the show; reading it the other way doubles it. No database
+  default, no pre-selected option in the form, and the manual states which.
+- **A crate with no weight is not a weightless crate, and `unknown` packing is not `crated`.**
+  Both are counted, named, and make the figure a floor. A card silent on special handling has
+  not said the surcharge is nil either. `numeric` arrives as a string and `Number(null)` is
+  0, so the weight rule lives or dies on one line in `drayage/store.ts`.
+- **Setting drayage rates is money; saying how a crate is packed is a fact.** The rates are
+  the multiplier on every crate on the show, so they sit with whoever runs it. Crated or
+  pad-wrapped is knowable only by somebody standing next to it in the warehouse at 6am —
+  `canConfirmReceipt`'s rule, and a gate there would leave every row at "nobody has said"
+  forever, after which the sentence stops meaning anything.
+- **A condition with no clock is not an alert.** Every one of the seven engines fires on
+  something that changes with time. "This show has freight and no rate card" is true the
+  moment freight is recorded, stays true until somebody types one, and never sharpens — a
+  permanently-true alert that never escalates is a nag, and one of those teaches a team to
+  close the next alert unread. `/cost` says it where somebody is reading a shipping figure.
+  **Do not add an eighth engine for it.**
 - **The assistant's access model is its tool list, not its prompt.** Every tool is an
   existing org-scoped store function, called as the asking actor, through the same
   `access.ts` gate a screen goes through. "Which room is Shelley in" is refused because
@@ -2111,6 +2203,8 @@ pnpm assets --sweep   # write tonight's asset alerts; run twice, nothing is writ
 pnpm alerts           # what one person is actually owed, worst first
 pnpm alerts --as priya@…  # the same feed as somebody else; the access model, not a filter
 pnpm alerts --sweep   # run all seven engines; prints what each raised *and resolved*
+pnpm drayage          # every show's drayage, biggest estimate first, and what it is missing
+pnpm drayage <show id>  # one show, crate by crate, with the arithmetic showing
 pnpm cost             # every committed show's true cost, biggest first, with its coverage
 pnpm cost <show id>   # one show line by line, every gap named
 pnpm leads            # every show's capture, worst first, with what the count is missing
@@ -2263,6 +2357,11 @@ src/lib/shows/                the planning core — pure clone planner, pure int
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
                               built-in templates + idempotent apply planner, the edit
                               rules, who may edit vs. report, the pace model, the store
+src/lib/drayage/              §5n — estimate.ts (pure: hundredweight, and six refusals of
+                              which per-shipment rounding is the one that is silently 25%
+                              light), edit.ts (a card, validated; `basis` has no default
+                              because either guess is a 100% error), access.ts (rates are
+                              money, packing is a fact only the packer holds), store.ts
 src/lib/manual/               §5a's other half — pdf.ts (the only file here that touches a
                               PDF; numbered pages, and why the model never gets the
                               document), anchor.ts (a citation is checked against text we

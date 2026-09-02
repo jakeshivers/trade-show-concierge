@@ -30,6 +30,7 @@ const inputs = (over: Partial<CostInputs> = {}): CostInputs => ({
   },
   expenses: [],
   bookings: [],
+  drayage: null,
   enteredFlights: [],
   lodgings: [],
   shipments: [],

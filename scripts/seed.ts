@@ -31,6 +31,11 @@ import {
 } from '../src/lib/team/store';
 import { addLodging, assignRoom } from '../src/lib/lodging/store';
 import { addShipment, syncShipmentTracking } from '../src/lib/shipping/store';
+import {
+  saveRateCard,
+  setRateCardConfirmed,
+  setShipmentHandling,
+} from '../src/lib/drayage/store';
 import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
 import { ask } from '../src/lib/assistant/store';
 import {
@@ -1747,6 +1752,74 @@ async function main() {
   // After the shipments, deliberately: `freightCoverage` reads the freight rows
   // to decide whether a reservation window covers the trip, and a sweep that ran
   // before them would return `unverified` on every row and quietly prove nothing.
+  // Drayage. After the shipments, necessarily: the estimate is a function of the
+  // crates, and a card written before them would price nothing.
+  //
+  // Three states, because the argument is about which figures may be printed:
+  // Automate has a **confirmed** card, so its estimate is a figure; the live show
+  // has one nobody has checked against this year's manual, so its estimate is
+  // introduced as coming from an unchecked card; and Sensors Converge has real
+  // freight and **no card at all**, which is the case that must never render as
+  // $0 — the largest cost on the show, reported as free.
+  console.log('· drayage rate cards (through the real store, and one show left without one)');
+  await saveRateCard(
+    admin,
+    automate.id,
+    {
+      contractor: 'Freeman',
+      advanceCwt: '142.00',
+      showSiteCwt: '175.00',
+      minimumLb: '200',
+      // Read off the manual rather than assumed. Getting this wrong is a 100%
+      // error in whichever direction the assumption ran.
+      basis: 'round_trip',
+      specialHandlingPct: '30',
+      overtimePct: '25',
+      sourceNote: 'Exhibitor services manual, section 7 — material handling rates',
+    },
+    now,
+    db,
+  );
+  await setRateCardConfirmed(admin, automate.id, true, now, db);
+
+  await saveRateCard(
+    admin,
+    dmwest.id,
+    {
+      contractor: 'GES',
+      advanceCwt: '128.50',
+      showSiteCwt: '161.00',
+      minimumLb: '200',
+      basis: 'round_trip',
+      // The card is silent on special handling, which is not the same as saying
+      // there is no surcharge — so an uncrated crate here is a named gap rather
+      // than a crate billed at par.
+      specialHandlingPct: null,
+      overtimePct: '25',
+    },
+    now,
+    db,
+  );
+
+  // How a crate is packed is a fact only somebody standing next to it holds, so
+  // it is recorded by the people who packed them rather than by whoever set the
+  // rates — and most crates stay `unknown`, which is the honest standing of a
+  // workspace where nobody has been asked yet.
+  const automateFreight = await db
+    .select({ id: s.shipments.id, description: s.shipments.description })
+    .from(s.shipments)
+    .where(eq(s.shipments.showId, automate.id));
+  for (const crate of automateFreight) {
+    if (crate.description.includes('Booth crate')) {
+      await setShipmentHandling(actorFor(marcus), crate.id, 'crated', now, db);
+    }
+    // Six cartons of literature on a skid is exactly the freight a contractor
+    // surcharges, and exactly the freight everybody forgets to declare.
+    if (crate.description.includes('Literature')) {
+      await setShipmentHandling(actorFor(priya), crate.id, 'uncrated', now, db);
+    }
+  }
+
   console.log('· asset alerts (produced by running the real sweep)');
   const assetSweep = await sweepAssetAlerts(org.id, now);
   console.log(`  ${assetSweep.planned.length} planned · ${assetSweep.alertsWritten} written`);

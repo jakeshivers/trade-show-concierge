@@ -147,6 +147,27 @@ export const shipmentConsignmentEnum = pgEnum('shipment_consignment', [
   'office',
 ]);
 
+/**
+ * How a piece of freight is packed, which is a *price*.
+ *
+ * The general contractor surcharges anything that is not crated — loose,
+ * pad-wrapped, shrink-wrapped, on a skid without a top — by 25–35%, and nothing
+ * in this app has ever recorded which a crate is. `unknown` is therefore a real
+ * recorded answer and is the default, which is deliberately **not** the §5j trap
+ * it resembles: that rule forbids defaulting to a *substantive* value (a lawful
+ * basis manufactured out of a blank column). Defaulting to "nobody has said" is
+ * the honest half of the same rule. `lib/drayage/estimate.ts` never applies the
+ * surcharge to it and always names how many there were.
+ */
+export const shipmentHandlingEnum = pgEnum('shipment_handling', [
+  'crated',
+  'uncrated',
+  'unknown',
+]);
+
+/** Charged once on the way in, or separately each way. Typed, never guessed. */
+export const drayageBasisEnum = pgEnum('drayage_basis', ['round_trip', 'each_way']);
+
 export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
 
 /** Mirrors the state machine in SCOPE.md §6b. */
@@ -705,6 +726,57 @@ export const flights = pgTable(
 
 /* -------------------------------- shipments -------------------------------- */
 
+/**
+ * One show's drayage rate card, as published in its exhibitor service manual.
+ *
+ * **One row per show, and it is typed rather than derived.** Drayage is priced by
+ * the general contractor per show — Freeman and GES re-price annually and each
+ * venue negotiates its own — so there is no rate to inherit, no rate to default,
+ * and no rate to guess. A missing card produces a *sentence* rather than a zero:
+ * a $0 drayage line on a show carrying six crates reads as "drayage was free",
+ * which is §5a's fabricated bill with the sign flipped.
+ *
+ * `basis` has **no default**, and that is the whole of a 100% error. Most cards
+ * charge round trip on the way in, so estimating over the outbound crate *and*
+ * the return crate doubles the largest line in the show; a card that really does
+ * charge each way and is read as round trip halves it. Which one it is, is a
+ * sentence in the manual, so it is read and typed.
+ *
+ * `confirmed_at` is `show_deadlines`' rule reaching a rate: last year's card is
+ * the likeliest thing to be sitting in this row, so a figure built on an
+ * unchecked one is introduced as an estimate from an unchecked card. Unlike a
+ * deadline the figure is still produced, because silence on the biggest line in
+ * the show is the worse failure — confirmation changes the words around the
+ * number rather than whether there is one.
+ */
+export const drayageRateCards = pgTable(
+  'drayage_rate_cards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    /** Freeman, GES, or whoever the show appointed. Recorded, never inferred. */
+    contractor: text('contractor'),
+    /** Per hundredweight. Nullable: a card may price only one consignment. */
+    advanceCwtCents: integer('advance_cwt_cents'),
+    showSiteCwtCents: integer('show_site_cwt_cents'),
+    /** Pounds. Almost always 200, and typed from the manual all the same. */
+    minimumLb: integer('minimum_lb').notNull().default(200),
+    basis: drayageBasisEnum('basis').notNull(),
+    /** Percent. Null means the card is silent, which is not the same as zero. */
+    specialHandlingPct: integer('special_handling_pct'),
+    overtimePct: integer('overtime_pct'),
+    /** Where in the manual this was read, so the next person can check it. */
+    sourceNote: text('source_note'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('drayage_rate_cards_show_unique').on(t.showId)],
+);
+
 export const shipments = pgTable(
   'shipments',
   {
@@ -775,6 +847,8 @@ export const shipments = pgTable(
 
     pieces: integer('pieces').notNull().default(1),
     weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
+    /** Crated or not — a 25–35% difference in the drayage bill. See the enum. */
+    handling: shipmentHandlingEnum('handling').notNull().default('unknown'),
     declaredValueCents: integer('declared_value_cents'),
     costCents: integer('cost_cents'),
     labelUrl: text('label_url'),
@@ -2689,6 +2763,14 @@ export const flightsRelations = relations(flights, ({ one }) => ({
   show: one(shows, { fields: [flights.showId], references: [shows.id] }),
   user: one(users, { fields: [flights.userId], references: [users.id] }),
   booking: one(bookings, { fields: [flights.bookingId], references: [bookings.id] }),
+}));
+
+export const drayageRateCardsRelations = relations(drayageRateCards, ({ one }) => ({
+  show: one(shows, { fields: [drayageRateCards.showId], references: [shows.id] }),
+  confirmedBy: one(users, {
+    fields: [drayageRateCards.confirmedById],
+    references: [users.id],
+  }),
 }));
 
 export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
