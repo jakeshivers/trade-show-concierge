@@ -389,6 +389,61 @@ show's exposure without anybody doing the work, so it needs a written reason and
 authority to change the plan. That is exactly the rule `skipped` needed in §5d, arrived at
 from an unrelated direction, which is the reason to trust it.
 
+**Two risks settled before step 22 was written (2026-09-01).** Both were named in
+`CLAUDE.md` as things to decide *before* building rather than after, because both are the
+closed loop step 12.5 named, arriving in a feature whose entire output is a claim about a
+document.
+
+**The PDF dependency is `unpdf`.** Measured rather than assumed: `unpdf` 1.8.1 is MIT with
+**zero runtime dependencies** and ~2.6 MB installed; `pdf-parse` 2.4.5 pulls
+`@napi-rs/canvas`, a native binding, which is disqualified by §9's ground rule rather than
+by taste — a platform-specific build step breaks `pnpm db:reset && pnpm test` on a clean
+clone. It was verified against a hand-built two-page PDF in plain Node before being added.
+What matters about it is not that it reads a PDF but that
+`extractText(doc, { mergePages: false })` returns text **per page**, which is what makes an
+anchor checkable.
+
+**The extractor is sent text we extracted, never the PDF itself, and that is a
+correctness decision rather than a cost one.** A human confirming an extracted date is the
+only thing standing between a guess and a quoted penalty (correction 1 above), and a person
+can only confirm against something. If the document went to the model and we took its word
+for the page and the quote, the confirmation screen would display a citation nobody can
+check — and a hallucinated quote reads exactly like a real one. Confirming against it would
+*launder* the guess, which is precisely what "moving a confirmed date withdraws the
+confirmation" exists to prevent. Because we hold the page text, every candidate must carry a
+verbatim snippet and a page number, and a snippet that does not occur on that page is
+**rejected before anybody sees it**. The cost is real and is named rather than hidden: table
+layout is flattened, and a scanned or image-only page carries no text, which becomes an
+explicit *this page could not be read* rather than a guess about what was on it.
+
+**What plays `pnpm duffel:capture`'s part is a coverage probe, and the analogy had to be
+corrected to get there.** Duffel's unverified thing is a *field name* — a fact about a
+vendor, knowable only from the vendor, so a live key is the only possible arbiter. This
+adapter's unverified thing is **recall against a layout we have not seen**, which splits
+into two failures with opposite properties:
+
+- **Fabrication** — a deadline with no basis in the document. This one is killed *without*
+  a real corpus, by the anchor check above. It is the failure that would otherwise be
+  invisible, and it is structurally gone.
+- **A miss** — a deadline in the manual that never becomes a row. Silent, and the exact
+  outcome §5a exists to prevent. **No synthetic corpus can catch this**, because the corpus
+  and the prompt are written by the same person, so the prompt is tuned to the layout it was
+  given.
+
+So the capture-equivalent targets misses, and the arbiter has to be something not written to
+agree with our own model: a deliberately **stupid, high-recall date-pattern sweep** over
+every page, reporting every date-like string that no extracted deadline claimed.
+`pnpm manual:probe <file.pdf>` runs the real extractor against a real manual the operator
+points it at and prints that gap. The regex knows nothing about the prompt and cannot be
+tuned into agreement, which is the role a live key plays elsewhere. Nothing is committed:
+a real exhibitor manual is somebody's copyrighted document, so captures go to a gitignored
+directory on the same footing as `fixtures/live-salesforce/` and for a stronger reason.
+
+The synthetic corpus is still built, for the unit suite — it proves the page reader, the
+anchor verifier, the candidate planner and the confirmation gate — and its header says in
+`duffel/fixtures.ts`'s own words that it proves internal consistency and structurally cannot
+catch a layout the real manuals use and ours does not.
+
 ### 5b. Unused ticket credit recovery
 
 **5–11% of corporate air spend is forfeited every year in expired flight credits**, and
@@ -2204,9 +2259,16 @@ invert phases A and C.
       the next `restrict` FK is added. It had been broken since step 1 and was invisible
       because `pnpm db:reset` deletes `.pglite` first, so the statement only ever ran against
       an empty database in the path the docs recommend.
-- [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
+- [ ] **22.** **LLM deadline extraction** (§5a's post-v1 half). Read an exhibitor service
+      manual PDF and propose register rows a human confirms. The two risks were settled
+      before any code was written and are recorded at the end of §5a: `unpdf` is the parser
+      (MIT, zero deps, per-page text), the model is sent **text we extracted rather than the
+      document**, so every candidate's snippet is checkable against a page we hold, and
+      `pnpm manual:probe` plays `pnpm duffel:capture`'s part by reporting what a
+      deliberately stupid date sweep found that the extractor did not claim.
+- [ ] **23.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
       API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
-      share links · room-block optimizer · gamification · LLM deadline extraction
+      share links · room-block optimizer · gamification
 
 ### A correction to §2 and §3
 
