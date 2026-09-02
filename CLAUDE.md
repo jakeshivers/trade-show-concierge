@@ -1089,11 +1089,44 @@ generates. Two halves:
 The chooser (`_components/go-to-show.tsx`) stays on the five boards where the write really is
 per-show; `/shipping` no longer needs it.
 
+**Two more, and one of them was a schema defect the UI made visible.**
+
+- **The carrier is read off the tracking number.** `src/lib/shipping/carrier.ts` is pure and
+  tested: UPS owns `1Z`, a USPS IMpb begins 92–95, FedEx Express is twelve digits — so asking
+  for the carrier *and* a number that already says which one is asking for the same fact
+  twice. Three bounds. It **fills a control, never the column** (a wrong `shipments.carrier`
+  answers `NoRecord`, which on the board looks exactly like freight that has gone missing),
+  and it stops inferring the moment somebody picks by hand, saying so where it then disagrees
+  rather than overruling them. It **never rejects a number** — an unmatched pattern means our
+  table is short, not that the label is wrong. And it **says what it cannot tell you**: a
+  22-digit barcode is a real USPS number and also what FedEx Ground Economy and UPS Mail
+  Innovations issue, so USPS is who can be *asked* and may not be who we shipped with.
+  `certain` is only for a prefix its owner owns. The UPS check digit is implemented and
+  verified against their published example; FedEx's and USPS's deliberately are not, because
+  a check digit we got subtly wrong accuses people of typos they did not make. Both forms
+  render `_carrier-field.tsx` rather than a pair of loose controls — `_present.tsx`'s
+  argument, applied to a form. `SCOPE.md` §5g.
+- **`/flights` shows what is still ahead, and fixing that exposed the real bug.** The board
+  cuts at twelve hours past **scheduled** arrival (never estimated — an estimate moves hourly
+  and a cancelled flight's is nothing at all, which is exactly the row that must not vanish);
+  a show-scoped call gets that show's whole record, because a Travel tab that emptied after
+  the show would hide its own subject. What the horizon uncovered: `flights.booking_id` was
+  `ON DELETE SET NULL` and the idempotency rail is `unique(booking_id, segment_index)` —
+  **Postgres treats NULLs as distinct in a unique index**, so a deleted booking left its legs
+  as rows the constraint no longer applied to, un-reconcilable forever, invisible to the
+  product, and rendered on the board as real legs. Fifty-two identical DL 1422 rows, thirty
+  per `pnpm test` run, from a `beforeEach` that deletes travel requests and never considered
+  the cascade. It is `cascade` now: a materialized leg is a **projection** of the booking,
+  and a hand-entered flight has a null `booking_id` because nothing derived it. **A nullable
+  column in a unique index is an idempotency rail with an off switch.** `SCOPE.md` §5f.
+
 **A stale `next dev` will lie to you about all of this.** `pnpm db:reset` deletes `.pglite`
 out from under a running server, which then serves the pre-reset database from a deleted
 inode — new columns and enum values do not exist in it, and a section gated on a query can
-render as absent with no error anywhere. Restart `pnpm dev` after `db:reset` before believing
-a screen.
+render as absent with no error anywhere — and once the deleted inode is really gone the
+server starts throwing `ErrnoError { errno: 44 }` and every request hangs for minutes.
+Restart `pnpm dev` after `db:reset` before believing a screen. `db:reset` now prints that
+sentence when it finishes, because knowing the rule did not stop it happening twice.
 
 **The measurement worth keeping: `src/app` contains zero `dark:` variants.** Dark mode used
 to be a twin class on every line that had a colour, so adding a colour meant remembering its

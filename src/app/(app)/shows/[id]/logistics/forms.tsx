@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import type { ShipmentRow } from '@/lib/shipping/board';
+import { CarrierAndTracking } from '../../../shipping/_carrier-field';
 import { Badge } from '../../../_components/ui';
 import { Field, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../../../_components/form-ui';
 import {
@@ -15,14 +16,6 @@ import {
 
 export type Person = { id: string; fullName: string };
 export type CostCenter = { id: string; code: string; name: string };
-
-const CARRIERS = [
-  ['fedex', 'FedEx'],
-  ['ups', 'UPS'],
-  ['usps', 'USPS'],
-  ['dhl', 'DHL'],
-  ['other', 'Other / freight forwarder'],
-] as const;
 
 /**
  * The consignment control, with its meaning on the label rather than in a doc.
@@ -107,21 +100,15 @@ function Fields({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Carrier">
-          <Select name="carrier" density="comfortable" defaultValue={c?.carrier ?? 'fedex'}>
-            {CARRIERS.map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          label="Tracking number"
-          hint="Blank is fine. Until there is one this row is a plan, not a crate."
-        >
-          <Input name="trackingNumber" density="comfortable" defaultValue={c?.trackingNumber ?? ''} />
-        </Field>
+        {/* The board's control, not a second copy of it. Two screens each
+            reading a tracking number their own way can disagree about what it
+            says, and nothing would catch it — `_present.tsx`'s argument, applied
+            to a form rather than to a badge. */}
+        <CarrierAndTracking
+          defaultCarrier={c?.carrier ?? 'fedex'}
+          defaultTracking={c?.trackingNumber ?? ''}
+          trackingHint="Blank is fine. Until there is one this row is a plan, not a crate."
+        />
       </div>
 
       <Field

@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
-import { getFlightBoard } from '@/lib/flights/store';
+import { BOARD_HORIZON_HOURS, getFlightBoard } from '@/lib/flights/store';
 import { selectStatusProviderOrNull } from '@/lib/flights/provider';
 import type { BoardRow } from '@/lib/flights/board';
 import {
@@ -53,9 +53,10 @@ export default async function FlightBoardPage() {
         title="Flight board"
         blurb={
           <>
-            Every tracked leg, ordered by what is wrong with it rather than by when it leaves.
-            A delay only matters here against the show it is flying to — the arrival buffer
-            the trip was approved under is re-checked against live times, not once at purchase.
+            Every leg still ahead of somebody, ordered by what is wrong with it rather than by
+            when it leaves. A delay only matters here against the show it is flying to — the
+            arrival buffer the trip was approved under is re-checked against live times, not
+            once at purchase.
           </>
         }
         action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
@@ -114,6 +115,15 @@ export default async function FlightBoardPage() {
           </Card>
 
           <Card title="Legs">
+            {/* Said rather than left to be noticed. A board is an operations
+                screen and a leg that landed yesterday cannot be acted on, but a
+                screen that quietly drops rows is one nobody can trust the counts
+                on. The record itself is not gone, and this says where it is. */}
+            <p className="mb-3 text-xs text-text-muted">
+              Legs that landed more than {BOARD_HORIZON_HOURS} hours ago are not here — nothing
+              on this page can change how one of those turned out. A show’s own Travel tab keeps
+              its whole history, past shows included.
+            </p>
             <Table>
               <thead>
                 <tr>
@@ -122,7 +132,7 @@ export default async function FlightBoardPage() {
                   <Th>Traveler</Th>
                   <Th>Departs (local)</Th>
                   <Th>Status</Th>
-                  <Th>Against move-in</Th>
+                  <Th>Lands before move-in</Th>
                   <Th>Last checked</Th>
                 </tr>
               </thead>

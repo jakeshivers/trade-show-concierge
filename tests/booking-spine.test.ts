@@ -74,6 +74,15 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   // Every test starts from an empty spine; the seeded planning data stays.
+  //
+  // This used to leave something behind, and it was invisible from inside the
+  // suite. Deleting a travel request cascades to its bookings, and
+  // `flights.booking_id` was `set null` — so every ticketed leg this file
+  // materialized survived as an orphan, and because Postgres treats NULLs as
+  // distinct in a unique index, its `(booking_id, segment_index)` rail stopped
+  // applying to it. Thirty rows per run, forever, in whatever database the
+  // developer was pointed at, all rendering on `/flights` as real legs. The
+  // schema is `cascade` now, which is what makes this delete complete.
   await db.delete(s.travelRequests);
 });
 

@@ -798,6 +798,35 @@ IANA zones are now carried through `Segment` and stored, because Duffel had been
 — leaving no way to say what time a departure is at the airport the traveler is standing
 in.
 
+**The board is what is still ahead, and one FK made it what had ever been (2026-09-02).**
+Two things, found together because the first made the second visible. A flight board is an
+operations screen — it answers *what needs me today* — and a leg that landed last October
+answers nothing while making the two that matter harder to find, so `getFlightBoard` cuts at
+twelve hours past **scheduled** arrival. Scheduled rather than estimated, for §5f's own
+reason: an estimate moves every time anybody asks, so a board keyed on it would drop and
+restore rows as a carrier revises, and a cancelled flight — whose estimate is nothing at all
+— is precisely the row that must not disappear. A leg with no arrival time recorded is kept,
+because silence is not a reason to hide a flight somebody is on. The horizon is the
+*workspace board's* and not the model's: asking about **one show** gets that show's whole
+record, because most shows are in the past by the time anybody reads their Travel tab and a
+tab that emptied out after the show would be hiding its own subject.
+
+The defect it exposed was worse. `flights.booking_id` was `ON DELETE SET NULL`, and the
+idempotency rail is `unique(booking_id, segment_index)` — but **Postgres treats NULLs as
+distinct in a unique index**, so the instant a booking was deleted its materialized legs
+became rows the constraint no longer applied to, that no future materialization could ever
+reconcile, and that nothing in the product could see or remove. They accumulated forever and
+the board rendered every one as a real leg somebody was on. It surfaced as **fifty-two
+identical DL 1422 rows**, put there thirty at a time by `pnpm test`, whose `beforeEach`
+deletes travel requests and had no idea it was leaving itineraries behind — in whatever
+database the developer happened to be pointed at. The FK is `cascade` now, which is what it
+should always have been: a materialized leg is a **projection** of the booking, the way a
+credit balance is a projection of its entries, and a hand-entered flight has a null
+`booking_id` because nothing derived it from anything. Two general lessons: a nullable column
+in a unique index is an idempotency rail with an off switch, and *"the seeded planning data
+stays"* is a claim a test cleanup cannot make about rows it created through a cascade it did
+not think about.
+
 ### 5g. Shipping — what "on time" has to mean when a crate can also be too early (step 14)
 
 The feature reads as "track our shipments", and built that way it is a delivery-date
@@ -845,6 +874,40 @@ failure mode with the sign flipped. `EstimableShipment.consignment` stays narrow
 compiler enforces it; adding the value found the third caller (`cost/store.ts`) on its own.
 The carrier's own charge still counts on every row, parcel included — a $180 overnight is
 freight spend on that show and `/cost` adds it up. Only the *drayage estimate* excludes it.
+
+**The carrier is read off the number, and reading it is not recording it (2026-09-02).**
+Carriers encode their identity in the format — UPS owns the `1Z` prefix outright, a USPS
+Intelligent Mail barcode begins 92–95, FedEx Express is a bare twelve digits — so asking
+somebody to choose a carrier *and* paste a number that already says which one is asking for
+the same fact twice, in a form where the two copies can then disagree.
+`src/lib/shipping/carrier.ts` is pure and reads it. Three rules bound it, and each is a way
+this kind of convenience turns into a wrong fact on a screen:
+
+- **It fills a control; it never decides the column.** `shipments.carrier` selects which
+  carrier account EasyPost is asked about, and `easypost/client.ts` already says a guessed
+  carrier is worse than none — the wrong one answers `NoRecord`, which on the board is
+  indistinguishable from freight that has gone missing. So nothing on the write path calls
+  it, and once a person has picked a carrier by hand the inference stops touching the value:
+  a control that re-decides on every keystroke takes the choice away by outlasting it. Where
+  it then disagrees it says so and changes nothing, because somebody who picked USPS and
+  pasted a `1Z` number has probably pasted into the wrong row — and the only thing here that
+  knows what the label says is them.
+- **It never rejects a number.** An unmatched pattern means *our* table is short, which is far
+  likelier than the number being wrong: carriers add services and regional partners issue
+  their own formats. Refusing to save would be our incomplete list overruling somebody holding
+  the label. Unrecognised is `null` with a reason and the control stays put.
+- **It says what it still cannot tell you.** A 22-digit IMpb is a genuine USPS number *and* is
+  what FedEx Ground Economy and UPS Mail Innovations issue when they hand the last mile to
+  USPS. USPS is the right answer for the tracking column — they are who can be asked — and the
+  wrong answer to *who did we ship with*, so the guess carries both. Confidence is `certain`
+  only for a prefix its owner owns; anything keyed on length alone is `likely`, because a bare
+  run of digits is a format rather than a signature.
+
+One check digit is implemented — UPS's, verified against their published `1Z999AA10123456784`
+— and it is a **typo hint, never a verdict**: the carrier is still reported and the number
+still saves, because a check digit we got subtly wrong would accuse people of typos they did
+not make and train them to ignore the one time it is right. FedEx's and USPS's are absent for
+that reason. One algorithm that has been checked beats four that have not.
 
 **Delivered is not received, and only a person can close that gap.** The carrier's claim is
 that a dock signed for it. Between that dock and the booth sits **drayage** — a separate

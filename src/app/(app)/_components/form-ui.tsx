@@ -80,7 +80,13 @@ export function Field({
   children,
 }: {
   label: string;
-  hint?: string;
+  /**
+   * A node rather than a string, since step 25: a hint that reports what was
+   * read off a tracking number has to be able to colour itself — "read from the
+   * number" and "that disagrees with what you picked" are different messages and
+   * a single muted grey makes them one.
+   */
+  hint?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (

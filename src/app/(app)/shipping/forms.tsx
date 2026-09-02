@@ -3,6 +3,7 @@
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
 import { Field, Input, Message, Select, Submit, ZonedDateTime } from '../_components/form-ui';
+import { CarrierAndTracking } from './_carrier-field';
 import { trackPackage } from './actions';
 
 /**
@@ -38,14 +39,6 @@ export type PickableShow = {
 
 type CostCenter = { id: string; code: string; name: string };
 
-const CARRIERS = [
-  ['fedex', 'FedEx'],
-  ['ups', 'UPS'],
-  ['usps', 'USPS'],
-  ['dhl', 'DHL'],
-  ['other', 'Other / freight carrier'],
-] as const;
-
 export function TrackPackageForm({
   shows,
   costCenters,
@@ -63,27 +56,7 @@ export function TrackPackageForm({
   return (
     <form action={action} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Carrier">
-          <Select name="carrier" density="comfortable" defaultValue="fedex">
-            {CARRIERS.map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field
-          label="Tracking number"
-          hint="Blank is fine — until there is one this row is a plan, not a package."
-        >
-          <Input
-            name="trackingNumber"
-            density="comfortable"
-            placeholder="1Z999AA10123456784"
-            autoComplete="off"
-          />
-        </Field>
+        <CarrierAndTracking />
 
         <Field label="What is in it">
           <Input

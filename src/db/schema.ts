@@ -721,8 +721,26 @@ export const flights = pgTable(
      * see a single thing the product's own booking spine had purchased. These
      * two columns are what makes materialization idempotent: re-running it after
      * a retry updates the same rows instead of filing the itinerary twice.
+     *
+     * **`cascade`, and it was `set null` until 2026-09-02.** A materialized leg
+     * is a *projection* of the booking, the way a credit balance is a projection
+     * of its entries — the order is the record and the itinerary is what it
+     * looks like to a person. So a booking that goes away takes its legs with
+     * it, and a hand-entered flight (`booking_id` null) is untouched, because
+     * nothing derived it from anything.
+     *
+     * `set null` was worse than untidy: it **silently disabled the idempotency
+     * rail**. Postgres treats NULLs as distinct in a unique index, so the moment
+     * `booking_id` was nulled the `(booking_id, segment_index)` constraint
+     * stopped applying to that row, and no future materialization could ever
+     * reconcile it. The orphans accumulated forever, un-deduplicatable, with
+     * nothing in the product able to see or remove them — and the flight board
+     * rendered every one of them as a real leg somebody was on. It surfaced as
+     * fifty-two identical DL 1422 rows on `/flights`, put there thirty at a time
+     * by `pnpm test`, whose `beforeEach` deletes travel requests and had no idea
+     * it was leaving itineraries behind.
      */
-    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'set null' }),
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'cascade' }),
     segmentIndex: integer('segment_index'),
     bookingProvider: text('booking_provider'),
     bookingReference: text('booking_reference'),
