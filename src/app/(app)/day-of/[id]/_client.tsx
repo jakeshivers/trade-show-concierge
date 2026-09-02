@@ -461,7 +461,18 @@ function CaptureCard({
   }
 
   return (
-    <Card title="Capture" subtitle={`Recorded as ${capturedBy}. Works with no signal.`}>
+    // "Works with no signal" was the subtitle here and it was the wrong three
+    // words, because *works* means finished. The whole argument in `outbox.ts` is
+    // that a queued capture is **not** a recorded lead and that the two counts
+    // never merge — and it deliberately says "on this device" rather than
+    // "pending", because what a person needs to understand is a location rather
+    // than a process. A subtitle claiming the form works undoes that one card
+    // above the queue that contradicts it. This says where the lead goes and
+    // when it leaves, in the outbox's own words.
+    <Card
+      title="Capture"
+      subtitle={`Saved on this device as ${capturedBy}, signal or no signal, and sent when there is a connection.`}
+    >
       <form onSubmit={submit} className="space-y-3">
         <Input
           ref={nameRef}
