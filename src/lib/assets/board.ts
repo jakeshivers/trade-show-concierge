@@ -137,13 +137,44 @@ export function buildAssetRow(
   };
 }
 
+/**
+ * The next date the row demands something, soonest first.
+ *
+ * The flight and shipping boards' change, and the interesting part here is that
+ * an asset row has **two** candidate clocks rather than one. A booth that has
+ * not left yet is due *out* on `reservedFrom`; one that is already at a show is
+ * due *back* on `reservedTo`. Picking either column outright is wrong half the
+ * time — sorting everything on the return date buries the crate that has to be
+ * on a truck on Thursday under crates coming home in November — so the key is
+ * whichever of the two is still ahead of this row. That is a real thing rather
+ * than a compromise: it is the date somebody has to do something by.
+ *
+ * A row with no reservation is an asset on a shelf with nothing asked of it, so
+ * it has no date and sorts **last**, with the register's alphabetical order
+ * preserved among them. The same call as a crate with no deadline, for the same
+ * reason: treating "nothing is asked" as "asked first" puts the whole idle
+ * warehouse above this week's work.
+ *
+ * Severity is the tie-break rather than the key. What it was protecting is still
+ * on the page and does not need to be scanned for — the figures at the top, the
+ * tone on each row, and the alert the engine writes underneath it.
+ */
+export function nextDueAt(row: AssetRow): Date | null {
+  const r = row.reservation;
+  if (!r) return null;
+  // Out already: the outstanding obligation is bringing it back. Not out yet:
+  // it is getting it to the show. `returnedAt` means neither, and those rows are
+  // filtered off the workspace register before they reach here.
+  return r.checkedOutAt ? r.reservedTo : r.reservedFrom;
+}
+
 export function orderAssets(rows: AssetRow[]): AssetRow[] {
   return [...rows].sort((a, b) => {
+    const at = nextDueAt(a)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bt = nextDueAt(b)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    if (at !== bt) return at - bt;
     const byRank = rank(a) - rank(b);
     if (byRank !== 0) return byRank;
-    const at = a.reservation?.reservedTo.getTime() ?? Number.MAX_SAFE_INTEGER;
-    const bt = b.reservation?.reservedTo.getTime() ?? Number.MAX_SAFE_INTEGER;
-    if (at !== bt) return at - bt;
     return a.asset.name.localeCompare(b.asset.name);
   });
 }

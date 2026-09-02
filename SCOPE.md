@@ -1007,6 +1007,32 @@ for fifteen steps it was a flag with extra columns: a row with a window, and not
 written into `checked_out_at` or `returned_at`. Six things had to be got right, and four of
 them are rules this document already settled elsewhere, arriving from a new direction.
 
+**The register is ordered by the next date each row demands something (2026-09-02), and it
+is the one board with two clocks.** A booth that has not left is due *out* on `reservedFrom`;
+one already at a show is due *back* on `reservedTo`. Sorting everything on the return date
+buries the crate that has to be on a truck on Thursday under crates coming home in November,
+so the key is whichever date is still ahead of the row — which is not a compromise between
+two columns but the thing itself: the date somebody has to act by. An asset with nothing
+booked has no date and sorts **last**, keeping the idle warehouse visible without letting it
+displace this week's work.
+
+The clock finds the emergency without being told to. A booth signed out to last spring's
+Detroit show has the earliest outstanding date on the board — 45 days past — so it sorts
+first on its own. What moves *down* is the unserviceable asset promised to a show three weeks
+out, and that is the honest trade: it is a real finding and it is not this week's work, so it
+is carried by its alert and the row's tone rather than by displacing Thursday.
+
+**And the horizon here is deliberately narrower than shipping's, which is §5h.** That board
+also drops freight for a show closed out a month ago; this one must not. A crate is
+consumable and belongs to one show, so past a point *"get it there"* stops meaning anything.
+An asset is **capital we own until somebody finds it** — only a `returnedAt` closes its
+question. So a completed reservation older than thirty days comes off the workspace register
+and a never-returned one never does, which is where the *capital unaccounted for* figure at
+the top of the page comes from. The asset itself never disappears either way: filtering its
+last reservation drops it through to the nothing-booked branch, so the register stays a
+register rather than becoming a list of active jobs, and one show's own tab still shows every
+reservation, which is where the custody log is read.
+
 **Reserved is not available, and available is not serviceable.** §5e found that an assigned
 booth shift is not a covered one, because the person may not be able to stand there. An
 asset has the same gap and one more beyond it. A reservation is a claim on a thing that may
@@ -1152,6 +1178,20 @@ home, which §5f addresses to the traveler alone.
 behaviour: a booth staffer at hour six of day two does not open a CRM. That is right about
 the cause and it turned out to be about a third of the problem. Building capture found two
 more mechanisms, and one obligation that changes what "delete" is allowed to mean.
+
+**Capture is ordered most recent show first (2026-09-02), and the direction is the finding.**
+Flights, freight and assets all went from worst-first to clock-first the same day, and this
+one inverts rather than copies them. Those three are **prospective**: they list obligations,
+and the soonest is the most urgent. A lead count is **retrospective** — a fact about a show
+that already happened — so the nearest thing to now is the show that just ended, and the clock
+runs backwards from there. Ascending would open the page on 2024. The one piece of the old
+ranking that survives is `not_yet`, and it survives as a **segment rather than a severity**: a
+show that has not opened recorded nothing for want of anything to record, which is not a
+finding, so it sorts after every show being judged — and within that tail the order flips back
+to soonest-first, because those rows are prospective again. There is deliberately **no
+horizon**, unlike the other three: a crate that arrived is finished and a landed flight is
+over, but an old show's capture is exactly what this year's is judged against, which is what
+the page is for.
 
 **A count that does not say who did not capture is a fabricated bill.** §8a's rule at the
 scale of a show's return side. "34 leads" is a number with the authority of a computed one,

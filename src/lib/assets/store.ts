@@ -199,11 +199,20 @@ export type AssetRegister = {
 };
 
 /**
- * Every asset, with its live reservation if it has one, worst first.
+ * How long a returned reservation stays on the workspace register.
  *
- * An asset with no live reservation still gets a row — it is a thing we own,
- * and "where is the second booth" is a question about the ones nothing is
- * happening to. An asset with two live reservations gets two, which is how a
+ * Long enough that checking a booth back in does not make the row vanish under
+ * the hand that did it, short enough that last quarter's completed trips are not
+ * what somebody reads first.
+ */
+export const REGISTER_CLOSED_OUT_DAYS = 30;
+
+/**
+ * Every asset, with its outstanding reservation if it has one, soonest first.
+ *
+ * An asset with nothing booked still gets a row — it is a thing we own, and
+ * "where is the second booth" is a question about the ones nothing is happening
+ * to. An asset with two outstanding reservations gets two, which is how a
  * double-booking is visible on the board rather than only in the clash list.
  */
 export async function getAssetRegister(
@@ -234,9 +243,36 @@ export async function getAssetRegister(
   const showIds = [...new Set(reservationRows.map((r) => r.show.id))];
   const freight = await freightBoundsFor(showIds, db);
 
+  // The workspace register is an operations screen: it answers *what does this
+  // asset need from somebody*, and a reservation that came back two months ago
+  // needs nothing. Left in, it sorts on a date that has passed and pushes the
+  // crate leaving on Thursday down the page — the flight and shipping boards'
+  // finding, reached a third time.
+  //
+  // Two things keep it honest. **The asset never disappears**: an asset whose
+  // only reservation is filtered here falls through to the `reservations.length
+  // === 0` branch below and renders as a row with nothing booked, so the
+  // register stays a register rather than becoming a list of active jobs. And
+  // **the custody log is untouched** — this filters what the board *ranks*, not
+  // what happened, and one show's own tab (`opts.showId`) sees every
+  // reservation, which is where "signed out by Marcus on 9 July, returned
+  // damaged" is read.
+  //
+  // Note what is deliberately *not* here, because `shipping/store.ts` has it and
+  // the asymmetry is the point. That board also drops freight for a show that
+  // closed out a month ago; this one must not, and §5h is why. A crate is
+  // consumable and belongs to one show — past a point, "get it there" stops
+  // meaning anything. An asset is **capital we own until somebody finds it**, so
+  // a booth signed out to last spring's Detroit show and never checked in stays
+  // on this register indefinitely, and sorts first because its return date is the
+  // furthest past. That row is where the "capital unaccounted for" figure at the
+  // top of the page comes from. Only a `returnedAt` closes an asset's question.
+  const settledBefore = new Date(asOf.getTime() - REGISTER_CLOSED_OUT_DAYS * 86_400_000);
   const scoped = opts.showId
     ? reservationRows.filter((r) => r.show.id === opts.showId)
-    : reservationRows;
+    : reservationRows.filter(
+        (r) => !r.reservation.returnedAt || r.reservation.returnedAt >= settledBefore,
+      );
 
   const byAsset = new Map<string, typeof reservationRows>();
   for (const r of scoped) {

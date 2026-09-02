@@ -7,12 +7,15 @@ import { GoToShow } from '../_components/go-to-show';
 import { CoverageHeadline, CoverageNotes } from './_present';
 
 /**
- * Lead capture across the calendar, worst first. SCOPE.md §8c.
+ * Lead capture across the calendar, most recent show first. SCOPE.md §8c.
  *
- * The ordering is the argument, as it is on the flight board, the shipping board
- * and the asset register: a show that ran and recorded nothing outranks one
- * running now that is merely thin, and a show that has not opened sorts last
- * because silence there is not a finding.
+ * The ordering inverts the one the other three boards use, and the inversion is
+ * the point. Flights, freight and assets are prospective — they list obligations
+ * and the soonest is the most urgent. Capture is **retrospective**: a lead count
+ * is a fact about a show that already happened, so the nearest thing to now is
+ * the show that just ended and the clock runs backwards from there. A show that
+ * has not opened sorts after all of them, because it recorded nothing for want
+ * of anything to record, which is not a finding.
  *
  * What this page is careful *not* to show is a total. "412 leads this year" over
  * a set of shows whose coverage ranges from complete to unmeasured is the
@@ -31,7 +34,7 @@ export default async function LeadsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Leads"
-        blurb="Every show’s capture, worst first. A count is only worth what the coverage behind it is."
+        blurb="Every show’s capture, most recent first. A count is only worth what the coverage behind it is."
         action={
           <GoToShow
             actor={actor}

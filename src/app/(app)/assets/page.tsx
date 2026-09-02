@@ -37,10 +37,22 @@ import {
  * The asset register — everything the company owns that goes to a show, and
  * where it actually is.
  *
- * Ordered by what is wrong rather than by what is due, the same as the shipping
- * and flight boards, and for a sharper reason: a reservation is a promise about
- * the future, so a register sorted by date is a list of promises with the
- * broken ones buried in the middle. `board.ts` holds the ordering.
+ * Ordered by the next date each row demands something, the same as the shipping
+ * and flight boards. An asset row has two candidate clocks and the key is
+ * whichever is still ahead of it: a booth that has not left is due *out*, one
+ * already at a show is due *back*. An asset with nothing booked has no date and
+ * sorts last, so the idle warehouse stays visible without displacing this week's
+ * work. Returned reservations older than a month come off the workspace view
+ * entirely — the asset keeps its row, and one show's own tab still shows every
+ * reservation, which is where the custody log is read.
+ *
+ * It used to be ranked by what is wrong rather than by what is due, on the
+ * argument that a reservation is a promise about the future, so a register
+ * sorted by date is a list of promises with the broken ones buried in the
+ * middle. That was true of a register carrying every trip an asset ever made;
+ * with completed ones gone, the clock is the order the work happens in, and what
+ * the ranking protected is in the figures above, the tone on each row and the
+ * alerts, none of which have to be scanned for. `board.ts` holds the ordering.
  *
  * Three things this screen refuses to do. It never shows a reservation as a
  * filled slot without saying whether the thing can actually go — an asset
@@ -84,7 +96,8 @@ export default async function AssetRegisterPage() {
             Capital that leaves the building, and the print and swag that goes with it. A
             reservation is a claim on a thing, not a label on a row — so this page counts what can
             actually go, what is out, and what nobody can find. Capital assets get lost between
-            shows, and they get lost quietly.
+            shows, and they get lost quietly. Ordered by the next date each one is due out or
+            due back; anything with nothing booked sits at the end.
           </>
         }
         action={

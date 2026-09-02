@@ -1,7 +1,7 @@
 /**
  * Lead capture, without a screen. SCOPE.md §8c.
  *
- *   pnpm leads                 # every show, worst first, with its coverage
+ *   pnpm leads                 # every show, most recent first, with its coverage
  *   pnpm leads <show id>       # one show: the leads, the meetings, the gaps
  *   pnpm leads --sweep         # write tonight's lead alerts
  *   pnpm leads --retention     # erase everything past its date
@@ -54,7 +54,7 @@ const day = (d: Date | null) => (d ? d.toISOString().slice(0, 10) : '—');
 
 async function portfolio(actor: Actor) {
   const rows = await getLeadPortfolio(actor, now, db);
-  console.log('\nLead capture — worst first\n');
+  console.log('\nLead capture — most recent show first\n');
   if (rows.length === 0) {
     console.log('  Nothing on the calendar yet.\n');
     return;

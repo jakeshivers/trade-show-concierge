@@ -30,7 +30,7 @@ import {
   planUnreconciledAlert,
   type AlertableReservation,
 } from './alerts';
-import { buildAssetRow, offerAssets, orderAssets, summarizeAssets } from './board';
+import { buildAssetRow, nextDueAt, offerAssets, orderAssets, summarizeAssets } from './board';
 import {
   AssetError,
   describeReservationRelease,
@@ -707,7 +707,18 @@ describe('the board', () => {
     holderName: null,
   };
 
-  it('puts what is wrong above what is soon', () => {
+  /**
+   * Soonest obligation first, and the clock finds the emergency on its own.
+   *
+   * This reverses the assertion it replaces, and the reversal is instructive
+   * rather than a loss. `gone` is still top — not because a rank put it there
+   * but because a booth that was due back 45 days ago has the earliest
+   * outstanding date on the board. `broken` moves *down*, and that is the real
+   * trade: an unserviceable asset promised to a show three weeks out is a
+   * genuine finding and it is not this week's work, so it is carried by the
+   * alert and the row's tone rather than by displacing Thursday's crate.
+   */
+  it('puts the nearest obligation first, and an overdue one is nearest by definition', () => {
     const rows = [
       row({ ...item0, reservation: res({ id: 'planned', reservedFrom: days(1), reservedTo: days(9) }) }),
       row({
@@ -721,7 +732,47 @@ describe('the board', () => {
       }),
     ];
     const order = orderAssets(rows).map((r) => r.reservation?.id);
-    expect(order).toEqual(['gone', 'broken', 'planned']);
+    expect(order).toEqual(['gone', 'planned', 'broken']);
+  });
+
+  /**
+   * The two-clock rule, which is what this board has and the others do not. A
+   * booth already at a show is judged on when it comes *back*; one still in the
+   * warehouse on when it has to leave. Sorting everything on the return date
+   * buries the crate that has to be on a truck tomorrow under crates coming home
+   * in November.
+   */
+  it('reads the date that is still ahead of the row, not one fixed column', () => {
+    const out = row({
+      ...item0,
+      reservation: res({ id: 'out', checkedOutAt: days(-2), reservedFrom: days(-3), reservedTo: days(40) }),
+    });
+    const leavingTomorrow = row({
+      ...item0,
+      reservation: res({ id: 'leaving', reservedFrom: days(1), reservedTo: days(8) }),
+    });
+    expect(nextDueAt(out)).toEqual(days(40));
+    expect(nextDueAt(leavingTomorrow)).toEqual(days(1));
+    expect(orderAssets([out, leavingTomorrow]).map((r) => r.reservation?.id)).toEqual([
+      'leaving',
+      'out',
+    ]);
+  });
+
+  /**
+   * An asset with nothing booked is asked nothing, so it has no date and goes
+   * last. Treating "nothing is asked" as "asked first" puts the whole idle
+   * warehouse above this week's work — `Number(null)` in a comparator, the same
+   * call the shipping board makes about a crate with no deadline.
+   */
+  it('sorts an asset with nothing booked last rather than first', () => {
+    const idle = row({ ...item0, reservation: null, showId: null, showName: null, moveInAt: null });
+    const booked = row({ ...item0, reservation: res({ id: 'booked', reservedFrom: days(30) }) });
+    expect(nextDueAt(idle)).toBeNull();
+    expect(orderAssets([idle, booked]).map((r) => r.reservation?.id)).toEqual([
+      'booked',
+      undefined,
+    ]);
   });
 
   it('counts capital outside the building apart from capital nobody can find', () => {

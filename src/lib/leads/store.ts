@@ -362,20 +362,41 @@ export async function getLeadPortfolio(
     });
   }
 
-  const rank: Record<string, number> = {
-    none: 0,
-    unknown: 1,
-    partial: 2,
-    sound: 3,
-    not_yet: 4,
-  };
+  /**
+   * Most recent show first, and a show that has not opened sorts after all of
+   * them.
+   *
+   * The flight, shipping and asset boards all went from worst-first to
+   * clock-first, and this one inverts the *direction* rather than copying it —
+   * which is the whole reason it is worth stating rather than doing quietly.
+   * Those three are prospective: they list obligations, and the soonest is the
+   * most urgent. Capture is **retrospective**. A lead count is a fact about a
+   * show that has already happened, so the nearest thing to now is the show that
+   * just ended, and the clock runs backwards from there. Ascending here would
+   * open the page on 2024.
+   *
+   * The one piece of the old ranking that survives is `not_yet`, and it survives
+   * as a *segment* rather than as a severity: a show that has not opened has
+   * recorded nothing because there was nothing to record, so it is not a finding
+   * and does not belong among the shows being judged. Within that tail the order
+   * flips back to soonest-first, because those rows are prospective again — they
+   * are the shows somebody is about to need a target list for.
+   *
+   * There is deliberately **no horizon here**, unlike the other three. A crate
+   * that arrived is finished and a landed flight is over, but an old show's
+   * capture is exactly what this year's is judged against — that is what the
+   * page is for. One row per show and five shows a year (§11.5) means the list
+   * stays readable without hiding anything.
+   */
+  const opened = (e: (typeof entries)[number]) => e.coverage.standing !== 'not_yet';
   return entries.sort((a, b) => {
-    const d = rank[a.coverage.standing] - rank[b.coverage.standing];
-    if (d !== 0) return d;
-    if (a.coverage.retentionOverdue !== b.coverage.retentionOverdue) {
-      return b.coverage.retentionOverdue - a.coverage.retentionOverdue;
-    }
-    return b.startsOn.getTime() - a.startsOn.getTime();
+    if (opened(a) !== opened(b)) return opened(a) ? -1 : 1;
+    const byTime = opened(a)
+      ? b.startsOn.getTime() - a.startsOn.getTime()
+      : a.startsOn.getTime() - b.startsOn.getTime();
+    if (byTime !== 0) return byTime;
+    // Two shows opening the same day: our own non-compliance first.
+    return b.coverage.retentionOverdue - a.coverage.retentionOverdue;
   });
 }
 
