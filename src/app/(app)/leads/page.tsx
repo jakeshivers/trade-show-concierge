@@ -40,11 +40,12 @@ export default async function LeadsPage() {
           <GoToShow
             actor={actor}
             tab="leads"
+            hash="add-lead"
             label="Capture a lead"
             hint={
               <>
-                Capture, the CSV import and erasure are on a show’s Leads tab. At the booth, use{' '}
-                <strong>Day of</strong> — it keeps working with no signal.
+                Opens the form on that show’s Leads tab, where the CSV import and erasure also
+                live. At the booth, use <strong>Day of</strong> — it keeps working with no signal.
               </>
             }
           />

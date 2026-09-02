@@ -6,6 +6,7 @@ import { getActor, ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { listShows, NotFoundError } from '@/lib/shows/store';
 import {
   captureLead,
+  updateLead,
   commitImport,
   createIntakeKey,
   getLeadBoard,
@@ -183,6 +184,117 @@ describe('capture', () => {
   it('refuses a show in another workspace as not found', async () => {
     await expect(
       captureLead(priya, '00000000-0000-0000-0000-000000000000', draft()),
+    ).rejects.toBeInstanceOf(NotFoundError);
+  });
+});
+
+describe('correcting a lead', () => {
+  it('records consent after the fact, and stamps when it was recorded rather than when they met', async () => {
+    const showId = await scratchShow('Edit consent scratch');
+    const { lead } = await captureLead(priya, showId, draft({ email: 'later@x.test' }));
+    expect(lead!.consentBasis).toBe('unknown');
+
+    // The edit this form mostly exists for: `consent.ts` withholds an
+    // unknown-basis row from everything outbound, and two lines on the tab tell
+    // the reader to come here and fix it.
+    const after = new Date(lead!.capturedAt.getTime() + 6 * 3_600_000);
+    const saved = await updateLead(
+      priya,
+      lead!.id,
+      draft({ email: 'later@x.test', basis: 'consent', consentNotice: 'Told at the booth.' }),
+      after,
+    );
+    expect(saved.lead!.consentBasis).toBe('consent');
+    // Six hours after the conversation, not at it. Back-dating this would
+    // manufacture evidence the notice was given at the booth.
+    expect(saved.lead!.consentCapturedAt!.getTime()).toBe(after.getTime());
+    expect(saved.lead!.capturedAt.getTime()).toBe(lead!.capturedAt.getTime());
+  });
+
+  it('clears the consent timestamp when the basis goes back to unknown', async () => {
+    const showId = await scratchShow('Edit downgrade scratch');
+    const { lead } = await captureLead(
+      priya,
+      showId,
+      draft({ email: 'down@x.test', basis: 'consent', consentNotice: 'Told something.' }),
+    );
+    expect(lead!.consentCapturedAt).not.toBeNull();
+    const saved = await updateLead(priya, lead!.id, draft({ email: 'down@x.test', basis: null }));
+    // A timestamp on an absence turns "nobody has said" into a record of an event.
+    expect(saved.lead!.consentBasis).toBe('unknown');
+    expect(saved.lead!.consentCapturedAt).toBeNull();
+  });
+
+  it('leaves the consent timestamp alone when the edit is not about consent', async () => {
+    const showId = await scratchShow('Edit phone scratch');
+    const { lead } = await captureLead(
+      priya,
+      showId,
+      draft({ email: 'phone@x.test', basis: 'consent', consentNotice: 'Told something.' }),
+    );
+    const saved = await updateLead(
+      priya,
+      lead!.id,
+      draft({ email: 'phone@x.test', phone: '+1 555 0100', basis: 'consent', consentNotice: 'Told something.' }),
+      new Date(Date.now() + 3_600_000),
+    );
+    expect(saved.lead!.phone).toBe('+1 555 0100');
+    expect(saved.lead!.consentCapturedAt!.getTime()).toBe(lead!.consentCapturedAt!.getTime());
+  });
+
+  it('refuses an edit that would make two rows the same person', async () => {
+    // `dedupe.ts` says a same_email pair "cannot exist among stored leads,
+    // because all three write paths refuse those". This is the fourth path, and
+    // one that skipped the check would falsify that sentence silently.
+    const showId = await scratchShow('Edit collide scratch');
+    await captureLead(priya, showId, draft({ email: 'first@x.test' }));
+    const { lead } = await captureLead(priya, showId, draft({ email: 'second@x.test' }));
+    const saved = await updateLead(priya, lead!.id, draft({ email: 'first@x.test' }));
+    expect(saved.lead).toBeNull();
+    expect(saved.match?.kind).toBe('same_email');
+  });
+
+  it('does not collide a lead with itself', async () => {
+    const showId = await scratchShow('Edit self scratch');
+    const { lead } = await captureLead(priya, showId, draft({ email: 'self@x.test' }));
+    const saved = await updateLead(priya, lead!.id, draft({ email: 'self@x.test', title: 'VP Ops' }));
+    expect(saved.lead!.title).toBe('VP Ops');
+  });
+
+  it('refuses a Member editing a lead somebody else captured, and allows their own', async () => {
+    const showId = await scratchShow('Edit reach scratch');
+    const { lead: theirs } = await captureLead(marcus, showId, draft({ email: 'theirs@x.test' }));
+    const { lead: mine } = await captureLead(priya, showId, draft({ email: 'mine2@x.test' }));
+    await expect(
+      updateLead(priya, theirs!.id, draft({ email: 'theirs@x.test', title: 'x' })),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // Their own, though — the person who was standing there is the one who knows
+    // what the notice was.
+    const saved = await updateLead(priya, mine!.id, draft({ email: 'mine2@x.test', title: 'ok' }));
+    expect(saved.lead!.title).toBe('ok');
+  });
+
+  it('refuses to edit an erased lead', async () => {
+    const showId = await scratchShow('Edit erased scratch');
+    const { lead } = await captureLead(priya, showId, draft({ email: 'gone@x.test' }));
+    await redactLead(marcus, lead!.id, 'Erasure requested by the person.');
+    await expect(
+      updateLead(marcus, lead!.id, draft({ fullName: 'Back Again', email: 'gone@x.test' })),
+    ).rejects.toThrow(/erased/i);
+  });
+
+  it('carries the scanner reference through rather than reading it from the form', async () => {
+    // It is the idempotency rail a badge scanner retries against. Editing it
+    // either collides with a real row or orphans the retry.
+    const showId = await scratchShow('Edit ref scratch');
+    const { lead } = await captureLead(priya, showId, draft({ externalRef: 'SCAN-1' }));
+    const saved = await updateLead(priya, lead!.id, draft({ externalRef: null, title: 'Buyer' }));
+    expect(saved.lead!.externalRef).toBe('SCAN-1');
+  });
+
+  it('refuses a lead in another workspace as not found', async () => {
+    await expect(
+      updateLead(priya, '00000000-0000-0000-0000-000000000000', draft()),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
 });

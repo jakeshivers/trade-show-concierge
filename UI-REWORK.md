@@ -653,3 +653,73 @@ never asked for.
 demo path and carry the remaining spec citations — `§8e` and `SCOPE §11.7` are on `/settings/crm`
 and `/roi` verbatim, and `§4` is a field hint on the asset form. Grep is `§`, `SCOPE`, `(s)`,
 and any sentence that says why we chose something.
+
+## §16 — Three things a reader could not find, and one they could not do
+
+The same reader, working through `/leads` and the show's Leads tab in order. Three of the
+four are the same defect at different scales: **a control that exists is not a control that
+can be found, and an instruction with nothing behind it is worse than no instruction.**
+
+- **"I see Target accounts and can add to that, but I cannot see a way to add a new lead."**
+  The form was there. It was the last thing in a card *titled* "Capture" whose first 130 words
+  were the count, its coverage notes and the cost-per-lead refusal — so the one control for
+  the act the tab is named after sat under six lines of reporting, and a reader looking for
+  "add a lead" found a report and stopped. One card was doing two jobs and the reporting half
+  was winning. It is two cards now: **Add a lead**, first on the tab and holding only the
+  form, and **Lead count**, next to the list it counts. §14's rule about page copy has a
+  layout half — **a card is named for what somebody does in it.**
+- **The CTA landed at the top of a long tab.** `GoToShow` has documented a `hash` prop since
+  it was written — *"Anchor on the destination tab, so the form is on screen rather than below
+  the fold"* — and **no caller could pass one**, because `Card` had no `id` and there was
+  nothing on any destination to anchor to. Half-built, in the half nobody sees. `Card` takes
+  an `id` now (with `scroll-mt`, or the anchor sits flush against the viewport and reads as a
+  mis-scroll), `/leads` passes `hash="add-lead"`, and the other five boards can do the same.
+- **`Capture` → `Capture lead`** on the submit button. A verb with no object, on a button
+  under seven unlabelled fields.
+
+**And the fourth, which was not a copy defect at all: there was no way to edit a captured
+lead.** `captureLead`, `commitImport`, `intakeLead`, `markDuplicate`, `redactLead` — and
+nothing between "record it" and "erase it". Two lines already on the screen told the reader to
+do it anyway: the coverage note's *"Open the lead to record it"* and `consent.ts`'s fix line,
+*"Record what the person was told at the booth."* Both pointed at a control that did not
+exist. `canManageLeads`'s own doc comment had described the rule — *"editing a lead somebody
+else captured"* — so the permission was designed and the function was never written.
+
+`updateLead` is the fourth write path. Four things it inherits rather than decides:
+
+1. **It re-checks identity, because `dedupe.ts` claimed it could.** That file said a
+   `same_scan` or `same_email` pair *"cannot exist among stored leads, because all three write
+   paths refuse those before they are written"*. An edit that skipped the check would have
+   made that sentence quietly false — type a colleague's address into the email field and the
+   show has two rows for one person, which is §5j's inflation in the flattering direction. The
+   comment now says **four**, and the check is what keeps it true. The candidate list excludes
+   the row being edited, or every lead collides with itself.
+2. **`external_ref` is not editable and is not on the form.** It is the rail a badge scanner
+   retries against, so editing it either collides with a real row or orphans the retry that is
+   coming in ten minutes on bad wifi. The store carries the stored value through.
+3. **A redacted lead is refused; a duplicate is not.** Erasure nulled those columns and an
+   edit would write personal data back into the row that proves it was honoured. A duplicate
+   keeps its own consent record and its own retention clock — which is exactly what marking it
+   did not touch — so it stays editable.
+4. **Editing has the same reach as reading.** Your own, or an approver's. A row nobody
+   captured (imported, or posted by a scanner) has a null capturer and is therefore an
+   approver's, which falls out rather than being chosen and is right: there is no "person who
+   was there" to defer to.
+
+**The one thing it decides is the consent timestamp, and it is the honest half.**
+`consent_captured_at` answers *when somebody recorded this basis*, and the entire reason it is
+a separate column from `captured_at` is that the two differ. Recording at 4pm what was said at
+10am is the ordinary case; back-dating it to the capture would manufacture evidence that the
+notice was given at the booth, which is the one thing `consent.ts` exists to refuse. So it
+moves when the **claim** moves — the basis or the notice — is **cleared** when the basis
+returns to `unknown` (a timestamp on an absence turns "nobody has said" into a record of an
+event), and is left alone by an edit that only fixes a phone number. Nine tests.
+
+**The pattern across all four:** every one was found by a person using the product, and none
+of them could have been found by `pnpm test`. Three were invisible to the suite because they
+are layout and wording; the fourth was invisible because **a missing feature has no failing
+test** — nothing asserts the absence of a function nobody wrote. The signal that would have
+caught it is cheaper than a test and was sitting on the screen the whole time: **page copy
+telling somebody to do a thing is a claim the product should be checked against.** Grep the
+screens for imperatives — "open the", "record what", "add a" — and confirm each one has a
+control at the other end.

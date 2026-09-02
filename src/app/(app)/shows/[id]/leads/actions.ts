@@ -12,6 +12,7 @@ import {
   markDuplicate,
   recordMeeting,
   redactLead,
+  updateLead,
   sweepLeadRetention,
   unmarkDuplicate,
 } from '@/lib/leads/store';
@@ -128,6 +129,39 @@ export async function runRetention(_prev: FormState, form: FormData): Promise<Fo
         : `${plural(result.erased, 'lead', 'leads')} erased across the workspace. Every lead ` +
           'count is unchanged.',
   };
+}
+
+/**
+ * Correcting one already captured.
+ *
+ * `externalRef` is deliberately absent: it is the rail a scanner retries
+ * against, so the store carries the stored one through rather than reading a
+ * field this form does not have.
+ */
+export async function editLead(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    const result = await updateLead(actor, str(form, 'leadId'), {
+      fullName: str(form, 'fullName'),
+      email: optional(form, 'email'),
+      phone: optional(form, 'phone'),
+      company: optional(form, 'company'),
+      title: optional(form, 'title'),
+      notes: optional(form, 'notes'),
+      interests: optional(form, 'interests')?.split(',') ?? null,
+      externalRef: null,
+      basis: optional(form, 'basis'),
+      consentNotice: optional(form, 'consentNotice'),
+    });
+    refresh(showId);
+    if (!result.lead && result.match) {
+      return { ok: `Not saved — ${result.match.reason}` };
+    }
+    return { ok: 'Saved.' };
+  } catch (err) {
+    return asFormError(err);
+  }
 }
 
 /**

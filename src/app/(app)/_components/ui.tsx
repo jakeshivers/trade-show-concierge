@@ -18,12 +18,23 @@ import { cn } from './cn';
 /* --------------------------------- surfaces -------------------------------- */
 
 export function Card({
+  id,
   title,
   action,
   subtitle,
   children,
   className,
 }: {
+  /**
+   * Anchor, so a board's CTA can land on the card holding the form rather than
+   * at the top of a long tab. `GoToShow` has documented a `hash` prop since it
+   * was written and no caller could pass one, because nothing on any
+   * destination had an id — the feature was half-built in the half nobody saw.
+   *
+   * `scroll-mt` because the anchor would otherwise sit under the top of the
+   * viewport with no breathing room, which reads as a mis-scroll.
+   */
+  id?: string;
   title?: string;
   subtitle?: string;
   action?: React.ReactNode;
@@ -32,8 +43,10 @@ export function Card({
 }) {
   return (
     <section
+      id={id}
       className={cn(
         'rounded-xl border border-border bg-panel p-5 shadow-sm shadow-black/[0.02]',
+        id && 'scroll-mt-6',
         className,
       )}
     >

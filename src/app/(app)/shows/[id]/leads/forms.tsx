@@ -6,6 +6,7 @@ import {
   addTargetAccount,
   capture,
   commit,
+  editLead,
   erase,
   markAsDuplicate,
   preview,
@@ -37,6 +38,84 @@ const BASIS_OPTIONS = [
   { value: 'legitimate_interest', label: 'Legitimate interest (they gave us the badge)' },
   { value: 'consent', label: 'Consent (they were told, and agreed)' },
 ];
+
+export type EditableLead = {
+  id: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  title: string | null;
+  notes: string | null;
+  interests: string[] | null;
+  basis: string;
+  consentNotice: string | null;
+};
+
+/**
+ * Correcting a lead.
+ *
+ * The same fields as capture and one behaviour that is not: the consent select
+ * starts on whatever is *recorded*, so opening this on a scanner lead lands on
+ * "not recorded" and the notice box appears the moment somebody picks consent —
+ * which is the edit this form mostly exists for. `consent.ts` withholds those
+ * rows from every outbound path until it happens, and two places on this page
+ * tell the reader to come and do it.
+ *
+ * No `externalRef` control, on purpose. See `updateLead`.
+ */
+export function EditLeadForm({ showId, lead }: { showId: string; lead: EditableLead }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(editLead, {});
+  const [basis, setBasis] = useState(lead.basis === 'unknown' ? '' : lead.basis);
+
+  return (
+    <form action={action} className="mt-2 space-y-2">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="leadId" value={lead.id} />
+      <div className="flex flex-wrap items-center gap-2">
+        <input name="fullName" required defaultValue={lead.fullName} placeholder="Name" className={input} />
+        <input name="email" type="email" defaultValue={lead.email ?? ''} placeholder="Email" className={input} />
+        <input name="company" defaultValue={lead.company ?? ''} placeholder="Company" className={input} />
+        <input name="title" defaultValue={lead.title ?? ''} placeholder="Job title" className={input} />
+        <input name="phone" defaultValue={lead.phone ?? ''} placeholder="Phone" className={input} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          name="interests"
+          defaultValue={lead.interests?.join(', ') ?? ''}
+          placeholder="Interests, comma separated"
+          className={`${input} min-w-56`}
+        />
+        <input name="notes" defaultValue={lead.notes ?? ''} placeholder="Notes" className={`${input} min-w-64`} />
+        <select
+          name="basis"
+          value={basis}
+          onChange={(e) => setBasis(e.target.value)}
+          className={input}
+        >
+          {BASIS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {basis === 'consent' && (
+          <input
+            name="consentNotice"
+            required
+            defaultValue={lead.consentNotice ?? ''}
+            placeholder="What they were told"
+            className={`${input} min-w-64`}
+          />
+        )}
+        <Submit pending={pending} busy="Saving…">
+          Save
+        </Submit>
+      </div>
+      <Message state={state} />
+    </form>
+  );
+}
 
 export function CaptureForm({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(capture, {});
@@ -76,7 +155,7 @@ export function CaptureForm({ showId }: { showId: string }) {
           />
         )}
         <Submit pending={pending} busy="Saving…">
-          Capture
+          Capture lead
         </Submit>
       </div>
       <Message state={state} />

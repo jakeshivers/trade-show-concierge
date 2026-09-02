@@ -311,7 +311,7 @@ describe('duplicate detection', () => {
   });
 
   it('offers nothing where the machine would already have refused the write', () => {
-    // A same-scan or same-email pair cannot exist among stored leads: all three
+    // A same-scan or same-email pair cannot exist among stored leads: all four
     // write paths refuse those before anything is written.
     expect(
       findPossiblePairs([

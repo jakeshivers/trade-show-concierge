@@ -2,6 +2,7 @@ import { getActor } from '@/lib/auth/actor';
 import { getLeadBoard } from '@/lib/leads/store';
 import { getTargetBoard } from '@/lib/dayof/store';
 import { canManageTargets } from '@/lib/dayof/access';
+import { canEditLead } from '@/lib/leads/access';
 import { summarizeTargets } from '@/lib/dayof/targets';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Badge, Card, Empty, Table, Td, Th, showDate, showDateTime } from '../../../_components/ui';
@@ -17,6 +18,7 @@ import { loadShow } from '../detail';
 import {
   CaptureForm,
   DuplicateForm,
+  EditLeadForm,
   EraseForm,
   ImportForm,
   MeetingForm,
@@ -61,6 +63,25 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
+
+      {/* Adding a lead, first and on its own.
+
+          This was the bottom of a card titled "Capture" whose first 130 words
+          were the count, its coverage notes and the cost-per-lead refusal — so
+          the only control on the tab for the act the tab is named after sat
+          under six lines of reporting, and a reader looking for "add a lead"
+          found a report. Reported by a user who could add a *target account* and
+          concluded there was no way to add a lead.
+
+          One card was doing two jobs and the reporting half was winning. The
+          count is a report and keeps its own card, next to the list it counts.
+          `UI-REWORK.md` §14's rule about page copy has a layout half: a card is
+          named for what somebody does in it. */}
+      {may.capture && (
+        <Card id="add-lead" title="Add a lead">
+          <CaptureForm showId={id} />
+        </Card>
+      )}
 
       {/* Who we came for. Above the lead list rather than below it, because the
           list answers "who did we meet" and this answers "who did we not" — and
@@ -133,7 +154,7 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
         )}
         {mayEditTargets && <TargetForm showId={id} people={targetBoard.people} />}
       </Card>
-      <Card title="Capture">
+      <Card title="Lead count">
         <CoverageHeadline coverage={coverage} />
         <CoverageNotes coverage={coverage} />
         {!perLead.ok && coverage.standing !== 'not_yet' && (
@@ -141,7 +162,6 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
             <span className="font-medium">Cost per lead is not shown yet.</span> {perLead.reason}
           </p>
         )}
-        {may.capture && <CaptureForm showId={id} />}
       </Card>
 
       {may.manage && possiblePairs.length > 0 && (
@@ -241,6 +261,19 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                         <span className="text-xs text-text-muted">not counted — duplicate</span>
                         {may.manage && <UndoDuplicateForm showId={id} leadId={lead.id} />}
                       </div>
+                    )}
+                    {/* Editing needs the same reach as reading, which `restricted`
+                        already carries — but it is asked directly rather than
+                        inferred from it, because two definitions that happen to
+                        agree today are one refactor away from a control that
+                        edits a row it cannot show. */}
+                    {canEditLead(actor, lead.capturedById) && !lead.redactedAt && (
+                      <details className="mb-1">
+                        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                          Edit
+                        </summary>
+                        <EditLeadForm showId={id} lead={{ ...lead, basis: lead.basis }} />
+                      </details>
                     )}
                     {may.redact && !lead.redactedAt && <EraseForm showId={id} leadId={lead.id} />}
                   </Td>
