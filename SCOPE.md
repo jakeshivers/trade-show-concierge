@@ -798,6 +798,20 @@ IANA zones are now carried through `Segment` and stored, because Duffel had been
 — leaving no way to say what time a departure is at the airport the traveler is standing
 in.
 
+**And the horizon changed the ordering, which was the twelve-step-old decision it was
+protecting.** §5f's board sorted worst-first on the argument that a flight board sorted by
+departure puts the leg that needs somebody underneath the leg that is merely next. That was
+right about a board carrying every leg ever flown, and the horizon answered it rather than
+refuting it: once landed legs stop appearing, **everything on the board is a flight somebody
+still has to catch**, and among those the clock is the order the work happens in. A table
+where next Tuesday sits above tomorrow is one a reader re-sorts in their head every time, and
+then stops reading — which costs more than the ranking ever bought. What the ranking was
+actually protecting is kept and put where it does not have to be scanned for: the summary
+above the table, the tone on each row, and the alerts card the engine writes. Severity still
+breaks ties, so two legs leaving in the same minute put the cancelled one first. The general
+shape is worth keeping: **a ranking that fights the clock is usually a symptom of a list
+carrying rows that should not be on it**, and removing those is the better fix.
+
 **The board is what is still ahead, and one FK made it what had ever been (2026-09-02).**
 Two things, found together because the first made the second visible. A flight board is an
 operations screen — it answers *what needs me today* — and a leg that landed last October

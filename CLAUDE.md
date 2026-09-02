@@ -1119,6 +1119,14 @@ per-show; `/shipping` no longer needs it.
   the cascade. It is `cascade` now: a materialized leg is a **projection** of the booking,
   and a hand-entered flight has a null `booking_id` because nothing derived it. **A nullable
   column in a unique index is an idempotency rail with an off switch.** `SCOPE.md` §5f.
+- **The board is ordered soonest-first now, and the horizon is why.** It was worst-first for
+  twelve steps on the argument that departure order buries the leg that needs somebody. The
+  horizon answered that rather than refuting it: with landed legs gone, every row is a flight
+  somebody still has to catch, and among those the clock is the order the work happens in.
+  Trouble moved to where it is not scanned for — the summary, the row's tone, the alerts card
+  — and severity still breaks ties. Worth keeping generally: **a ranking that fights the clock
+  is usually a list carrying rows that should not be on it**, and removing those is the better
+  fix.
 
 **A stale `next dev` will lie to you about all of this.** `pnpm db:reset` deletes `.pglite`
 out from under a running server, which then serves the pre-reset database from a deleted

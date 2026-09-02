@@ -17,12 +17,16 @@ import {
 } from '../_components/ui';
 
 /**
- * The flight board — every leg this actor may see, worst first.
+ * The flight board — every leg still ahead of somebody, soonest first.
  *
- * Not sorted by departure time, which is the one thing an airport board does.
- * This is read by somebody responsible for twenty people across five shows, and
- * the flight that needs them is rarely the next one to leave. `board.ts` holds
- * the ordering and the reasoning.
+ * It was sorted worst-first for twelve steps, and the horizon is what changed
+ * the answer rather than an argument against it: once a landed leg stops
+ * appearing, everything here is a flight somebody still has to catch, and among
+ * those the clock is the order the work happens in. What the old ranking was
+ * protecting is kept and moved to where it belongs — trouble is in the summary
+ * above, in the tone on the row, and in the alerts card, none of which depend on
+ * somebody scanning down a table to find it. `board.ts` holds the ordering and
+ * the full reasoning.
  *
  * Two things this screen refuses to do, both of which a flight board does by
  * default. It does not report delays as such: a delay that does not touch the
@@ -53,10 +57,10 @@ export default async function FlightBoardPage() {
         title="Flight board"
         blurb={
           <>
-            Every leg still ahead of somebody, ordered by what is wrong with it rather than by
-            when it leaves. A delay only matters here against the show it is flying to — the
-            arrival buffer the trip was approved under is re-checked against live times, not
-            once at purchase.
+            Every leg still ahead of somebody, soonest first. What is wrong with one is in the
+            figures above and in the alerts underneath, not in the order. A delay only matters
+            here against the show it is flying to — the arrival buffer the trip was approved
+            under is re-checked against live times, not once at purchase.
           </>
         }
         action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
