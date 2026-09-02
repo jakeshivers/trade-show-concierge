@@ -16,6 +16,7 @@ import {
   readinessTone,
   statusLabel,
 } from '../_components/ui';
+import { plural } from '../_components/text';
 
 /**
  * The show calendar.
@@ -115,7 +116,7 @@ function ShowRow({ show, canClone }: { show: ShowListEntry; canClone: boolean })
         <Badge tone={STATUS_TONE[show.status]}>{statusLabel(show.status)}</Badge>
         {show.mine && <Badge tone="info">You&rsquo;re on this</Badge>}
         {decided && days > 0 && (
-          <span className="text-xs text-text-muted">in {days} days</span>
+          <span className="text-xs text-text-muted">in {plural(days, 'day', 'days')}</span>
         )}
       </div>
 

@@ -13,6 +13,7 @@ import {
   type Tone,
 } from '../_components/ui';
 import { GoToShow } from '../_components/go-to-show';
+import { plural } from '../_components/text';
 
 /**
  * The portfolio rollup — every show being run, ranked by how much trouble it is in.
@@ -124,7 +125,7 @@ function ShowRow({ row }: { row: PortfolioRow }) {
         )}
         <span className="text-xs text-text-muted">
           {row.daysUntil > 0
-            ? `opens in ${row.daysUntil} days`
+            ? `opens in ${plural(row.daysUntil, 'day', 'days')}`
             : row.daysUntil === 0
               ? 'opens today'
               : `opened ${-row.daysUntil} days ago`}

@@ -57,10 +57,10 @@ export default async function FlightBoardPage() {
         title="Flight board"
         blurb={
           <>
-            Every leg still ahead of somebody, soonest first. What is wrong with one is in the
-            figures above and in the alerts underneath, not in the order. A delay only matters
-            here against the show it is flying to — the arrival buffer the trip was approved
-            under is re-checked against live times, not once at purchase.
+            Every leg still ahead of somebody, soonest first. Anything wrong is flagged on the
+            row and counted above. A delay only matters here against the show somebody is flying
+            to: every leg is re-checked against the arrival buffer the trip was approved under,
+            not just once when it was booked.
           </>
         }
         action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
@@ -107,7 +107,7 @@ export default async function FlightBoardPage() {
               <Stat
                 label="Late, buffer holds"
                 value={board.summary.delayedButClear}
-                note="Weather. Nobody needs to do anything."
+                note="Late, but still landing in time for the show. Nothing to do."
               />
               <Stat
                 label="Status unknown"

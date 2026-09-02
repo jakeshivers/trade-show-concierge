@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
+import { plural } from '@/lib/text';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import {
@@ -559,7 +560,7 @@ async function searchAndEvaluate(
     travelRequestId: request.id,
     step: 'search',
     summary:
-      `${deps.provider.name} returned ${result.offers.length} offer(s); ` +
+      `${deps.provider.name} returned ${plural(result.offers.length, 'offer', 'offers')}; ` +
       (best
         ? `best is ${best.offer.id} at ${usd(best.offer.totalCents)} → ${best.verdict.decision}`
         : 'none were bookable'),
@@ -612,7 +613,7 @@ export async function runAgent(
       step: 'no_options',
       actor,
       summary: ranked.length
-        ? `${ranked.length} offer(s) found, none bookable`
+        ? `${plural(ranked.length, 'offer', 'offers')} found, none bookable`
         : 'No offers matched the request',
       detail: { reasons },
     });
@@ -818,7 +819,7 @@ async function purchaseOrFail(
       step: 'credit_blocked_by_hold',
       actor,
       summary:
-        `${creditIds.length} redeemable credit(s) cannot be applied: this seat is already held as ` +
+        `${plural(creditIds.length, 'redeemable credit', 'redeemable credits')} cannot be applied: this seat is already held as ` +
         `order ${existing.providerOrderId}, and a credit attaches when an order is created, not ` +
         'when it is paid for. Paying full fare and leaving the credit intact.',
       detail: { orderId: existing.providerOrderId, creditIds },
@@ -886,7 +887,7 @@ async function reportCreditPosition(
     actor,
     summary:
       match.chosen.length === 0
-        ? `No credit applies to ${best.offer.id}; ${match.rejected.length} held credit(s) considered`
+        ? `No credit applies to ${best.offer.id}; ${plural(match.rejected.length, 'held credit', 'held credits')} considered`
         : `${usd(here + elsewhere)} of credit matches ${best.offer.id}` +
           (elsewhere > 0
             ? ` — but ${usd(elsewhere)} of it is not redeemable through ${deps.provider.name} ` +

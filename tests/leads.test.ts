@@ -412,9 +412,12 @@ describe('CSV import', () => {
     expect(batch.rowsRead).toBe(3);
     expect(batch.accepted + batch.rejected + batch.duplicates).toBe(3);
     expect(batch.problems!.some((p) => p.reason === 'No name.')).toBe(true);
-    // No column carried a lawful basis, and the record says so rather than
-    // leaving the reader to notice every lead is `unknown`.
-    expect(batch.notes).toContain('lawful basis');
+    // The batch record has to *say* that no column carried a basis, rather than
+    // leaving the reader to notice every lead came out `unknown`. Asserted on
+    // the fact rather than on the wording — `UI-REWORK.md` §14: this test broke
+    // on a copy pass without anything true having changed.
+    expect(batch.notes).toBeTruthy();
+    expect(batch.notes).toMatch(/follow up|basis|consent/i);
   });
 
   it('attributes an imported lead to nobody, so one person’s coverage is not inflated', async () => {

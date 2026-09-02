@@ -150,7 +150,7 @@ export function CoverageNotes({ coverage }: { coverage: LeadCoverage }) {
       `${plural(coverage.basis.unknown, 'lead has', 'leads have')} no record of what the person ` +
         'was told about being contacted. You can still follow up on the conversation they ' +
         `started, but ${coverage.basis.unknown === 1 ? 'it will' : 'they will'} not be sent to ` +
-        'marketing or a CRM. Open the lead to record it.',
+        'marketing or a CRM. Edit the lead on the show’s Leads tab to record it.',
     );
   }
   if (coverage.retentionOverdue > 0) {

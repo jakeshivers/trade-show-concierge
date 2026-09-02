@@ -79,7 +79,7 @@ export type PurchaseResult = {
 export class ProviderNotConfiguredError extends Error {
   constructor(readonly provider: string, readonly missingEnv: string[]) {
     super(
-      `${provider} is not configured. Set ${missingEnv.join(', ')} to enable it. ` +
+      `${provider} is not configured. Set ${missingEnv.join(', ')}. ` +
         `Until then, flights can be recorded manually but not searched or booked.`,
     );
     this.name = 'ProviderNotConfiguredError';

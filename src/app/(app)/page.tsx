@@ -5,6 +5,7 @@ import { formatStrategies } from '@/lib/auth/login-methods';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
 import { getItinerary, listShows } from '@/lib/shows/store';
 import { getAlertFeed } from '@/lib/alerts/store';
+import { ENGINE_COUNT } from '@/lib/alerts/feed';
 import { getDb } from '@/db';
 import {
   Badge,
@@ -17,6 +18,7 @@ import {
   readinessLabel,
   readinessTone,
 } from './_components/ui';
+import { plural } from './_components/text';
 
 /**
  * The overview.
@@ -62,16 +64,9 @@ export default async function OverviewPage() {
       <PageHeader
         title={`Welcome, ${actor.fullName.split(' ')[0]}`}
         blurb={
-          <>
-            Signed in through{' '}
-            {authMode() === 'clerk' ? 'a Clerk session' : (
-              <>
-                the dev seam (<code>DEV_ACTOR_EMAIL</code>)
-              </>
-            )}
-            . Your role and cost center come from this workspace&rsquo;s records, never from
-            the identity provider.
-          </>
+          authMode() === 'clerk'
+            ? 'What needs deciding, what is coming up, and where you are going.'
+            : 'What needs deciding, what is coming up, and where you are going. This session is a development sign-in.'
         }
       />
 
@@ -83,14 +78,13 @@ export default async function OverviewPage() {
         <Card title="Owed to you">
           <p>
             <Link href="/alerts" className="font-medium underline hover:no-underline">
-              {feed.summary.outstanding} outstanding alert
-              {feed.summary.outstanding === 1 ? '' : 's'}
+              {plural(feed.summary.outstanding, 'outstanding alert', 'outstanding alerts')}
             </Link>{' '}
             <span className="text-text-muted">
               {feed.summary.critical > 0 && `${feed.summary.critical} critical · `}
               {feed.summary.unchecked > 0 &&
                 `${feed.summary.unchecked} not re-checked recently · `}
-              from the deadline, flight, freight, asset and credit engines.
+              from the {ENGINE_COUNT} engines that watch this workspace.
             </span>
           </p>
         </Card>
@@ -134,7 +128,9 @@ export default async function OverviewPage() {
                 <Badge tone={readinessTone(s.readiness.score)}>
                   {readinessLabel(s.readiness.score)}
                 </Badge>
-                <span className="ml-auto text-xs text-text-muted">in {daysUntil(s.startsOn)} days</span>
+                <span className="ml-auto text-xs text-text-muted">
+                  in {plural(daysUntil(s.startsOn), 'day', 'days')}
+                </span>
               </li>
             ))}
           </ul>

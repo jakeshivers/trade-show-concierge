@@ -72,8 +72,8 @@ export default async function RoiPortfolioPage() {
         <Empty>
           No CRM sync has ever run here, so no lead has been offered to a CRM and every pipeline
           figure below is empty because <strong>nobody has looked</strong> — not because these
-          shows produced nothing. Connect a CRM under{' '}
-          <Link href="/settings/crm" className="underline">Settings → CRM</Link>.
+          shows produced nothing. <Link href="/settings/crm" className="underline">Settings → CRM</Link> says what
+          connecting one takes.
         </Empty>
       )}
 

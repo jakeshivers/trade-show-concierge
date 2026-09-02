@@ -83,7 +83,10 @@ async function routes(): Promise<Check[]> {
     { path: '/travel/approvals', expect: 'pproval' },
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
-    { path: '/assets', expect: 'lost between shows' },
+    // A stat label rather than a blurb sentence, for the reason /cost's check
+    // moved — and deliberately not the conflicts card, which only renders when
+    // two shows actually clash. This one is in the summary grid unconditionally.
+    { path: '/assets', expect: 'Outside the building' },
     { path: '/leads', expect: 'how complete it is' },
     { path: '/day-of', expect: 'while you still have a connection' },
     // The only page here whose content is *not* server-rendered, so the phrase

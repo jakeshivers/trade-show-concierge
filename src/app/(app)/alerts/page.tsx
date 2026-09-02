@@ -2,7 +2,9 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getAlertFeed } from '@/lib/alerts/store';
 import {
+  ENGINE_COUNT,
   SOURCE_LABEL,
+  engineList,
   groupFeed,
   linkFor,
   standingDays,
@@ -90,11 +92,10 @@ export default async function AlertsPage() {
         title="Alerts"
         blurb={
           <>
-            Everything five engines have to say to you, worst first — deadlines, flights,
-            freight, assets and ticket credits. Each sentence is written by the engine that
-            owns the judgment, in the tense that engine chose: a penalty is “at risk” before
-            its date and “incurred” after it, and a crate is “delivered” only in the
-            carrier’s words until somebody says it reached the booth.
+            Everything the {ENGINE_COUNT} engines have to say to you, worst first —{' '}
+            {engineList()}. Wording is exact: a penalty is “at risk” before its date and
+            “incurred” after it, and a crate is “delivered” in the carrier’s words until
+            somebody confirms it reached the booth.
           </>
         }
         action={<RefreshButton />}
@@ -165,9 +166,9 @@ export default async function AlertsPage() {
 
       {alerts.length === 0 ? (
         <Empty>
-          Nothing is addressed to you. That is the ordinary result: all five engines are
-          written to say nothing on most rows on most nights, which is the only way the ones
-          that do speak stay worth reading.
+          Nothing is addressed to you, which is the ordinary result. The engines are written to
+          stay quiet on most rows on most nights, so that the ones that do speak are worth
+          reading.
         </Empty>
       ) : (
         <>

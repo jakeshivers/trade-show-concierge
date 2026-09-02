@@ -93,11 +93,11 @@ export default async function AssetRegisterPage() {
         title="Assets & collateral"
         blurb={
           <>
-            Capital that leaves the building, and the print and swag that goes with it. A
-            reservation is a claim on a thing, not a label on a row — so this page counts what can
-            actually go, what is out, and what nobody can find. Capital assets get lost between
-            shows, and they get lost quietly. Ordered by the next date each one is due out or
-            due back; anything with nothing booked sits at the end.
+            Capital that leaves the building, and the print and swag that goes with it. Booking
+            an asset to a show does not mean it can go, so this page counts what is actually
+            available, what is out, and what nobody can find — the expensive things go missing
+            between shows, and quietly. Ordered by the next date each one is due out or back;
+            anything with nothing booked sits at the end.
           </>
         }
         action={
@@ -125,7 +125,7 @@ export default async function AssetRegisterPage() {
             value={money(summary.missingCents)}
             note={
               summary.missing > 0
-                ? `${summary.missing} past the point of chasing — insurance, not a reminder`
+                ? `${summary.missing} missing long enough to be an insurance claim rather than a reminder`
                 : 'nothing lost'
             }
             tone={summary.missing > 0 ? 'bad' : 'good'}
@@ -133,13 +133,13 @@ export default async function AssetRegisterPage() {
           <Stat
             label="Promised but not fit to go"
             value={summary.unserviceable}
-            note="a future claim, a past fact, and nothing else joining them"
+            note="Booked to an upcoming show, and last returned damaged or in for repair."
             tone={summary.unserviceable > 0 ? 'warn' : 'neutral'}
           />
           <Stat
             label="Reserved and never taken"
             value={summary.neverCollected}
-            note="the show went without it, or somebody took it and did not say"
+            note="Booked, and never signed out. The show went without it, or somebody took it and did not say."
             tone={summary.neverCollected > 0 ? 'warn' : 'neutral'}
           />
         </div>

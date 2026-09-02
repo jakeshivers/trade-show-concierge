@@ -153,6 +153,47 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
 };
 
 /**
+ * How many engines write to this feed, and what to call them in a sentence.
+ *
+ * This exists because the screens said **five** and listed five, and there have
+ * been seven since step 19 — so `/alerts` carried a blurb promising deadlines,
+ * flights, freight, assets and credits directly above a Leads alert. Nothing
+ * failed; the sentence simply stopped being true two steps after it was written,
+ * which is the exact shape of the `SOURCE_LABEL` bug this file already carries a
+ * scar from, in prose rather than in a guard.
+ *
+ * So the prose is derived. `EngineSource` is the enum minus the two sources
+ * nothing sweeps — a booking alert is written by the agent as it works, and
+ * `unknown` is what the guard answers for a row it cannot classify — and
+ * `ENGINE_NOUN` is a `Record` over it, so adding an engine to `AlertSource`
+ * fails to compile until somebody says what to call it on screen.
+ */
+const NOT_AN_ENGINE = ['booking', 'unknown'] as const;
+export type EngineSource = Exclude<AlertSource, (typeof NOT_AN_ENGINE)[number]>;
+
+const ENGINE_NOUN: Record<EngineSource, string> = {
+  deadline: 'deadlines',
+  flight: 'flights',
+  shipping: 'freight',
+  asset: 'assets',
+  lead: 'leads',
+  roi: 'ROI',
+  credit: 'ticket credits',
+};
+
+export const ENGINE_SOURCES = (Object.keys(SOURCE_LABEL) as AlertSource[]).filter(
+  (a): a is EngineSource => !(NOT_AN_ENGINE as readonly string[]).includes(a),
+);
+
+export const ENGINE_COUNT = ENGINE_SOURCES.length;
+
+/** "deadlines, flights, freight, assets, leads, ROI and ticket credits" */
+export function engineList(): string {
+  const nouns = ENGINE_SOURCES.map((e) => ENGINE_NOUN[e]);
+  return `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}`;
+}
+
+/**
  * Live work, worst first, oldest first within a severity — and the one list in
  * this product that deliberately did **not** move to the clock on 2026-09-02.
  *

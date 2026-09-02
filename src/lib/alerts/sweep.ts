@@ -1,4 +1,5 @@
 import { getDb } from '@/db';
+import { plural } from '@/lib/text';
 import { sweepDeadlineAlerts } from '@/lib/deadlines/store';
 import { syncFlightStatuses } from '@/lib/flights/store';
 import { selectStatusProviderOrNull } from '@/lib/flights/provider';
@@ -51,7 +52,7 @@ export async function runAllSweeps(
     source: 'deadline',
     raised: deadlines.written,
     resolved: deadlines.resolved,
-    detail: `${deadlines.planned.length} deadline condition(s) hold tonight`,
+    detail: `${plural(deadlines.planned.length, 'deadline condition', 'deadline conditions')} hold tonight`,
   });
 
   const status = selectStatusProviderOrNull();
@@ -61,7 +62,7 @@ export async function runAllSweeps(
       source: 'flight',
       raised: flights.alertsWritten,
       resolved: flights.alertsResolved,
-      detail: `${flights.checked} leg(s) checked, ${flights.changed} moved, ${flights.noRecord} not found`,
+      detail: `${plural(flights.checked, 'leg', 'legs')} checked, ${flights.changed} moved, ${flights.noRecord} not found`,
     });
   } else {
     out.push({ source: 'flight', raised: 0, resolved: 0, unavailable: status.unavailable });
@@ -74,7 +75,7 @@ export async function runAllSweeps(
       source: 'shipping',
       raised: crates.alertsWritten,
       resolved: crates.alertsResolved,
-      detail: `${crates.checked} crate(s) checked, ${crates.scansAdded} new scan(s)`,
+      detail: `${plural(crates.checked, 'crate', 'crates')} checked, ${plural(crates.scansAdded, 'new scan', 'new scans')}`,
     });
   } else {
     out.push({ source: 'shipping', raised: 0, resolved: 0, unavailable: tracking.unavailable });
@@ -85,7 +86,7 @@ export async function runAllSweeps(
     source: 'asset',
     raised: assets.alertsWritten,
     resolved: assets.alertsResolved,
-    detail: `${assets.reservations} reservation(s) examined`,
+    detail: `${plural(assets.reservations, 'reservation', 'reservations')} examined`,
   });
 
   const leads = await sweepLeadAlerts(orgId, now, db);
@@ -93,7 +94,7 @@ export async function runAllSweeps(
     source: 'lead',
     raised: leads.raised,
     resolved: leads.resolved,
-    detail: `${leads.planned.length} lead condition(s) hold tonight`,
+    detail: `${plural(leads.planned.length, 'lead condition', 'lead conditions')} hold tonight`,
   });
 
   // The seventh, and the only one that reports an unanswered question rather
@@ -105,7 +106,7 @@ export async function runAllSweeps(
     source: 'roi',
     raised: roi.raised,
     resolved: roi.resolved,
-    detail: `${roi.planned.length} ROI condition(s) hold tonight`,
+    detail: `${plural(roi.planned.length, 'ROI condition', 'ROI conditions')} hold tonight`,
   });
 
   const credits = await runCreditMaintenance(db, orgId, now);
@@ -114,7 +115,7 @@ export async function runAllSweeps(
     raised: credits.alertsSent,
     resolved: credits.alertsResolved,
     detail:
-      `${credits.warned} credit(s) approaching expiry` +
+      `${plural(credits.warned, 'credit', 'credits')} approaching expiry` +
       (credits.sweptCount > 0
         ? `, ${credits.sweptCount} written off for $${(credits.forfeitedCents / 100).toFixed(0)}`
         : ''),

@@ -1,6 +1,7 @@
 import { and, eq, inArray } from 'drizzle-orm';
 import type { getDb } from '@/db';
 import * as s from '@/db/schema';
+import { plural } from '@/lib/text';
 import { recordNotices, syncConditionAlerts, type AlertWrite } from '@/lib/alerts/store';
 
 /**
@@ -191,7 +192,7 @@ export async function notifyExpiringCredits(
         userId,
         // Under two weeks this stops being a reminder and starts being a loss.
         severity: bucketDays <= 14 ? 'warning' : 'info',
-        title: `${usd(credit.remainingValueCents)} ${credit.airlineCode} credit expires in ${daysLeft} day(s)`,
+        title: `${usd(credit.remainingValueCents)} ${credit.airlineCode} credit expires in ${plural(daysLeft, 'day', 'days')}`,
         body:
           `Issued ${day(credit.issuedOn)}, expires ${day(credit.expiresOn)}. ` +
           (credit.providerCreditId

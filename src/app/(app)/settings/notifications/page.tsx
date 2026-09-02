@@ -55,13 +55,12 @@ export default async function NotificationsPage() {
       {!standing.live && !standing.misconfigured && (
         <Card title="Nothing has left this workspace">
           <p className="text-sm text-text-muted">
-            No transport is configured, so messages are composed from the real alerts and delivered
-            to nobody. That is a working state and has been this product’s state throughout: every
-            alert is still recorded, still counted, and still on{' '}
-            <span className="font-medium">/alerts</span>. What it is not is a delivery — the log
-            below says <span className="font-mono text-xs">rendered</span> rather than{' '}
-            <span className="font-mono text-xs">sent</span>, because a workspace that had told
-            nobody anything must never be able to read as one that had.
+            No transport is configured, so messages are composed from the real alerts and
+            delivered to nobody. Everything still works — every alert is recorded, counted and on{' '}
+            <span className="font-medium">/alerts</span>. What has not happened is a delivery, so
+            the log below says <span className="font-mono text-xs">rendered</span> rather than{' '}
+            <span className="font-mono text-xs">sent</span>. Nothing here will ever claim somebody
+            was told when they were not.
           </p>
           <p className="mt-2 text-sm text-text-muted">
             Set <span className="font-mono text-xs">SLACK_BOT_TOKEN</span> with the{' '}

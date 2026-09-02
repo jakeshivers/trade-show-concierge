@@ -800,7 +800,7 @@ export async function commitImport(
       duplicates: plan.duplicates.length,
       problems: [...plan.rejected, ...plan.duplicates],
       notes: plan.basisUnmapped
-        ? 'No column was mapped to a lawful basis, so every lead in this file was recorded with none.'
+        ? 'No column said why we may follow up, so every lead in this file was imported without that on record.'
         : null,
       createdAt: now,
     })

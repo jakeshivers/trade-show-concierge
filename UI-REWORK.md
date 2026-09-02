@@ -787,3 +787,71 @@ is addressed to whoever lives with it.** When one sentence does both jobs it is 
 second one badly, and the tell is always the same: a term of art on a `Badge`, a `(s)` plural,
 a section number, or a sentence explaining why we chose something rather than what is true and
 what to do about it.
+
+## §18 — The rest of the screens, and the sentence that had been wrong for two steps
+
+The sweep finished across every remaining route. The vocabulary scan was already returning
+nothing after §17, so what this pass was actually looking for was the other two symptoms —
+`x(s)` plurals and copy that explains a decision instead of stating a fact. It found both, and
+one thing that was neither.
+
+**`/alerts` and the overview said there were five engines. There have been seven since step
+19.** The blurb promised *"deadlines, flights, freight, assets and ticket credits"* and
+rendered a **Leads** alert two inches underneath it. Nothing failed and no test could have
+noticed: the sentence was true when it was written and stopped being true two steps later,
+which is the `SOURCE_LABEL` bug in prose rather than in a guard — a hand-written list beside an
+enum that grew.
+
+So the prose is derived now. `feed.ts` exports `EngineSource` (the enum minus `booking` and
+`unknown`, neither of which anything sweeps), `ENGINE_NOUN` as a `Record` over it, and
+`ENGINE_COUNT` / `engineList()`. **Adding an engine to `AlertSource` now fails to compile until
+somebody says what to call it on screen**, and the two pages read the count rather than
+asserting one. Same fix shape as the `SOURCE_LABEL` guard: one exhaustive record, checked by
+the compiler, doing both jobs.
+
+**Seven `in 1 days`.** The overview, the shows list, My Itinerary, the readiness portfolio and
+the show-detail header shared by all ten tabs — `in ${daysUntil(x)} days`, hard-coded, and the
+live show is one day out so five of the seven were visible right now. Plus eleven more `(s)`
+in places the earlier passes could not reach.
+
+**And that is why `plural` moved to `src/lib/text.ts`.** §16 put it in `_components/text.ts`,
+which was right for the screens and useless for the strings that needed it most: a credit
+expiry **alert title**, four **audit-trail notes** on `/travel/[id]`, and seven **sweep summary
+lines** are all composed in `src/lib` and rendered in `src/app`, so the helper the view layer
+owned was unreachable from exactly the code carrying `credit(s)`, `leg(s)` and `offer(s)`.
+`_components/text.ts` re-exports it — one definition, two import paths, and the app-side one
+stays free of React so a server action can still use it.
+
+**Smaller, and each its own kind of wrong:**
+
+- **`"Weather. Nobody needs to do anything."`** on the flight board's *Late, buffer holds*
+  tile. Most delays are not weather, and the tile's actual point is that the buffer survived
+  whatever the cause was. An invented cause on a status board is the fabricated-figure rule
+  with a noun instead of a number.
+- **`"Duffel is not configured. Set DUFFEL_ACCESS_TOKEN, or FLIGHT_PROVIDER=recorded to replay
+  captured payloads instead to enable it."`** Three provider errors build that sentence the
+  same way and only the flights one had `to enable it` welded on after a `join(', ')`, so only
+  it came out ungrammatical.
+- **`"a future claim, a past fact, and nothing else joining them"`** — a stat note on
+  `/assets`. Precisely correct about the design and meaningless to a reader, who needs
+  *"booked to an upcoming show, and last returned damaged."*
+- **Four "lawful basis" strings in `src/lib`** that reach `/alerts` and the leads tab from
+  alert titles and consent verdicts — missed by §14 because they are composed outside `src/app`.
+- **`"Connect a CRM under Settings → CRM"`** promised a control that does not exist; connecting
+  is an environment variable, which that page explains. §16's rule, caught by grepping the
+  screens for imperatives.
+- **`"Open the lead to record it"`** now says **"Edit the lead"**, because §16 built the control
+  and it is called Edit. Copy that asks for an action should name the button.
+
+**One more test asserted on wording** (`batch.notes` had to contain the literal `'lawful
+basis'`) and was re-pointed at the fact. That is the fourth across §14–§18, and the pattern is
+now clear enough to state as a rule: **a test that asserts on a user-facing sentence is testing
+the copy, not the behaviour.** Assert the number, the direction, or the shape.
+
+**Where this leaves things.** The scan across every route and every show tab — `§`, `SCOPE.md`,
+`a floor`, `floors`, `lawful basis`, `reporting artifact`, `fixture`, `x(s)`, `in 1 days` —
+returns nothing. `pnpm smoke`'s `/assets` check moved to a stat label after the blurb it looked
+for was rewritten; that is the **third** smoke expectation a copy pass has invalidated, so the
+standing advice holds and is worth repeating here: **run `pnpm smoke` with `pnpm test`, not
+after somebody notices.** Prefer a heading or a stat label over a sentence, and never a string
+that only renders when the data happens to contain a finding.

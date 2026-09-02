@@ -11,6 +11,7 @@ import {
   place,
   statusLabel,
 } from '../../_components/ui';
+import { plural } from '../../_components/text';
 
 /**
  * Show detail — the header and its tabs.
@@ -83,7 +84,7 @@ export default async function ShowLayout({
         <p className="text-sm text-text-muted">
           {dateRange(show.startsOn, show.endsOn, show.timezone)} · {place(show)}
           {show.venueName && ` · ${show.venueName}`}
-          {days > 0 && show.status !== 'cancelled' && ` · in ${days} days`}
+          {days > 0 && show.status !== 'cancelled' && ` · in ${plural(days, 'day', 'days')}`}
         </p>
         {show.status === 'prospect' && (
           <p className="text-sm text-info">
