@@ -1119,6 +1119,17 @@ per-show; `/shipping` no longer needs it.
   the cascade. It is `cascade` now: a materialized leg is a **projection** of the booking,
   and a hand-entered flight has a null `booking_id` because nothing derived it. **A nullable
   column in a unique index is an idempotency rail with an off switch.** `SCOPE.md` §5f.
+- **`/shipping` got the same treatment, and it fits better there.** Soonest deadline first,
+  which puts an overdue crate at the top on its own — it has the earliest deadline on the
+  page, so no ranking is needed to find the emergency. A crate with **no** deadline sorts last
+  rather than first, because a missing date means a plan rather than freight and reading it as
+  the earliest is `Number(null)` in a comparator. The horizon is deliberately *not* a clock:
+  a landed flight is over, but a crate whose cutoff was last Tuesday and that nobody has
+  confirmed is the most urgent row here, so **silence and non-arrival do not expire**. Freight
+  leaves when it is *settled* — `received_at` or `cancelled` — plus §5h's tense rule at the far
+  end, where a show closed out more than thirty days ago stops being this board's problem.
+  Nothing is hidden by it: `showsMissingReturnLeg` reads the table directly and still fires.
+  `SCOPE.md` §5g.
 - **The board is ordered soonest-first now, and the horizon is why.** It was worst-first for
   twelve steps on the argument that departure order buries the leg that needs somebody. The
   horizon answered that rather than refuting it: with landed legs gone, every row is a flight

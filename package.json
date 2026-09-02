@@ -34,7 +34,7 @@
     "duffel:capture": "tsx scripts/duffel-capture.ts",
     "salesforce:capture": "tsx scripts/salesforce-capture.ts",
     "clerk:verify": "tsx scripts/clerk-verify.ts",
-    "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed && node -e \"console.log('\\n  If `pnpm dev` is running, restart it. It is holding the database this just deleted,\\n  and will serve the old one from a deleted inode — new columns and enum values will\\n  not exist in it, and a page section gated on a query renders as absent with no error.')\"",
+    "db:reset": "rm -rf .pglite && pnpm db:push && pnpm db:seed",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit"

@@ -65,7 +65,10 @@ async function overview(now: Date, showId?: string) {
   const board = await getShipmentBoard(actor, { showId, asOf: now }, db);
   const { summary: s } = board;
 
-  console.log('\nShipping — every crate in the workspace, worst first\n');
+  console.log(
+    '\nShipping — every crate still owed to somebody, nearest deadline first\n' +
+      '  (settled freight and shows closed out more than 30 days are not listed)\n',
+  );
   console.log(`  tracked                     ${String(s.tracked).padStart(3)}`);
   console.log(`  outside the receiving window${String(s.missingWindow).padStart(3)}   (late, or too early to be accepted)`);
   console.log(`  silent longer than normal   ${String(s.stalled).padStart(3)}   (no scan, and no status field says so)`);

@@ -115,13 +115,36 @@ export function buildShipmentRow(
   };
 }
 
+/**
+ * Soonest deadline first, and severity is the tie-break rather than the key.
+ *
+ * The flight board's change, arrived at the same way and landing somewhere
+ * slightly different. It was worst-first, on the argument that a shipping screen
+ * sorted by delivery date puts the crate arriving tomorrow above the crate that
+ * has not moved in five days. Once the board stops carrying settled freight,
+ * every row on it is a crate somebody still has to get to a dock, and among
+ * those the deadline is the order the work happens in.
+ *
+ * Two things fall out that the flight board did not have to think about, and
+ * both are why this ordering is *more* right here than there.
+ *
+ * **Ascending puts the most overdue first, not last.** A crate whose cutoff was
+ * last Tuesday and which nobody has confirmed is the emergency on this page, and
+ * the earliest deadline is exactly where it sorts. The old ranking reached the
+ * same row by a different route; the clock gets there on its own.
+ *
+ * **A crate with no deadline sorts last, and that is a judgement.** No date
+ * recorded means a plan rather than freight — an advance-warehouse cutoff nobody
+ * has read off the manual yet. Treating a missing date as the earliest one would
+ * put every unread row above every real deadline, which is the `Number(null)`
+ * mistake in a comparator.
+ */
 export function orderShipments(rows: ShipmentRow[]): ShipmentRow[] {
   return [...rows].sort((a, b) => {
-    const byRank = rank(a) - rank(b);
-    if (byRank !== 0) return byRank;
     const at = a.shipment.mustArriveBy?.getTime() ?? Number.MAX_SAFE_INTEGER;
     const bt = b.shipment.mustArriveBy?.getTime() ?? Number.MAX_SAFE_INTEGER;
-    return at - bt;
+    if (at !== bt) return at - bt;
+    return rank(a) - rank(b);
   });
 }
 

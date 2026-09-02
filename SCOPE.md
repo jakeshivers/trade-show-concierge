@@ -923,6 +923,28 @@ still saves, because a check digit we got subtly wrong would accuse people of ty
 not make and train them to ignore the one time it is right. FedEx's and USPS's are absent for
 that reason. One algorithm that has been checked beats four that have not.
 
+**The board is what is still owed, soonest deadline first (2026-09-02).** §5f's change,
+reached the same way and landing somewhere better. Worst-first was defended on the grounds
+that a shipping screen sorted by date puts the crate arriving tomorrow above the crate that
+has not moved in five days — and the horizon answered it: once settled freight stops
+appearing, every row is a crate somebody still has to get to a dock. It fits *better* here
+than on the flight board, because an overdue crate has the **earliest** deadline on the page,
+so ascending order puts the emergency at the top with no ranking at all. A crate with no
+deadline sorts **last** rather than first: no date recorded means a plan rather than freight,
+and treating a missing date as the earliest is `Number(null)` in a comparator.
+
+The horizon itself is deliberately **not** the flight board's clock, and the difference is the
+whole point. A landed flight is over whatever anybody records. Freight has no such moment: a
+crate whose cutoff was last Tuesday and which nobody has confirmed is the most urgent row
+here, so **silence and non-arrival do not expire**. A crate leaves when it is *settled* —
+`received_at`, a person's word, or `cancelled`, somebody closing the row — plus one borrowed
+rule. §5h's tense argument applies at the far end: past the point where a crate can still make
+a show, *"get it there"* is the wrong sentence, so freight for a show that ended more than
+thirty days ago comes off. Left on, it sorts to the very top forever on the earliest deadline
+in the workspace, pushing this week's work down. It is not hidden — `showsMissingReturnLeg`
+reads the table directly, knows nothing about the horizon, and still says *"nothing recorded
+coming back from Automate 2025"*.
+
 **Delivered is not received, and only a person can close that gap.** The carrier's claim is
 that a dock signed for it. Between that dock and the booth sits **drayage** — a separate
 contractor, on its own schedule, which this app cannot see and does not integrate with.

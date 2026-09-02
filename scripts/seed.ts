@@ -2562,6 +2562,18 @@ async function main() {
     notificationsNowhereToGo: carried.undeliverable,
   };
   console.log('\n✓ seed complete', counts);
+
+  // Said here rather than left to be rediscovered. `pnpm db:reset` deletes
+  // `.pglite` out from under anything holding it, and a running `next dev` then
+  // serves the old database from a deleted inode: new columns and enum values do
+  // not exist in it, a page section gated on a query renders as simply absent
+  // with no error anywhere, and once the inode is really gone every request
+  // hangs for minutes on `ErrnoError { errno: 44 }`. It cost two debugging
+  // detours in one session, both by somebody who already knew the rule.
+  console.log(
+    '\n  If `pnpm dev` is running, restart it — it is holding the database this just\n' +
+      '  replaced, and will keep serving the old one with no error to say so.\n',
+  );
 }
 
 main()

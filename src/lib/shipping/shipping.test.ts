@@ -476,14 +476,59 @@ describe('the board', () => {
       NOW,
     );
 
-  it('puts what is wrong above what is next, not what leaves soonest', () => {
+  /**
+   * Soonest deadline first, and this reverses the assertion it replaces.
+   *
+   * Trouble used to sort above the clock. It stopped once the board grew a
+   * horizon: every row on it is now a crate somebody still has to get to a dock,
+   * and among those the deadline is the order the work happens in. Trouble did
+   * not become invisible — the summary, the row's tone and the alerts card all
+   * carry it without being scanned for.
+   */
+  it('puts the nearest deadline first, whatever is wrong further down', () => {
     const rows = orderShipments([
-      row({ mustArriveBy: days(3), estimatedDelivery: days(1) }, 'soon-and-fine'),
       row({ mustArriveBy: days(20), estimatedDelivery: days(25) }, 'far-and-late'),
+      row({ mustArriveBy: days(3), estimatedDelivery: days(1) }, 'soon-and-fine'),
       row({ mustArriveBy: days(10), lastScanAt: hours(-100) }, 'silent'),
     ]);
-    expect(rows[0].shipment.id).toBe('far-and-late');
-    expect(rows[1].shipment.id).toBe('silent');
+    expect(rows.map((r) => r.shipment.id)).toEqual(['soon-and-fine', 'silent', 'far-and-late']);
+  });
+
+  /**
+   * The one the flight board did not have to think about. An overdue crate has
+   * the earliest deadline on the page, so ascending order puts the emergency at
+   * the top on its own — no ranking required.
+   */
+  it('sorts an overdue crate above everything, because its deadline is earliest', () => {
+    const rows = orderShipments([
+      row({ mustArriveBy: days(3) }, 'next-week'),
+      row({ mustArriveBy: days(-6) }, 'overdue-since-last-week'),
+    ]);
+    expect(rows[0].shipment.id).toBe('overdue-since-last-week');
+  });
+
+  /**
+   * A crate with no deadline is a plan, not freight — an advance-warehouse
+   * cutoff nobody has read off the manual yet. Treating a missing date as the
+   * earliest would put every unread row above every real deadline, which is
+   * `Number(null)` in a comparator.
+   */
+  it('sorts a crate with no deadline last rather than first', () => {
+    const rows = orderShipments([
+      row({ mustArriveBy: null }, 'no-date'),
+      row({ mustArriveBy: days(30) }, 'next-month'),
+    ]);
+    expect(rows.map((r) => r.shipment.id)).toEqual(['next-month', 'no-date']);
+  });
+
+  // Severity is still what breaks a tie between two crates due at once.
+  it('breaks a tie on what is wrong', () => {
+    const due = days(4);
+    const rows = orderShipments([
+      row({ mustArriveBy: due }, 'fine'),
+      row({ mustArriveBy: due, estimatedDelivery: days(6) }, 'late'),
+    ]);
+    expect(rows[0].shipment.id).toBe('late');
   });
 
   it('counts a delivered-but-unreceived crate as live rather than done', () => {

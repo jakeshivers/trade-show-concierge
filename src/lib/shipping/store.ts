@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, ne, or } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
@@ -125,13 +125,79 @@ type LoadedShipment = {
   owner: { id: string; fullName: string } | null;
 };
 
-async function loadShipments(actor: Actor, db: Db, showId?: string): Promise<LoadedShipment[]> {
+/**
+ * How long a settled crate stays on the board after somebody closes it.
+ *
+ * Enough that confirming a crate at the booth does not make the row vanish under
+ * the hand that confirmed it — which reads as having deleted something — and
+ * short enough that the board is tomorrow's work rather than an archive.
+ */
+export const BOARD_SETTLED_HOURS = 12;
+
+/**
+ * How long after a show ends its freight is still this board's problem.
+ *
+ * Long enough to cover the return leg and somebody getting round to confirming
+ * it, short enough that last year's unclosed rows are not what a person sees
+ * first on a Monday.
+ */
+export const BOARD_CLOSED_OUT_DAYS = 30;
+
+/**
+ * The freight horizon, and it is deliberately **not** the flight board's.
+ *
+ * There the cut is a clock: twelve hours past scheduled arrival, because a
+ * landed flight is over whatever anybody records about it. Freight has no such
+ * moment. A crate whose cutoff was last Tuesday and which nobody has confirmed
+ * is not finished — it is the single most urgent row this page has, and a
+ * time-based horizon would quietly retire exactly the failures §5g exists to
+ * surface. Silence and non-arrival do not expire.
+ *
+ * So a crate leaves when it is **settled**, not when its date passes, and there
+ * are three ways. `received_at` is a person's word that it is at the booth — the
+ * only figure on this board that means done. `cancelled` is somebody closing the
+ * row on purpose.
+ *
+ * And the third is §5h's tense rule, borrowed: **past the point where a crate
+ * can still make a show, "get it there" is the wrong sentence.** An unreceived
+ * crate from a show that ended a month ago is not late freight, it is an
+ * unclosed record — the question stopped being *will it arrive* and became
+ * *where did it end up*, which is the asset register's chain of custody and the
+ * return-leg alert, both of which already exist and neither of which is this
+ * board. Left in, it sorts to the very top forever, on the earliest deadline on
+ * the page, pushing this week's actual work down. It is not hidden: the alert
+ * that fires on a show with outbound freight and nothing recorded coming back is
+ * computed by `showsMissingReturnLeg`, which reads the table directly and knows
+ * nothing about this horizon.
+ */
+async function loadShipments(
+  actor: Actor,
+  db: Db,
+  showId?: string,
+  /** Everything, settled crates included. */
+  includeSettled = false,
+  asOf: Date = new Date(),
+): Promise<LoadedShipment[]> {
+  const since = new Date(asOf.getTime() - BOARD_SETTLED_HOURS * 3_600_000);
+  const closedOut = new Date(asOf.getTime() - BOARD_CLOSED_OUT_DAYS * 86_400_000);
   const rows = await db
     .select({ shipment: s.shipments, show: s.shows, owner: s.users })
     .from(s.shipments)
     .innerJoin(s.shows, eq(s.shipments.showId, s.shows.id))
     .leftJoin(s.users, eq(s.shipments.ownerId, s.users.id))
-    .where(and(eq(s.shows.orgId, actor.orgId), showId ? eq(s.shipments.showId, showId) : undefined))
+    .where(
+      and(
+        eq(s.shows.orgId, actor.orgId),
+        showId ? eq(s.shipments.showId, showId) : undefined,
+        includeSettled
+          ? undefined
+          : and(
+              or(isNull(s.shipments.receivedAt), gte(s.shipments.receivedAt, since)),
+              ne(s.shipments.status, 'cancelled'),
+              gte(s.shows.endsOn, closedOut),
+            ),
+      ),
+    )
     .orderBy(asc(s.shipments.mustArriveBy));
 
   return rows.map((r) => ({
@@ -170,11 +236,16 @@ function toRow(i: LoadedShipment, lastScanAt: Date | null, asOf: Date): Shipment
 
 export async function getShipmentBoard(
   actor: Actor,
-  opts: { showId?: string; asOf?: Date; replayed?: boolean } = {},
+  opts: { showId?: string; asOf?: Date; replayed?: boolean; includeSettled?: boolean } = {},
   db: Db = getDb(),
 ): Promise<ShipmentBoard> {
   const asOf = opts.asOf ?? new Date();
-  const items = await loadShipments(actor, db, opts.showId);
+  // The flight board's rule, and for its reason: a workspace board answers "what
+  // needs me", while one show's Logistics tab is the record of that show's
+  // freight — including the crates that arrived, which is most of them once the
+  // show is over. Asking about one show gets everything.
+  const includeSettled = opts.includeSettled ?? opts.showId !== undefined;
+  const items = await loadShipments(actor, db, opts.showId, includeSettled, asOf);
   const scans = await lastScans(items.map((i) => i.shipment.id), db);
 
   const rows = orderShipments(

@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { authMode } from '@/lib/auth/mode';
+import { InlineScript } from './_inline-script';
 import './globals.css';
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] });
@@ -24,6 +25,14 @@ export const metadata: Metadata = {
  *
  * Wrapped in try/catch: localStorage throws outright in some privacy modes, and
  * a theme preference is not worth a blank page.
+ *
+ * It goes through `InlineScript` rather than a bare `<script>`: React warns in
+ * development that a script rendered by a component never executes, which is
+ * true of one inserted by a DOM update and not of one in the server-rendered
+ * HTML. The helper is Next's own answer — `text/javascript` on the server,
+ * inert `text/plain` on the client — and `<html>` carries
+ * `suppressHydrationWarning` because this script changes it before React ever
+ * looks.
  */
 const THEME_SCRIPT = `
 try {
@@ -45,9 +54,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
       <head>
-        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+        <InlineScript html={THEME_SCRIPT} />
       </head>
       <body className="min-h-full bg-surface font-sans text-text">
         {children}

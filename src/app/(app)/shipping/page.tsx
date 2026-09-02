@@ -28,12 +28,21 @@ import {
 } from './_present';
 
 /**
- * The shipping board — every crate this workspace has, worst first.
+ * The shipping board — every crate still owed to somebody, soonest deadline first.
  *
- * Not sorted by delivery date, which is what a shipping screen does by default
- * and which puts the crate arriving tomorrow above the crate that has not moved
- * in five days. The second one is the emergency; the first is a lorry doing its
- * job. `board.ts` holds the ordering and the argument.
+ * It was worst-first, on the argument that a shipping screen sorted by date puts
+ * the crate arriving tomorrow above the crate that has not moved in five days.
+ * The horizon answered that rather than refuting it: once settled freight stops
+ * appearing, every row is a crate somebody still has to get to a dock, and among
+ * those the deadline is the order the work happens in. It also lands better here
+ * than on the flight board — an overdue crate has the *earliest* deadline on the
+ * page, so ascending order puts the emergency first without any ranking at all.
+ *
+ * The horizon is deliberately not the flight board's clock. A crate whose cutoff
+ * was last Tuesday and which nobody has confirmed is not finished, it is the
+ * most urgent thing here — so a crate leaves when it is **settled**, which means
+ * a person confirmed it at the booth or somebody cancelled the row. Silence and
+ * non-arrival do not expire. `board.ts` and `store.ts` hold the argument.
  *
  * Three things this screen refuses to do. It does not treat `delivered` as done
  * — the carrier signed for a dock, and drayage still has to move it to the booth
@@ -98,10 +107,10 @@ export default async function ShippingBoardPage() {
         title="Shipping"
         blurb={
           <>
-            Every crate, ordered by what is wrong with it rather than by when it is due. A
-            delivery date only means something against the receiving window it has to land in —
-            and on a show floor that window has two edges, because freight that arrives before
-            the dock opens is refused rather than early.
+            Every crate still owed to somebody, nearest deadline first — which puts anything
+            overdue at the top on its own. A delivery date only means something against the
+            receiving window it has to land in, and on a show floor that window has two edges,
+            because freight that arrives before the dock opens is refused rather than early.
           </>
         }
       />
@@ -169,6 +178,16 @@ export default async function ShippingBoardPage() {
           </Card>
 
           <Card title="Crates">
+            {/* Said rather than left to be noticed, the way the flight board
+                says it. The rule is different here on purpose and the sentence
+                has to carry the difference: freight leaves when somebody closes
+                it, never because its date went by. */}
+            <p className="mb-3 text-xs text-text-muted">
+              A crate stays here until somebody confirms it reached the booth. Nothing drops off
+              for being old — a crate that missed its window last week is the most urgent row on
+              this page, not a finished one. A show’s own Logistics tab keeps its whole record,
+              arrived freight included.
+            </p>
             <Table>
               <thead>
                 <tr>
