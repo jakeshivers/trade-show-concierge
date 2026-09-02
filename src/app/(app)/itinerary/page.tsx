@@ -7,6 +7,7 @@ import {
   Badge,
   Card,
   Empty,
+  LinkButton,
   PageHeader,
   dateRange,
   daysUntil,
@@ -48,6 +49,7 @@ export default async function ItineraryPage() {
             Every show you are staffed on, with your flights, your room, and your shifts.
           </>
         }
+        action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
       />
 
       {upcoming.length === 0 && (

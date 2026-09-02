@@ -3,6 +3,7 @@ import { getActor } from '@/lib/auth/actor';
 import { getLeadPortfolio } from '@/lib/leads/store';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Card, Empty, PageHeader, Stat, showDate } from '../_components/ui';
+import { GoToShow } from '../_components/go-to-show';
 import { CoverageHeadline, CoverageNotes } from './_present';
 
 /**
@@ -31,6 +32,19 @@ export default async function LeadsPage() {
       <PageHeader
         title="Leads"
         blurb="Every show’s capture, worst first. A count is only worth what the coverage behind it is."
+        action={
+          <GoToShow
+            actor={actor}
+            tab="leads"
+            label="Capture a lead"
+            hint={
+              <>
+                Capture, the CSV import and erasure are on a show’s Leads tab. At the booth, use{' '}
+                <strong>Day of</strong> — it keeps working with no signal.
+              </>
+            }
+          />
+        }
       />
 
       <div className="grid gap-3 sm:grid-cols-3">

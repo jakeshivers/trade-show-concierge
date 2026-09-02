@@ -1038,6 +1038,24 @@ And the visual half:
   right-aligns *and* sets tabular figures), `PageHeader`, `Stat`, plus reworked `Card`,
   `Badge`, `Button`, `LinkButton`.
 
+**`UI-REWORK.md` §12 is a ninth finding, added 2026-09-02 and reported by a user rather than
+by the plan: the portfolio boards had no calls to action.** Ten screens rendered a
+`PageHeader` with no `action`, so the only route to a write was "click a row, land on a show
+tab, scroll" — and `/shipping`'s one instruction ("freight is added on a show's Logistics
+tab") lived in its `Empty` state, which disappears the moment the board has a row. The cause
+is structural: every board reads across the calendar and every write belongs to one show, so
+there is no single `href` a button could carry. `_components/go-to-show.tsx` is a **chooser
+rather than a shortcut** — a `<details>` Server Component, no client JS, shows ordered by
+proximity to now, and it **refuses to guess the show**, because "the next one" files a crate
+against the wrong show as readily as the right one. Every CTA carries the gate of the form it
+points at (`Add freight` → `canManageShipments`, `Start a roll call` → `canStartRollCall`,
+the asset buttons → `canManageAssets`), while `Capture a lead` and `Open a checklist` are
+deliberately ungated for §8c's reason. `/flights` and `/itinerary` get `Request travel`
+instead, because nothing here types a flight in — legs are materialized from a ticketed
+booking, and an "Add a flight" button would be a good-looking lie about where flights come
+from. **Do not run `prettier` on this repo**: there is no config, so its defaults rewrite
+every quote and re-wrap every blurb — 132 lines of churn in one file to add six.
+
 **The measurement worth keeping: `src/app` contains zero `dark:` variants.** Dark mode used
 to be a twin class on every line that had a colour, so adding a colour meant remembering its
 twin and forgetting was invisible to anybody working in light mode. One token carries both

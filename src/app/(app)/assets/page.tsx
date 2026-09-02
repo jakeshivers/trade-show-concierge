@@ -8,7 +8,18 @@ import { canManageAssets } from '@/lib/assets/access';
 import { planClashAlert } from '@/lib/assets/alerts';
 import { TURNAROUND_HOURS } from '@/lib/assets/custody';
 import type { AssetRow } from '@/lib/assets/board';
-import { Badge, Card, Empty, PageHeader, Stat, Table, Td, Th, money } from '../_components/ui';
+import {
+  Badge,
+  Card,
+  Empty,
+  LinkButton,
+  PageHeader,
+  Stat,
+  Table,
+  Td,
+  Th,
+  money,
+} from '../_components/ui';
 import { ConditionBadge, CustodyBadge, SEVERITY_TONE, StockCell, local } from './_present';
 import {
   DeleteAssetForm,
@@ -75,6 +86,16 @@ export default async function AssetRegisterPage() {
             actually go, what is out, and what nobody can find. Capital assets get lost between
             shows, and they get lost quietly.
           </>
+        }
+        action={
+          // Gated on the same permission that renders the forms further down: a
+          // call to action that scrolls to nothing is worse than none at all.
+          mayManage ? (
+            <div className="flex gap-2">
+              <LinkButton href="#new-asset">Add an asset</LinkButton>
+              <LinkButton href="#new-collateral">Add collateral</LinkButton>
+            </div>
+          ) : undefined
         }
       />
 
@@ -168,7 +189,9 @@ export default async function AssetRegisterPage() {
         )}
         {mayManage && (
           <div className="mt-5 border-t border-border pt-4">
-            <NewAssetForm costCenters={costCenters} />
+            <div id="new-asset" className="scroll-mt-6">
+              <NewAssetForm costCenters={costCenters} />
+            </div>
           </div>
         )}
       </Card>
@@ -206,7 +229,9 @@ export default async function AssetRegisterPage() {
         )}
         {mayManage && (
           <div className="mt-5 border-t border-border pt-4">
-            <NewCollateralForm costCenters={costCenters} />
+            <div id="new-collateral" className="scroll-mt-6">
+              <NewCollateralForm costCenters={costCenters} />
+            </div>
           </div>
         )}
       </Card>

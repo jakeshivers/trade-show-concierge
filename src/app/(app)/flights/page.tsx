@@ -7,6 +7,7 @@ import {
   Badge,
   Card,
   Empty,
+  LinkButton,
   PageHeader,
   Stat,
   Table,
@@ -57,6 +58,7 @@ export default async function FlightBoardPage() {
             the trip was approved under is re-checked against live times, not once at purchase.
           </>
         }
+        action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
       />
 
       {!('choice' in status) && (

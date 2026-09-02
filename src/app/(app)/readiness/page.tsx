@@ -12,6 +12,7 @@ import {
   readinessTone,
   type Tone,
 } from '../_components/ui';
+import { GoToShow } from '../_components/go-to-show';
 
 /**
  * The portfolio rollup — every show being run, ranked by how much trouble it is in.
@@ -43,6 +44,18 @@ export default async function ReadinessPortfolio() {
           not by its score, because a low score a long way out is not a problem and a high
           score next week can be.
           </>
+        }
+        action={
+          <GoToShow
+            actor={actor}
+            tab="readiness"
+            label="Open a checklist"
+            hint={
+              <>
+                Tasks, templates and the deadline register all live on one show’s Readiness tab.
+              </>
+            }
+          />
         }
       />
 

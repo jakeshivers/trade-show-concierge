@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getRollCallPortfolio } from '@/lib/safety/store';
+import { canStartRollCall } from '@/lib/safety/access';
 import { Badge, Card, Empty, PageHeader } from '../_components/ui';
+import { GoToShow } from '../_components/go-to-show';
 
 /**
  * Duty of care across the calendar.
@@ -37,6 +39,21 @@ export default async function SafetyPortfolio() {
       <PageHeader
         title="Duty of care"
         blurb="Who is expected where, what says so, and who could not be reached. Nothing here reads a device — every standing is inferred from records this app already keeps."
+        action={
+          canStartRollCall(actor) ? (
+            <GoToShow
+              actor={actor}
+              tab="safety"
+              label="Start a roll call"
+              hint={
+                <>
+                  A response is a response to a request, so a roll call is opened on the show it
+                  is about — and nobody is ever marked safe by the system.
+                </>
+              }
+            />
+          ) : undefined
+        }
       />
 
       <Card title="Shows with people travelling">

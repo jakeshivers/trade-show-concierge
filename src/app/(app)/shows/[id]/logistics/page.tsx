@@ -180,7 +180,7 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
         )}
 
         {mayManage && (
-          <div className="mt-5 border-t border-border pt-4">
+          <div id="new-freight" className="mt-5 scroll-mt-6 border-t border-border pt-4">
             <NewShipmentForm
               showId={id}
               timezone={show.timezone}

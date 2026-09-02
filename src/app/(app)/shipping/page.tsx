@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getShipmentBoard, showsMissingReturnLeg } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
+import { canManageShipments } from '@/lib/shipping/access';
 import type { ShipmentRow } from '@/lib/shipping/board';
 import {
   Badge,
@@ -13,6 +14,7 @@ import {
   Td,
   Th,
 } from '../_components/ui';
+import { GoToShow } from '../_components/go-to-show';
 import {
   CONSIGNMENT_LABEL,
   ScanCell,
@@ -66,6 +68,24 @@ export default async function ShippingBoardPage() {
             the dock opens is refused rather than early.
           </>
         }
+        // Gated on the permission that renders the form: a Member who followed this
+        // would land on a Logistics tab with nothing on it to fill in.
+        action={
+          canManageShipments(actor) ? (
+            <GoToShow
+              actor={actor}
+              tab="logistics"
+              hash="new-freight"
+              label="Add freight"
+              hint={
+                <>
+                  A crate belongs to a show, so a tracking number is entered on that show’s
+                  Logistics tab — beside the timeline it will produce.
+                </>
+              }
+            />
+          ) : undefined
+        }
       />
 
       {!('choice' in status) && (
@@ -84,8 +104,8 @@ export default async function ShippingBoardPage() {
 
       {board.rows.length === 0 ? (
         <Empty>
-          No shipments. Freight is added on a show’s Logistics tab, which is also where its
-          event timeline lives.
+          No shipments. Use <strong>Add freight</strong> above — a crate belongs to a show, so it
+          is entered on that show’s Logistics tab, which is also where its event timeline lives.
         </Empty>
       ) : (
         <>

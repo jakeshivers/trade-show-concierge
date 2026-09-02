@@ -475,3 +475,48 @@ Four page headings stayed hand-rolled on purpose. `/shows/[id]` and `/travel/[id
 detail headers carrying badge rows and a tab bar; pushing that into `PageHeader` would put
 shape into a shared component exactly one caller wants — which is the thing this rework
 spent eight tranches unwinding.
+
+## 12. The ninth thing, found by a user rather than by the plan (2026-09-02)
+
+The rework made every screen *look* consistent and left a defect none of its eight tranches
+was shaped to catch: **the portfolio boards have no calls to action.** Asked on `/shipping`,
+"how does a user enter a new tracking number?", the honest answer was *click a crate, land on
+its show's Logistics tab, scroll past everything, find the form* — and if there had been no
+crates at all, the `Empty` state said so in a sentence that disappeared the moment the board
+had one row. Ten screens were like this: `/shipping`, `/readiness`, `/leads`, `/safety`,
+`/flights`, `/itinerary` and `/assets` all rendered a `PageHeader` with no `action`, and
+`PageHeader` had supported one since tranche 5.
+
+**The cause is structural rather than cosmetic, which is why it survived a visual pass.**
+Every board reads across the whole calendar; every *write* belongs to one show, because a
+crate, a task, a lead and a roll call cannot exist without one. That is the right model. It
+just means the boards have nowhere to put a button that a single `href` could satisfy.
+
+`_components/go-to-show.tsx` is the answer, and the important thing about it is what it
+refuses. It is a **chooser, not a shortcut**: it will not guess the show. "The next one" is
+wrong about as often as it is right — there is nothing on a board that says which show the
+reader has in mind — and a wrong guess files a crate against the wrong show as readily as the
+right one, which is `§5j`'s identity rule from the navigation side. It is a `<details>`
+element, so it is a Server Component with no client JavaScript, and its list is real rows
+ordered by proximity to *now* (the `/day-of` picker's rule) rather than alphabetically.
+
+Three things fell out of building it:
+
+1. **A call to action must carry the same gate as the form it points at.** `Add freight` is
+   behind `canManageShipments`, `Start a roll call` behind `canStartRollCall`, and the two
+   asset buttons behind `canManageAssets` — the same predicate that renders the form further
+   down the page. A CTA that scrolls a Member to nothing is worse than no CTA, because it
+   reads as a broken product rather than an unavailable one. `Capture a lead` and `Open a
+   checklist` are deliberately ungated: capture is anybody's and reporting progress is
+   anybody's, and gating either would be the `§8c` bad-count-by-construction failure.
+2. **An anchor is part of the destination, not of the link.** `#new-freight`, `#new-asset`
+   and `#new-collateral` are ids on the destination pages with `scroll-mt-6`, so the form is
+   on screen rather than under the fold of a Logistics tab that renders three models.
+3. **`/flights` and `/itinerary` get a plain `Request travel` link, and that is the honest
+   CTA.** Nothing in this app types a flight in: legs are materialized from a ticketed
+   booking (step 13's first correction). A "Add a flight" button would have been a nicer-looking
+   lie about where flights come from.
+
+**Do not run `prettier` on this repo.** There is no `.prettierrc`, so its defaults rewrite
+every string to double quotes and re-wrap every JSX blurb — 132 lines of churn in one file to
+add six. `pnpm lint` is the formatter of record here.
