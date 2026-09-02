@@ -520,3 +520,40 @@ Three things fell out of building it:
 **Do not run `prettier` on this repo.** There is no `.prettierrc`, so its defaults rewrite
 every string to double quotes and re-wrap every JSX blurb — 132 lines of churn in one file to
 add six. `pnpm lint` is the formatter of record here.
+
+## §13 — "Needs help" was a one-way door, and only on screen
+
+Reported by the same reader, 2026-09-02, after marking a colleague `needs_help` on
+`/shows/[id]/safety`: *what does that mean, and how do I move them back?*
+
+Both halves were real, and the second is the more serious.
+
+1. **The control disappeared the moment anybody answered.** `page.tsx` rendered `AnswerFor`
+   under `open && !p.response`, so a person's first answer was also their last. The model had
+   never agreed with that: `safety_responses` is append-only, `recordSafetyResponse`'s own
+   comment says *"somebody who said they need help and later says they are fine has said two
+   things"*, and `buildRollCall` deliberately keeps the **latest** response per person. The
+   store had been built for a second answer for a whole step and the screen never offered
+   one. So the fix is not a new write, a status field or an undo — it is rendering the
+   control that was already there, with `standing` passed in so the buttons read *"Ingrid is
+   OK now"* and *"Actually, needs help"* rather than repeating the first-time wording. The
+   earlier answer stays in the record, which is the point of the table being append-only.
+   **The cost of getting this wrong is specific**: a name that cannot be reopened is one
+   somebody works around by starting a *second* roll call, and `forms.tsx` already says in
+   its own copy that the second one gets answered by fewer people than the first.
+2. **The word was never explained where it is pressed.** `needs_help` is the most alarming
+   thing this product can render and the app's part in it is small — it changes an order and
+   holds a name open. Nothing calls anybody. A screen that does not say so invites the
+   opposite assumption at exactly the wrong moment, so the banner now states what it does,
+   what it does *not* do, and how to close it.
+
+And a third thing, from the same message: **the module's prose had leaked onto the page.**
+*"Ordered by what their silence would cost, not by how sure we are they are here"* is an
+accurate sentence from `rollcall.ts`'s header and it is written for somebody who has read the
+module. On the one screen in this product read while something is going wrong, by whoever is
+holding the laptop, it is a puzzle. The subtitles, the evidence line (*"Why we think so:
+badged into a booth shift · 12m ago"*), the staleness note, the close-out copy and the three
+action confirmations are now written for a person who has never seen the code. The
+distinctions are unchanged — none of the refusals moved — only who the sentences are aimed at.
+**Doc comments explain the design to the next engineer; page copy explains the act to the
+person doing it, and the two are not the same text.**

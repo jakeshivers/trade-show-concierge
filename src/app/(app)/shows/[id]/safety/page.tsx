@@ -44,12 +44,19 @@ function age(minutes: number | null): string | null {
   return `${Math.floor(minutes / 1440)}d ago`;
 }
 
+function answeredAgo(at: Date, now: Date): string {
+  const mins = Math.max(0, Math.round((now.getTime() - at.getTime()) / 60000));
+  return mins < 1 ? 'just now' : (age(mins) ?? 'earlier');
+}
+
 export default async function SafetyTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const actor = await getActor();
   const call = await getRollCall(actor, id);
   const mayStart = canStartRollCall(actor);
   const open = call.request;
+  const now = new Date();
+  const nameOf = new Map(call.people.map((p) => [p.presence.userId, p.presence.fullName] as const));
 
   return (
     <div className="space-y-6">
@@ -57,17 +64,33 @@ export default async function SafetyTab({ params }: { params: Promise<{ id: stri
         title={open ? 'Roll call in progress' : 'Duty of care'}
         subtitle={
           open
-            ? 'Nobody is accounted for until they say so. A badge scan is not an answer — the person who badged in twelve minutes ago is who you most need to hear from.'
-            : 'Who is expected at this show, what says so, and who a roll call could not reach. The useful time to read this is now, while the gaps can still be fixed.'
+            ? 'Work down the list and mark each person once you have actually heard from them. Nobody counts as safe until somebody says so — badging into the booth this morning is not an answer.'
+            : 'Everyone expected at this show, why we think they are there, and who we would not be able to phone in an emergency. Worth checking now, while the gaps are still fixable.'
         }
       >
         {open?.note && <p className="mb-2 text-sm font-medium">{open.note}</p>}
         <p className="text-sm">{call.summary}</p>
 
         {open && call.needsHelp > 0 && (
-          <p className="mt-2 rounded-md border border-bad px-3 py-2 text-sm font-medium text-bad">
-            {call.needsHelp} {call.needsHelp === 1 ? 'person needs' : 'people need'} help.
-          </p>
+          <div className="mt-2 rounded-md border border-bad px-3 py-2 text-sm text-bad">
+            <p className="font-medium">
+              {call.needsHelp} {call.needsHelp === 1 ? 'person has' : 'people have'} said they
+              need help.
+            </p>
+            {/*
+              What the standing means, in front of the person reading it. The
+              word is alarming and the app's part in it is small: it changes an
+              order and holds a name open. Nothing here calls anybody, and a
+              screen that does not say so invites somebody to assume it did.
+            */}
+            <p className="mt-1 text-xs">
+              That is somebody saying they are not all right. It sorts them to the top of the
+              list below and keeps the roll call open. It does not call anyone, alert anyone
+              or contact emergency services — that is a phone call somebody makes. When they
+              have been reached, record what they say now with <strong>“is OK now”</strong> on
+              their row; the earlier answer stays in the record.
+            </p>
+          </div>
         )}
 
         {mayStart && (
@@ -76,8 +99,8 @@ export default async function SafetyTab({ params }: { params: Promise<{ id: stri
               <div className="flex flex-wrap items-center gap-3 text-xs text-text-muted">
                 <CloseRollCall showId={id} checkId={open.id} />
                 <span>
-                  Closing records that you consider it finished. It marks nobody — anybody who
-                  has not answered stays unanswered in the record.
+                  Closing just records that you are done. It does not mark anybody safe —
+                  anyone who never answered stays unanswered in the record.
                 </span>
               </div>
             ) : (
@@ -89,7 +112,11 @@ export default async function SafetyTab({ params }: { params: Promise<{ id: stri
 
       <Card
         title={open ? 'Who to call, in the order to call them' : 'Who is expected here'}
-        subtitle="Ordered by what their silence would cost, not by how sure we are they are here. Somebody nothing can locate and who has not answered is the worst thing on this page."
+        subtitle={
+          open
+            ? 'Start at the top. Anyone who said they need help comes first, then people we have not heard from — and among those, the ones we have no idea where they are.'
+            : 'Everyone travelling to this show, with the most recent sign of where they are. Anyone we could not reach by phone is flagged.'
+        }
       >
         {call.people.length === 0 ? (
           <Empty>Nobody is on this show’s roster.</Empty>
@@ -118,20 +145,42 @@ export default async function SafetyTab({ params }: { params: Promise<{ id: stri
                 </div>
 
                 <p className="mt-1 text-xs text-text-muted">
-                  {BASIS_LABEL[p.presence.basis]}
+                  Why we think so: {BASIS_LABEL[p.presence.basis]}
                   {age(p.presence.ageMinutes) && ` · ${age(p.presence.ageMinutes)}`}
-                  {p.presence.stale && ' · this has stopped being a claim about now'}
+                  {p.presence.stale && ' · too old to say where they are now'}
                   {p.response?.note && ` · “${p.response.note}”`}
                 </p>
 
-                {open && !p.response && p.presence.kind !== 'not_travelling' && (
+                {p.response && (
+                  <p className="mt-1 text-xs text-text-muted">
+                    {p.response.standing === 'needs_help'
+                      ? `Said they need help ${answeredAgo(p.response.respondedAt, now)}`
+                      : `Answered ${answeredAgo(p.response.respondedAt, now)}`}
+                    {p.relayed &&
+                      ` · recorded by ${nameOf.get(p.response.recordedById) ?? 'a colleague'}, not by ${p.presence.fullName.split(' ')[0]}`}
+                    {p.response.standing === 'needs_help' &&
+                      ' · they stay on this list until somebody records what they say next'}
+                  </p>
+                )}
+
+                {open && p.presence.kind !== 'not_travelling' && (
                   <div className="mt-2">
+                    {/*
+                      Rendered whether or not they have answered. The store has
+                      always been append-only and the roll call reads the latest
+                      answer, so a correction is a new answer rather than an edit
+                      — but for three steps this control disappeared the moment
+                      anybody pressed a button, which made "needs help" a state
+                      with no way out on the one screen somebody reads under
+                      pressure.
+                    */}
                     <AnswerFor
                       showId={id}
                       checkId={open.id}
                       userId={p.presence.userId}
                       isSelf={p.presence.userId === actor.userId}
                       name={p.presence.fullName}
+                      standing={p.response?.standing ?? null}
                     />
                   </div>
                 )}
@@ -141,10 +190,11 @@ export default async function SafetyTab({ params }: { params: Promise<{ id: stri
         )}
 
         <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
-          Nothing on this page reads a device. Every standing is inferred from records this
-          app already keeps for other reasons — a badge scan, a landed flight, a hotel stay, a
-          travel window somebody typed months ago. That is a deliberate ceiling on what this
-          feature is, not a gap in it.
+          This page does not track anybody’s phone or location. Everything here is worked out
+          from records the app already keeps for other reasons — a badge scan at the booth, a
+          flight that landed, a hotel booking, a travel window somebody typed in months ago. So
+          treat it as a good guess about where to start looking, never as proof somebody is
+          there. That is on purpose.
         </p>
       </Card>
     </div>

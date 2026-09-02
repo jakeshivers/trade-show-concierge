@@ -38,7 +38,7 @@ export default async function SafetyPortfolio() {
     <div className="space-y-6">
       <PageHeader
         title="Duty of care"
-        blurb="Who is expected where, what says so, and who could not be reached — nearest show first, except that anybody who has said they need help comes above everything. Nothing here reads a device; every standing is inferred from records this app already keeps."
+        blurb="Where your people are expected to be, why we think so, and who we would not be able to phone. Shows nearest to today come first, except that anyone who has said they need help comes above everything. This does not track phones or locations — it works from records the app already keeps."
         action={
           canStartRollCall(actor) ? (
             <GoToShow

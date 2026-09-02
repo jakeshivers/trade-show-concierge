@@ -28,8 +28,9 @@ export function StartRollCall({ showId }: { showId: string }) {
           Start a roll call
         </Submit>
         <span className="text-xs text-text-muted">
-          This asks everybody at the show to stop and answer. A second one gets answered by
-          fewer people than the first.
+          This asks everyone at the show to stop what they are doing and confirm they are all
+          right. Use it sparingly — a second roll call gets answered by fewer people than the
+          first.
         </span>
       </div>
       <Message state={state} />
@@ -55,14 +56,27 @@ export function AnswerFor({
   userId,
   isSelf,
   name,
+  standing,
 }: {
   showId: string;
   checkId: string;
   userId: string;
   isSelf: boolean;
   name: string;
+  /** What they have said so far, if anything. Null until somebody answers. */
+  standing: 'ok' | 'needs_help' | null;
 }) {
   const [state, action, pending] = useActionState(answer, {});
+  const first = name.split(' ')[0];
+
+  // An answer is never the last word. Responses are append-only and the roll
+  // call reads the *latest* one, so somebody who said they need help and is then
+  // reached is corrected by recording what they now say — not by editing or
+  // deleting what they said before. For three steps this control was hidden the
+  // moment anybody answered, which made "needs help" a one-way door on screen
+  // while the store had always expected a second answer. A name that cannot be
+  // reopened is a name somebody works around by starting a second roll call,
+  // which is the one thing that gets answered by fewer people than the first.
   return (
     <form action={action} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
@@ -70,33 +84,51 @@ export function AnswerFor({
       <input type="hidden" name="userId" value={userId} />
       <input
         name="note"
-        placeholder={isSelf ? 'Where are you?' : `What did ${name.split(' ')[0]} say?`}
+        placeholder={
+          standing
+            ? isSelf
+              ? 'What has changed?'
+              : `What does ${first} say now?`
+            : isSelf
+              ? 'Where are you?'
+              : `What did ${first} say?`
+        }
         className="min-w-40 flex-1 rounded-md border border-border bg-panel px-2 py-1 text-sm"
       />
-      <button
-        type="submit"
-        name="standing"
-        value="ok"
-        disabled={pending}
-        className="rounded-md border border-border bg-panel px-2 py-1 text-sm font-medium disabled:opacity-50"
-      >
-        {/*
-          Third person when it is somebody else, first person when it is you.
-          The UI-rework's §2a correction: a component given only a boolean cannot
-          tell "I am fine" apart from "he told me he is fine", and those are
-          different acts even though the permission allows both.
-        */}
-        {isSelf ? 'I’m OK' : `${name.split(' ')[0]} is OK`}
-      </button>
-      <button
-        type="submit"
-        name="standing"
-        value="needs_help"
-        disabled={pending}
-        className="rounded-md border border-bad bg-panel px-2 py-1 text-sm font-medium text-bad disabled:opacity-50"
-      >
-        Needs help
-      </button>
+      {standing !== 'ok' && (
+        <button
+          type="submit"
+          name="standing"
+          value="ok"
+          disabled={pending}
+          className="rounded-md border border-border bg-panel px-2 py-1 text-sm font-medium disabled:opacity-50"
+        >
+          {/*
+            Third person when it is somebody else, first person when it is you.
+            The UI-rework's §2a correction: a component given only a boolean cannot
+            tell "I am fine" apart from "he told me he is fine", and those are
+            different acts even though the permission allows both.
+          */}
+          {standing === 'needs_help'
+            ? isSelf
+              ? 'I’m OK now'
+              : `${first} is OK now`
+            : isSelf
+              ? 'I’m OK'
+              : `${first} is OK`}
+        </button>
+      )}
+      {standing !== 'needs_help' && (
+        <button
+          type="submit"
+          name="standing"
+          value="needs_help"
+          disabled={pending}
+          className="rounded-md border border-bad bg-panel px-2 py-1 text-sm font-medium text-bad disabled:opacity-50"
+        >
+          {standing === 'ok' ? 'Actually, needs help' : 'Needs help'}
+        </button>
+      )}
       <Message state={state} />
     </form>
   );

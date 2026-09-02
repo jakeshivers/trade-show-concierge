@@ -35,7 +35,7 @@ export async function beginRollCall(_prev: FormState, form: FormData): Promise<F
   }
   refresh(showId);
   return {
-    ok: 'Roll call started. Nobody is accounted for until they say so — a badge scan is not an answer.',
+    ok: 'Roll call started. Work down the list — nobody counts as safe until somebody records that they have heard from them.',
   };
 }
 
@@ -49,7 +49,7 @@ export async function endRollCall(_prev: FormState, form: FormData): Promise<For
   }
   refresh(showId);
   return {
-    ok: 'Closed. Anybody who had not answered stays unanswered in the record — closing marks nobody.',
+    ok: 'Closed. Anyone who never answered stays unanswered in the record — closing does not mark anybody safe.',
   };
 }
 
@@ -69,5 +69,10 @@ export async function answer(_prev: FormState, form: FormData): Promise<FormStat
     return asFormError(err);
   }
   refresh(showId);
-  return { ok: actor.userId === userId ? 'Recorded.' : 'Recorded as relayed by you.' };
+  return {
+    ok:
+      actor.userId === userId
+        ? 'Recorded.'
+        : 'Recorded — noted as something you passed on, rather than as them answering.',
+  };
 }
