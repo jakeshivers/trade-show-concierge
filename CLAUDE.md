@@ -1162,6 +1162,22 @@ per-show; `/shipping` no longer needs it.
   is usually a list carrying rows that should not be on it**, and removing those is the better
   fix.
 
+**And a stale *service worker* will lie to you harder, across the whole app.** `public/sw.js`
+served `/_next/static/` **cache-first**, on a comment asserting those names are content-hashed
+and immutable. True of `next build`; false of `next dev`, where Turbopack names chunks from
+their source path (`_0sm9glu._.js`) and reuses the name as the file changes — so cache-first
+pins one build's bytes into the *browser* permanently. The page then loads an hour-old chunk
+against a current render, a moved function throws `is not a function`, hydration fails, and it
+survives a dev restart because nothing on the server can reach the stale copy. **Its blast
+radius is the whole app, not the day-of page**: the worker's scope is `/`, and while it only
+*caches navigations* for `/day-of`, `isBuildAsset` had no such gate — the hydration failure was
+observed on `/` as readily as on `/day-of/[id]`. The worker is now **told** which it is
+(`/sw.js?mode=dev`, from `_register.tsx`) rather than sniffing a hostname; production is
+unchanged, dev is network-first with a cache fallback so the offline path still works and
+nothing is pinned. `CACHE` is bumped to `day-of-v2` so a browser holding a poisoned copy heals
+on the next load. If one is stuck: DevTools → Application → Service Workers → Unregister, or
+Clear site data.
+
 **A stale `next dev` will lie to you about all of this.** `pnpm db:reset` deletes `.pglite`
 out from under a running server, which then serves the pre-reset database from a deleted
 inode — new columns and enum values do not exist in it, and a section gated on a query can

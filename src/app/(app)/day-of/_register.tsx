@@ -20,9 +20,23 @@ import { useEffect } from 'react';
 export function RegisterServiceWorker() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return;
+    // The worker is *told* whether build assets are content-hashed rather than
+    // sniffing a hostname, because this is a fact the app already holds. It
+    // matters: `/_next/static/` is immutable in a production build and is not in
+    // `next dev`, where Turbopack names chunks from their source path and reuses
+    // the name as the file changes. Cache-first on those pins one build's bytes
+    // into the browser permanently, and the day-of page then loads an hour-old
+    // chunk against a current render and dies on hydration — surviving a dev
+    // restart, because the stale copy is in the browser rather than on the
+    // server. `public/sw.js` has the long version.
+    //
+    // Changing the script URL also replaces any worker registered at the old
+    // one, which is what lets a browser already holding a poisoned cache heal
+    // itself: the new worker's `activate` deletes every cache but its own.
+    const url = process.env.NODE_ENV === 'production' ? '/sw.js' : '/sw.js?mode=dev';
     // Failure is fine and silent: no worker means no offline copy, which the
     // screen already says out loud when it has nothing cached.
-    navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+    navigator.serviceWorker.register(url, { scope: '/' }).catch(() => {});
   }, []);
   return null;
 }
