@@ -171,10 +171,8 @@ export function CostMemos({ cost }: { cost: ShowCost }) {
         <div>
           <dt className="font-medium">{cost.attendeeDays} attendee-days on site</dt>
           <dd className="text-text-muted">
-            Deliberately not priced. Whether staff time belongs in a show’s cost is an open
-            decision (SCOPE §11.8), and there is no loaded rate recorded anywhere in this
-            workspace — so a dollar figure here would be a number we invented, which is the one
-            thing this page exists not to do.
+            Counted, not priced. Nobody’s hourly cost is recorded in this workspace, so any
+            dollar figure here would be one we made up.
           </dd>
         </div>
       )}

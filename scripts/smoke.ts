@@ -72,7 +72,10 @@ async function routes(): Promise<Check[]> {
     { path: '/safety', expect: 'Duty of care' },
     { path: '/readiness', expect: 'eadiness' },
     { path: '/alerts', expect: 'engines' },
-    { path: '/cost', expect: 'made up' },
+    // A column heading rather than a sentence: the blurb this used to look for
+    // was rewritten by a copy pass, and a heading is there whenever the table
+    // resolved, which is what this check is actually for.
+    { path: '/cost', expect: 'Nothing recorded for' },
     { path: '/roi', expect: 'attribution window' },
     { path: '/itinerary', expect: 'tinerary' },
     { path: '/travel', expect: 'ravel' },

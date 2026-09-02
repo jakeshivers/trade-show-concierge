@@ -723,3 +723,67 @@ caught it is cheaper than a test and was sitting on the screen the whole time: *
 telling somebody to do a thing is a claim the product should be checked against.** Grep the
 screens for imperatives — "open the", "record what", "add a" — and confirm each one has a
 control at the other end.
+
+## §17 — `/roi` and `/cost`, and the sweep found a sixth date bug
+
+The same pass as §14 and §16, run over the two money screens and the CRM settings page they
+link to. Most of it was the expected work; three things were not.
+
+**The expected work.** Fifteen `§`/`SCOPE` citations came off the screens — `§8b`, `§8d`,
+`§8e`, `§5a`, `§5g`, `§11.7`, `§11.8`, `§3` twice, and `SCOPE.md §5` — each replaced by the
+sentence it was standing in for, since a reader who cannot open `SCOPE.md` was getting a
+footnote reference instead of a fact. `"Figures that are floors"` was **"a floor" for the
+fourth time** (a stat tile on `/cost`), and `cost is a floor` / `count is a floor` were the
+fifth and sixth, on badges in `roi/_present.tsx`. Four inline `? '' : 's'` plurals became
+`plural()`. Three access refusals stopped citing §3 and just say who can see the page. The
+`ReplayBanner`, the attribution explainer and the CRM page's consent note were rewritten from
+arguments into statements.
+
+**Three things that were not just wording:**
+
+1. **`/roi` was using "withheld" for two different acts at once.** A *figure* we decline to
+   print, and a *lead* we decline to transmit — on the same page, in the same table, in the
+   same sentence at one point. They are unrelated decisions with opposite fixes: one is
+   waiting on more data, the other is waiting on somebody recording what a person was told.
+   Figures are **"not shown"** now and leads are **"not sent"**, and `MatchTable`'s header
+   comment records why the vocabulary split.
+2. **A sixth `toISOString().slice(0, 10)`, live in `src/app`.** The show's ROI tab rendered
+   `as of {roi.asOf.toISOString().slice(0, 10)}` — a *timestamp* printed as a UTC calendar
+   date, so a page read at 5pm Pacific was stamped tomorrow. Finding 2 of this document found
+   four of these and step 22 found a fifth in `scripts/`; this is the sixth, and it survived
+   because `asOf` is a `Date` that nobody thinks of as a due date. It reads
+   `showDate(roi.asOf, detail.show.timezone)` now, which meant the tab had to load the show —
+   worth it, since every other date on every other tab is already rendered in the show's zone
+   and this one was silently not.
+3. **`"Beside the total, not in it"` promised three figures and renders four.** Credits,
+   stock, drayage and attendee-days. The subtitle was written when there were three and the
+   drayage memo was added at step 23 without anybody re-reading the sentence above it. It no
+   longer counts.
+
+**And two tests had to be re-pointed, which is the recurring lesson.** Both asserted on the
+exact wording of a refusal — `toContain('ceiling')` and `toContain('this app refusing, not the
+CRM failing')` — so a copy pass broke them without breaking anything true. §14 hit this and
+fixed it the same way: **assert the thing that must not change.** The first now matches
+`/flatter|too high|overstate/` against the *direction* of the error, which is the half that
+drives a decision. The second is better than what it replaced: it asserts that `12` and `8`
+both appear and that `20` never does, which tests the actual rule — our refusals and the CRM's
+answers are never summed — rather than the sentence that happens to express it.
+
+**Measurement, and it is the one worth keeping.** A scan of every route in the app for `§`,
+`SCOPE.md`, `a floor`, `floors`, `lawful basis`, `reporting artifact`, `fixture` and `x(s)`
+now returns **nothing** — where before these three passes it returned hits on fifteen screens.
+The scan is four lines of shell against a running `pnpm dev` and belongs in the same habit as
+`pnpm smoke`:
+
+```
+curl -s localhost:3000$route | strip-tags | grep -oiE '§[0-9]+|SCOPE\.md|\ba floor\b|lawful basis|[a-z]\(s\)'
+```
+
+**The rule these three sections add up to.** The docs argue in a vocabulary — floors,
+coverage, lawful basis, withheld, fixtures, artifacts — and that vocabulary is *correct*, which
+is exactly why it leaks: the word that ends an argument feels like the word that should go on
+the badge. It is not. **A doc comment is addressed to whoever maintains the decision; page copy
+is addressed to whoever lives with it.** When one sentence does both jobs it is doing the
+second one badly, and the tell is always the same: a term of art on a `Badge`, a `(s)` plural,
+a section number, or a sentence explaining why we chose something rather than what is true and
+what to do about it.

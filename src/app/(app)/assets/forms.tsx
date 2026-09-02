@@ -74,7 +74,7 @@ function AssetFields({ row, costCenters }: { row?: AssetRow; costCenters: CostCe
             defaultValue={a?.purchaseValueCents != null ? (a.purchaseValueCents / 100).toFixed(2) : ''}
           />
         </Field>
-        <Field label="Cost center" hint="§4: capital is somebody's budget, set at creation.">
+        <Field label="Cost center" hint="Whose budget this belongs to. Set when the asset is created and not changed afterwards.">
           <Select name="costCenterId" density="comfortable">
             <option value="">—</option>
             {costCenters.map((c) => (

@@ -113,7 +113,7 @@ export default async function TravelTab({ params }: { params: Promise<{ id: stri
 
       <Card title="Lodging">
         {lodgings.length === 0 ? (
-          <Empty>No hotel recorded. Lodging is tracked, not booked — SCOPE.md §5.</Empty>
+          <Empty>No hotel recorded. This app tracks rooms; it does not book them.</Empty>
         ) : (
           <ul className="space-y-3">
             {lodgings.map(({ lodging, guests }) => (

@@ -3,7 +3,9 @@ import { getActor } from '@/lib/auth/actor';
 import { canSeeRoi } from '@/lib/roi/access';
 import { getShowRoi, listShowOpportunities } from '@/lib/roi/store';
 import { figureLabel } from '@/lib/roi/rollup';
-import { Badge, Card, Empty, Table, Td, Th, money } from '../../../_components/ui';
+import { Badge, Card, Empty, Table, Td, Th, money, showDate } from '../../../_components/ui';
+import { plural } from '../../../_components/text';
+import { loadShow } from '../detail';
 import {
   Figure,
   MATURITY_LABEL,
@@ -41,8 +43,11 @@ export default async function ShowRoiTab({ params }: { params: Promise<{ id: str
     );
   }
 
-  const roi = await getShowRoi(actor, id);
-  const opportunities = await listShowOpportunities(actor, id);
+  const [{ detail }, roi, opportunities] = await Promise.all([
+    loadShow(id),
+    getShowRoi(actor, id),
+    listShowOpportunities(actor, id),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -61,21 +66,20 @@ export default async function ShowRoiTab({ params }: { params: Promise<{ id: str
           <Badge tone={MATURITY_TONE[roi.maturity]}>{MATURITY_LABEL[roi.maturity]}</Badge>
         </div>
         <p className="mt-2 text-sm text-text-muted">
-          {roi.leads.headline} {roi.meetingsHeld} meeting
-          {roi.meetingsHeld === 1 ? '' : 's'} held.{' '}
+          {roi.leads.headline} {plural(roi.meetingsHeld, 'meeting', 'meetings')} held.{' '}
           {money(roi.otherModelCents)} of pipeline under the{' '}
-          {roi.settings.model === 'sourced' ? 'influenced' : 'sourced'} model, reported beside it
-          rather than instead of it — §8b says to show both and pick a default, not to pick one
-          and pretend.
+          {roi.settings.model === 'sourced' ? 'influenced' : 'sourced'} model, shown beside this
+          one rather than instead of it — the two ways of crediting a deal to a show give
+          different answers, and both are worth seeing.
         </p>
         <p className="mt-1 text-xs text-text-muted">
-          {figureLabel(roi.settings)} · as of {roi.asOf.toISOString().slice(0, 10)}
+          {figureLabel(roi.settings)} · as of {showDate(roi.asOf, detail.show.timezone)}
         </p>
       </Card>
 
       <Card
         title="The figures"
-        subtitle="A number, or the reason there is not one. A withheld figure is shown as prominently as a quoted one, because the reason is the part somebody can act on."
+        subtitle="A number, or the reason there is not one — written out rather than left as a dash, because the reason is the part you can do something about."
       >
         <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           <Figure label="Cost per lead" value={roi.costPerLead} />
@@ -84,7 +88,7 @@ export default async function ShowRoiTab({ params }: { params: Promise<{ id: str
           <Figure
             label="Pipeline multiple"
             value={roi.pipelineMultiple}
-            note="Pipeline ÷ cost. §8d’s single headline number, and the easiest one to fake."
+            note="Pipeline ÷ cost. The single number people quote, and the easiest one to flatter."
           />
           <Figure
             label="Closed-won attributed"
@@ -96,14 +100,14 @@ export default async function ShowRoiTab({ params }: { params: Promise<{ id: str
 
       <Card
         title="What the figures above are missing"
-        subtitle="Named rather than netted. Two floors in a quotient do not cancel — one pushes the answer up and the other down, and neither magnitude is known."
+        subtitle="Listed rather than quietly averaged out. An incomplete cost pushes these figures down and an incomplete lead count pushes them up, and nobody knows by how much either way."
       >
         <RoiGaps gaps={roi.gaps} />
       </Card>
 
       <Card
         title="Where the leads went"
-        subtitle="Our refusals and the CRM’s answers, kept apart. There is deliberately no single “match rate” here."
+        subtitle="What we held back and what the CRM did not recognise, counted separately. There is deliberately no single “match rate” here, because only one of the two is ours to fix."
       >
         <MatchTable roi={roi} />
         <p className="mt-3 text-xs text-text-muted">
@@ -111,20 +115,20 @@ export default async function ShowRoiTab({ params }: { params: Promise<{ id: str
           <Link href={`/shows/${id}/leads`} className="underline">
             Leads tab
           </Link>
-          , where a withheld one says what would fix it — recording what the person was actually
-          told at the booth. That is fixable at the booth and effectively not fixable afterwards,
-          which is why the verdict is rendered on the lead rather than at the point of export.
+          , where any lead we are holding back says what would fix it: recording what the person
+          was told at the booth. Whoever had the conversation can answer that in seconds and
+          almost nobody can answer it a week later, which is why it is asked on the lead itself.
         </p>
       </Card>
 
       <Card
         title="Every opportunity behind that figure"
-        subtitle="Openable on purpose. An attributed pipeline number nobody can disagree with a row of is the fabricated bill again, one table over."
+        subtitle="Every deal counted towards the figure above, listed so you can disagree with any one of them."
       >
         {opportunities.length === 0 ? (
           <p className="text-sm text-text-muted">
-            No opportunity is linked to a lead from this show. That is an absence rather than a
-            finding unless a sync has actually looked — the table above says which.
+            No deal is linked to a lead from this show. Check the table above before reading that
+            as a result: if no sync has looked yet, this is empty because nobody asked.
           </p>
         ) : (
           <Table>

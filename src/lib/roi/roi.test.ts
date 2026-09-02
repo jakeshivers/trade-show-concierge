@@ -309,9 +309,13 @@ describe('the ratios, and what they refuse', () => {
       NOW,
     );
     expect(roi.costPerLead.ok).toBe(false);
-    expect((roi.costPerLead as { reason: string }).reason).toContain('too low');
+    // Both reasons have to carry the *direction* of the error, because that is
+    // the half that drives a decision — and both were asserting on one exact
+    // phrasing, so a copy pass broke them without breaking anything true.
+    // `UI-REWORK.md` §14's rule: assert the thing that must not change.
+    expect((roi.costPerLead as { reason: string }).reason).toMatch(/too low|understate/i);
     expect(roi.pipelineMultiple.ok).toBe(false);
-    expect((roi.pipelineMultiple as { reason: string }).reason).toContain('ceiling');
+    expect((roi.pipelineMultiple as { reason: string }).reason).toMatch(/flatter|too high|overstate/i);
   });
 
   it('withholds every ratio derived from a replayed pipeline', () => {
@@ -379,8 +383,12 @@ describe('match coverage — our refusals and the CRM’s answers stay apart', (
   it('never adds withheld to unmatched', () => {
     const gap = describeMatching(matching({ matched: 30, withheld: 12, unmatched: 8 }))!;
     expect(gap.what).toContain('30 of 50');
-    expect(gap.what).toContain('this app refusing, not the CRM failing');
-    expect(gap.what).toContain('8 are in no CRM record');
+    // The rule is that the two counts are reported separately and never summed.
+    // Asserting on the sentence tested the phrasing; asserting on the numbers
+    // tests the refusal — 12 and 8 both appear and 20 never does.
+    expect(gap.what).toContain('12');
+    expect(gap.what).toContain('8');
+    expect(gap.what).not.toContain('20');
   });
 
   it('says nothing when everything matched', () => {

@@ -419,9 +419,9 @@ export function rollUpShowCost(input: CostInputs, asOf: Date = new Date()): Show
       category: 'shipping',
       kind: 'absent',
       what:
-        'Freight went out and nothing is recorded coming back, so the return leg is missing from ' +
-        'this figure as well as from the board. §5g says most companies miss shipping entirely; ' +
-        'this is how.',
+        'Freight went out and nothing is recorded coming back, so the cost of the return leg is ' +
+        'missing here as well as from the shipping board. Return freight is the single most ' +
+        'commonly forgotten line on a show.',
       count: 1,
     });
   }

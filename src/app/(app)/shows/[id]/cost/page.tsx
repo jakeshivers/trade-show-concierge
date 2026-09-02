@@ -25,9 +25,8 @@ export default async function ShowCostTab({ params }: { params: Promise<{ id: st
   if (!canSeeCost(actor)) {
     return (
       <Empty>
-        A show’s cost is every colleague’s fare and room rate in one figure, so it is Travel
-        Manager and Admin only — the same audience §3 gives “see all users’ travel”. Your own
-        fare is on your itinerary.
+        A show’s cost is every colleague’s fare and room rate in one figure, so only a Travel
+        Manager or an Admin can see it. Your own fare is on your itinerary.
       </Empty>
     );
   }
@@ -42,8 +41,8 @@ export default async function ShowCostTab({ params }: { params: Promise<{ id: st
           {money(cost.paidCents)} has actually been paid; {money(cost.committedCents)} is
           recorded and still owed.{' '}
           {cost.isFloor
-            ? 'This is a floor rather than a total — the lines below say what is missing from it.'
-            : 'Every row that exists carries a figure and nothing structural is absent.'}
+            ? 'The real total is higher than this — the lines below say what is missing.'
+            : 'Nothing is missing: every cost this show should have is recorded.'}
         </p>
       </Card>
 
@@ -54,17 +53,17 @@ export default async function ShowCostTab({ params }: { params: Promise<{ id: st
         <CostLines lines={cost.lines} />
         {cost.coverage.silent.length > 0 && (
           <p className="mt-3 text-xs text-text-muted">
-            Nothing at all is recorded for: {cost.coverage.silent.join(', ')}. A silent line is
-            not a zero. That matters most for booth space: every trade show has one, it is
-            usually the largest single number on this page, and it is invoiced months ahead — so
-            its absence is an un-entered invoice rather than a cheap show.
+            Nothing at all is recorded for: {cost.coverage.silent.join(', ')}. A blank line is
+            not a zero — it means nobody has entered that invoice yet. Booth space is the one to
+            check first: every show has it, it is usually the largest number on this page, and it
+            is billed months in advance.
           </p>
         )}
       </Card>
 
       <Card
         title="Beside the total, not in it"
-        subtitle="Three figures that would each be wrong if they were added."
+        subtitle="Real figures that would each make the total wrong if they were added to it."
       >
         <CostMemos cost={cost} />
       </Card>
