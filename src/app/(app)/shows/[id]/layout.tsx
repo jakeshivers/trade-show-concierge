@@ -42,6 +42,12 @@ const TABS = [
   // rendered for a Member for Cost's reason — an ROI figure has a cost figure
   // inside it.
   { segment: 'roi', label: 'ROI', approverOnly: true },
+  // The tenth, and shown to everybody — the loosest gate of any tab here, and
+  // deliberately. Cost and ROI are hidden from a Member because they are every
+  // colleague's fare added up; a roll call is a list of names and whether they
+  // have answered, and the people best placed to find a missing colleague at a
+  // convention centre are the ones standing in it. `lib/safety/access.ts`.
+  { segment: 'safety', label: 'Safety' },
 ];
 
 export default async function ShowLayout({

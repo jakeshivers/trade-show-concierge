@@ -42,7 +42,8 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 ## Where we are
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
-has started. **Steps 22 (LLM deadline extraction) and 23 (the drayage estimator) are done** — §5a's post-v1 half, and the
+has started. **Steps 22 (LLM deadline extraction), 23 (the drayage estimator) and 24 (duty of care)
+are done** — §5a's post-v1 half, and the
 first feature here that the seed deliberately cannot demonstrate. Step 21 is **half done and marked `[~]` in §10**: the transport and the
 scheduler shipped, hosting and the SSO rollout did not and cannot here — both need a cloud
 account or a real IdP, and §9's ground rule forbids wiring one unasked.
@@ -88,7 +89,7 @@ Slack adapter behind the usual interface, a planner that refuses five different 
 it interrupts anybody, a zero-key transport that composes the real message and delivers it
 to nobody rather than pretending, and a job whose *absence* is now a thing the alerts page
 can say out loud.
-978 tests, no keys required.
+996 tests, no keys required.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the
@@ -113,6 +114,78 @@ screen uses. `pnpm leads` prints capture worst-first — the count, the word in 
 who on the booth recorded nothing, and why cost per lead is being withheld — and
 `pnpm leads --retention` is the one command in this product that destroys data on purpose,
 erasing the person and leaving the count exactly where it was.
+
+**What step 24 added, and where:** `src/lib/safety/` — duty of care, §5o. **HubSpot was the
+written pick and was dropped on contact with reality**: the entire argument for it was that a
+free developer tier makes `pnpm hubspot:capture` buildable, and with no account available it
+would have become a *fourth* written-to-the-docs-and-hoped adapter replacing a seam that
+honestly throws. It stays throwing; §11.6's "one well rather than both adequately" is
+unchanged.
+
+`RESEARCH.md` ranks duty of care ninth and justifies it in one sentence — *"we know where
+everyone is"* — and this module is what taking that seriously produces. **We do not.** What
+the app holds is a badge scan at 8:04, a carrier's word about a flight, a hotel stay, and a
+travel window somebody typed in June: evidence of *expected* presence at some instant in the
+past, never a location. **Nothing here reads a device**, and the moment something does this
+stops being a feature about who to call and becomes one about watching staff.
+
+`presence.ts` is pure and turns that evidence into a standing with **what it rests on and how
+old it is**. `rollcall.ts` is pure and holds the distinction the feature exists to protect:
+**presence and safety are different questions and one must never answer the other** — the
+person who badged in twelve minutes ago is who you most need to hear from about a 10am
+incident, so presence decides *who to call first* and only an answer closes a name.
+`access.ts` is the loosest gate in the codebase. `store.ts` builds every person's evidence in
+a **fixed number of queries**, which matters here for a reason the other modules did not
+have: this screen is read while something is going wrong.
+
+Schema: **`safety_checks`** (a roll call is a row because a response is a response to a
+*request*) and **`safety_responses`** (append-only; `recorded_by_id` is the interesting
+column and it inverts §5e). Screens: `/safety` in the nav under Travel, and a **Safety** tab
+on the show — the tenth, and shown to **everybody**, which is the loosest tab gate here.
+`pnpm rollcall` / `pnpm rollcall <show id>` is the model without a screen. The seed runs a
+real roll call on the live show through the real store: Priya answers for herself, Tomás is
+answered **by Priya**, Ingrid has not answered, and Reese has not answered *and* has no phone
+number — so her silence means nothing and the count says so separately.
+
+**The five refusals:**
+
+1. **Unknown is not absent, and §5e inverts.** Booth coverage refuses to flag an unrecorded
+   travel window because flagging everybody flags nobody. A roll call is the opposite: the
+   person nothing can locate is the entire output and sorts **first**. Same gap, other
+   direction, because the cost of the two mistakes has swapped places.
+2. **A response is a response to a request.** One recorded before the roll call started does
+   not count, or "checked in safe" from a show last March marks somebody accounted for during
+   this morning's evacuation — silently, on the headcount read aloud.
+3. **A relayed answer counts, and §5e inverts a second time.** A `confirmed` typed by
+   somebody else is hearsay in a staffing number and lands as `secondhand`, uncounted. "I have
+   her on the phone, she is fine" is the same shape and the opposite decision: discarding it
+   has people ringing round a name already reached. It counts and it is **labelled**.
+4. **Contactable is not contacted.** "12 of 14 reached" over a roster where three have no
+   phone number is a lie about reach. They are counted apart and named — and the moment that
+   is useful is **before** an incident, which is why it is on the screen when nothing is
+   happening.
+5. **Nobody is marked safe by the system.** No timeout turning silence into assent, no
+   inference from a badge scan, and **no bulk "mark everyone safe"** — the obvious button, and
+   the only control that could produce a complete headcount without anybody having spoken.
+
+**The two corrections, both found by running the CLI rather than by a test:**
+
+1. **A travel window that has not started is not "nothing recorded".** Everybody at the live
+   show read `unknown` and sorted to the top — a list telling somebody to go and find four
+   colleagues who were at home, hours from a flight they had not taken. *Nothing recorded* and
+   *has not left yet* are opposite facts and only one is a person to worry about.
+2. **An interval that contains now does not age; an observation does.** Staleness was keyed
+   by *kind*, so a travel window covering this moment rendered `(stale)` because it had
+   *started* eighteen hours ago — which says "we have not heard in 18 hours" when the truth is
+   "we never had a signal, only a plan". It is keyed by **basis** now: a badge scan and a
+   landing perish, a window and a hotel stay do not, and their weakness is that they were
+   never precise, which is already carried by their producing `in_town` rather than
+   `at_venue`.
+
+That is the fourth, fifth and sixth defect this project has found by reading CLI output
+rather than from a test — after step 17's `onConflictDoNothing`, step 19's `SOURCE_LABEL`,
+step 22's deduplicated reading and step 23's crate count. **Reading the output is the
+practice**, and it is now the highest-yield thing in this repo.
 
 **What step 23 added, and where:** `src/lib/drayage/` — the drayage estimator, §5n, and the
 first thing this product **predicts** rather than records. It closes the largest silent line
@@ -1311,25 +1384,33 @@ flight *home* that is late and deliberately silent.
    `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
    never for jitter.
 
-**Next: step 24, and the pick is HubSpot** (§11.6). Two reasons, and the first is that it
-closes a known gap rather than opening a new one:
+**Next: step 25, and there is no obvious pick — read this before choosing.** The backlog in
+`SCOPE.md` §10.25 is sponsorship campaigns, a public API + Zapier, impersonation,
+multi-workspace, custom fields, external share links, a room-block optimizer, gamification
+and HubSpot. Three observations that should shape the choice more than the list does:
 
-- **It is the only unverified adapter that could realistically get a capture script.** A free
-  developer tier means `pnpm hubspot:capture` is buildable on this machine, the way
-  `pnpm salesforce:capture` was — and Salesforce is the adapter where a wrong field name
-  *looks like the truth*, so proving the same four questions against a second CRM is worth
-  more than it sounds. AeroAPI, EasyPost and Slack have no equivalent path.
-- **Nothing regresses while it waits, and the seam is already the right shape.** Every method
-  throws today, deliberately: §11.6 resolved to "one well rather than both adequately", and
-  `selectCrmProvider` answers `hubspot` with what building it takes rather than a spelling
-  complaint. The interface has exactly one write method and must keep exactly one.
+- **Every remaining integration is blocked on an account, and that is now a pattern rather
+  than a coincidence.** HubSpot needs a developer org, Slack needs a workspace, SSO needs an
+  IdP, and all three need hosting first. Building any of them unverified converts an honest
+  seam into a fourth or fifth adapter written to the docs and hoped — step 24 declined
+  exactly that trade and it should keep being declined. **Hosting is the unlock for all of
+  them**, and it is the one thing on the list that changes what else is buildable.
+- **`pnpm manual:probe` against a real exhibitor manual is still the cheapest open item**,
+  and it is the only unverified thing here that needs no account at all — just a PDF.
+  Everything structural about step 22's extraction is proven and **recall is not**, by
+  construction. That gap is a week of prompt work or a nasty surprise, and there is no way to
+  know which without one real document.
+- **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's
+  backlog has carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with
+  their own deadlines, which composes the §5a engine that already exists rather than adding a
+  ninth thing that alerts.
 
-**Two alternatives.** **Duty of care** (§10.24's backlog) is the largest unbuilt item that is
-pure and needs no keys — who is where, and who is unaccounted for when something happens at a
-venue — and it composes the roster, the flight board and the day-of snapshot that already
-exist. **Or point `pnpm manual:probe` at a real exhibitor manual**, which is still the loose
-thread step 22 left: everything structural about extraction is verified and **recall is not**,
-by construction, and the first real manual is worth treating as a deliverable.
+**And one practice worth stating, because it has now paid off six times.** Steps 17, 19, 22,
+23 and 24 each found a real defect by *reading the CLI's output* — `onConflictDoNothing`
+muting recurrences, `SOURCE_LABEL` mislabelling a whole engine, a deduplicated reading
+counted as unread, a crate count that made freight invisible, and two in one sitting on
+presence. None was caught by a test, because in every case the test had been written to the
+same wrong rule. **Run the CLI and read what it says** before believing a green suite.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on
@@ -1763,6 +1844,31 @@ silently. One key is now `AuthConfigError`.
   `recorded` only when `SHIPMENT_TRACKING_PROVIDER=recorded` says so, otherwise an error
   naming the variable. The sentence it produces is "the booth will be there before the doors
   open".
+- **Presence never answers for safety.** A badge scan at 8:04 makes somebody *more* urgent
+  to reach about a 10am incident, not less. Presence decides who to call first; only an
+  answer closes a name. There is no timeout turning silence into assent, no inference from a
+  scan, and **no bulk "mark everyone safe"** — the obvious button, and the only control that
+  could produce a complete headcount without anybody having spoken. `src/lib/safety/`.
+- **Nothing in duty of care reads a device.** Every standing is inferred from a row the app
+  already kept for another reason. The moment something reads a position, this stops being a
+  feature about who to call and becomes one about watching staff — a ceiling on what the
+  feature is, not a gap in it.
+- **A response is a response to a request**, so a roll call is a row and answers carry the
+  one they answer. Otherwise "checked in safe" from last March marks somebody accounted for
+  during this morning's evacuation, on the headcount somebody reads aloud.
+- **A relayed answer counts and is labelled — §5e inverted, twice.** A `confirmed` typed by
+  somebody else is hearsay in a staffing number and is refused; "I have her on the phone, she
+  is fine" is the same shape and is exactly what a roll call needs. And where booth coverage
+  declines to flag an unrecorded travel window, a roll call sorts that person **first** — the
+  same gap, read the other way, because the cost of the two mistakes has swapped places.
+- **Contactable is not contacted.** "12 of 14 reached" over a roster where three have no
+  phone number is a lie about reach. They are counted apart and named, and the moment that is
+  useful is *before* an incident — which is why the screen says it when nothing is happening.
+- **An interval that contains now does not age; an observation does.** Staleness is keyed by
+  **basis**, never by kind: a badge scan and a landing perish, a travel window and a hotel
+  stay do not. Marking a current window stale says "we have not heard in 18 hours" when the
+  truth is "we never had a signal, only a plan". Their coarseness is already carried by their
+  producing `in_town` rather than `at_venue`.
 - **Drayage rounds per shipment, never in aggregate.** Two 150 lb crates are two shipments,
   each takes the card's 200 lb minimum, and 400 lb is billable. Summing first gives 300 lb
   and bills three hundredweight — 25% light, in the flattering direction, on a figure nobody
@@ -2190,6 +2296,8 @@ pnpm credits <id>     # one credit's ledger, entry by entry
 pnpm credits --sweep  # write off what expired, warn about what will
 pnpm deadlines        # the deadline register, its exposure, and tonight's alerts
 pnpm deadlines --sweep # write those alerts; run twice, nothing is written the second time
+pnpm rollcall         # duty of care: who is expected where, and who could not be reached
+pnpm rollcall <show id>  # one show: who to call, in the order to call them
 pnpm roster           # booth coverage everywhere: target, assigned, who can actually work it
 pnpm roster <show id> # one show, shift by shift
 pnpm flights          # every tracked leg, worst first, and what the engine would say
@@ -2236,7 +2344,7 @@ pnpm salesforce:capture        # the same loop for Salesforce (needs a Developer
 pnpm salesforce:capture --read-only   # probe everything; write nothing into their CRM
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 34 routes against a running `pnpm dev`; 200 + expected text
+pnpm smoke        # fetch all 36 routes against a running `pnpm dev`; 200 + expected text
                   # (/day-of/[id] is the one page whose *content* it cannot check)
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck
@@ -2357,6 +2465,13 @@ src/lib/shows/                the planning core — pure clone planner, pure int
 src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
                               built-in templates + idempotent apply planner, the edit
                               rules, who may edit vs. report, the pace model, the store
+src/lib/safety/               §5o — presence.ts (pure: evidence into a standing, with what
+                              it rests on and how old that is; staleness keyed by *basis*,
+                              because an interval containing now does not age), rollcall.ts
+                              (pure: presence never answers for safety, and five refusals),
+                              access.ts (the loosest gate in the codebase), store.ts (every
+                              person's evidence in a fixed number of queries, because this
+                              screen is read while something is going wrong)
 src/lib/drayage/              §5n — estimate.ts (pure: hundredweight, and six refusals of
                               which per-shipment rounding is the one that is silently 25%
                               light), edit.ts (a card, validated; `basis` has no default

@@ -1447,6 +1447,86 @@ somebody standing next to it in the warehouse at 6am — `canConfirmReceipt`'s r
 there would leave every row at `unknown` forever until the sentence stopped meaning anything.
 Reading the estimate inherits `canSeeCost` rather than choosing a new rule.
 
+### 5o. Duty of care — what a roll call may claim about a person (step 24)
+
+`RESEARCH.md` ranks this ninth and justifies it in one sentence: *"we know where everyone
+is."* **We do not**, and the whole module is the consequence of taking that seriously.
+
+What this app holds is a set of operational records kept for other reasons — a badge scan at
+8:04, a carrier's word about a flight, a hotel stay, a travel window somebody typed in June.
+Every one is evidence of *expected* presence at some instant in the past. None is a location.
+That distinction is not pedantry: the screen is read when something has happened at a venue,
+by somebody deciding who to phone first, and a list that says "at the venue" with equal
+confidence for a man who badged in twelve minutes ago and a man whose June window happens to
+contain today is worse than no list. The first is a fact about this morning; the second is a
+plan.
+
+**This is not a location tracker and must never become one.** Every standing is derived from
+a row the app already had. Nothing reads a device, asks for a position, or wants a consent
+dialog — and the moment something does, this stops being a feature about knowing who to call
+and becomes a feature about watching staff.
+
+**The distinction the feature exists to protect: presence and safety are different questions,
+and one must never answer the other.** The obvious design — the one every first draft reaches
+for — treats them as one list, with a badge-in standing in for an answer. That is exactly
+backwards. Somebody who badged into a booth shift at 8:04 is *the person you most need to
+hear from* about a 10am incident at that venue; their presence makes them more urgent, not
+less. So presence never marks anybody accounted for. It decides **who to call first**, and
+only an answer closes a name.
+
+**Five refusals.**
+
+1. **Unknown is not absent, and §5e inverts.** Booth coverage deliberately does not flag an
+   unrecorded travel window, because plenty of people drive and flagging everybody flags
+   nobody. A roll call is the opposite: the person nothing can locate is the entire output,
+   so they sort **first**. The same gap, read the other way, because the cost of the two
+   mistakes has swapped places.
+2. **A response is a response to a request.** Responses carry the roll call they answer and
+   one recorded before it started does not count — otherwise "checked in safe" from a show
+   last March marks somebody accounted for during this morning's evacuation, silently, on the
+   headcount that gets read aloud.
+3. **A relayed answer counts, and §5e inverts a second time.** Booth coverage refuses a
+   `confirmed` typed by somebody else — hearsay inside a staffing number, landing as
+   `secondhand` and uncounted. A colleague saying "I have her on the phone, she is fine" is
+   the same data shape and the opposite decision: in an emergency it is precisely the
+   information needed, and discarding it would have people ringing round a name already
+   reached. It counts, and it is **labelled**, because "she told us" and "he told us about
+   her" are still different sentences.
+4. **Contactable is not contacted.** `users.phone` is nullable. "12 of 14 reached" over a
+   roster where three have no phone number is a lie about reach — the three were never
+   reachable and their silence means nothing. They are counted separately and named, and the
+   moment that fact is useful is **before** an incident, which is why it is on the screen
+   when nothing is happening.
+5. **Nobody is marked safe by the system.** There is no timeout after which silence becomes
+   assent, no inference from a badge scan, and **no bulk "mark everyone safe"** — each of
+   which is a way to produce a complete headcount without having spoken to anybody, which is
+   the only outcome here worse than an incomplete one.
+
+**Two corrections, both found by running `pnpm rollcall` rather than by a test.**
+
+**A travel window that has not started yet is not "nothing recorded".** Every person at the
+live show read `unknown` and sorted to the top — a list telling somebody to go and find four
+colleagues who were at home, hours from a flight they had not taken. *Nothing recorded* and
+*has not left yet* are opposite facts and only one of them is a person to worry about.
+
+**An interval that contains now does not age; an observation does.** Staleness was keyed by
+*kind*, so a travel window covering this moment rendered `(stale)` because it had *started*
+eighteen hours ago. That says "we have not heard in 18 hours" when the truth is "we never had
+a signal, only a plan", and those call for different actions. Staleness is keyed by **basis**
+now: a badge scan and a landing perish, a window and a hotel stay do not. Their weakness is
+that they were never precise, and that is already carried by their producing `in_town` rather
+than `at_venue`.
+
+**Access is the loosest in the product, deliberately.** Starting a roll call belongs to
+whoever runs the show — it interrupts everybody at a venue, and a mistaken one gets answered
+by fewer people next time. Answering for yourself is always yours. **Relaying somebody else's
+answer belongs to anybody**, the loosest gate in the codebase, because the colleague holding
+the phone is whoever had the number and a permission check between that call and the record
+is one that gets worked around by shouting across a room. And **reading it belongs to
+everybody at the show**: cost and ROI are narrowed because a total is every colleague's fare,
+but a roll call is a list of names and whether they have answered, and the people best placed
+to find a missing colleague at a convention centre are the ones standing in it.
+
 ## 6. The booking agent
 
 The core loop: **user states constraints → agent finds an itinerary → policy engine
@@ -2439,9 +2519,17 @@ invert phases A and C.
       two 150 lb crates before rounding bills 25% light, in the flattering direction, with
       nothing about the wrong answer that looks wrong. The estimate never joins the total.
       No eighth alert engine, deliberately — a condition with no clock is a nag.
-- [ ] **24.** Backlog: duty of care · sponsorship campaigns · public API + Zapier ·
-      impersonation (§3 rules) · multi-workspace · custom fields · external share links ·
-      room-block optimizer · gamification
+- [x] **24.** **Duty of care** (§5o). `RESEARCH.md` sells it as "we know where everyone is";
+      the feature is what taking that seriously produces. Presence and safety are kept as
+      different questions — a badge scan makes somebody *more* urgent to reach, never less —
+      nothing here reads a device, and there is deliberately no bulk "mark everyone safe".
+      **HubSpot (§11.6) was the written pick and was dropped**: the whole argument for it was
+      that a free developer tier makes a capture script buildable, and with no account it
+      would have become a fourth written-to-the-docs-and-hoped adapter replacing an honest
+      seam that throws. It stays throwing.
+- [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
+      · multi-workspace · custom fields · external share links · room-block optimizer ·
+      gamification · HubSpot (needs an account)
 
 ### A correction to §2 and §3
 

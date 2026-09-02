@@ -63,6 +63,8 @@ async function routes(): Promise<Check[]> {
     // smoke failure — same caveat as /settings/security below.
     { path: `/shows/${id}/cost`, expect: 'has cost so far' },
     { path: `/shows/${id}/roi`, expect: 'Was it worth it' },
+    { path: `/shows/${id}/safety`, expect: 'Nothing on this page reads a device' },
+    { path: '/safety', expect: 'Duty of care' },
     { path: '/readiness', expect: 'eadiness' },
     { path: '/alerts', expect: 'engines' },
     { path: '/cost', expect: 'made up' },

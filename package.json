@@ -16,6 +16,7 @@
     "credits": "tsx scripts/credits.ts",
     "deadlines": "tsx scripts/deadlines.ts",
     "roster": "tsx scripts/team.ts",
+    "rollcall": "tsx scripts/rollcall.ts",
     "flights": "dotenv -e .env.local -- tsx scripts/flights.ts",
     "shipping": "dotenv -e .env.local -- tsx scripts/shipping.ts",
     "assets": "tsx scripts/assets.ts",

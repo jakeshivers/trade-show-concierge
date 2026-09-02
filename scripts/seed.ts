@@ -36,6 +36,7 @@ import {
   setRateCardConfirmed,
   setShipmentHandling,
 } from '../src/lib/drayage/store';
+import { recordSafetyResponse, startRollCall } from '../src/lib/safety/store';
 import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
 import { ask } from '../src/lib/assistant/store';
 import {
@@ -1820,6 +1821,43 @@ async function main() {
     }
   }
 
+  // Duty of care. The live show is mid move-in with four people in town, which
+  // is the only place on this calendar a roll call is a real thing to run.
+  //
+  // Four states, because the argument is about what closes a name: Priya answers
+  // **for herself**; Tomás is answered **by Priya**, which counts and is labelled
+  // (§5e inverted — hearsay is refused in a staffing number and is exactly what a
+  // roll call needs); Ingrid has not answered; and Reese has not answered *and*
+  // has no phone number on file, so her silence means nothing and the count says
+  // so separately. Nobody is marked safe by the seed, because nothing in this
+  // product marks anybody safe.
+  console.log('· duty of care (a real roll call, answered through the real store)');
+  const rollCall = await startRollCall(
+    admin,
+    dmwest.id,
+    'Fire alarm in Hall B during move-in. Confirm you are out of the building.',
+    at(0, 7),
+    db,
+  );
+  await recordSafetyResponse(
+    actorFor(priya),
+    rollCall.id,
+    priya.id,
+    'ok',
+    'Out front by the rideshare pickup.',
+    at(0, 7.2),
+    db,
+  );
+  await recordSafetyResponse(
+    actorFor(priya),
+    rollCall.id,
+    tomas.id,
+    'ok',
+    'Spoke to him — he is with the crate at the dock.',
+    at(0, 7.4),
+    db,
+  );
+
   console.log('· asset alerts (produced by running the real sweep)');
   const assetSweep = await sweepAssetAlerts(org.id, now);
   console.log(`  ${assetSweep.planned.length} planned · ${assetSweep.alertsWritten} written`);
@@ -1855,9 +1893,14 @@ async function main() {
     await shiftAt(dmwest, at(1, 13), at(1, 17), 3),
   ];
   const dmRoster = [priya, tomas, reese, ingrid] as const;
+  // They arrive the day *before* move-in, which is both how shows actually work
+  // and what makes duty of care measurable at all — §5o's roll call reads travel
+  // windows, and a window that has not started yet is correctly "has not left
+  // yet" rather than a person to go looking for. Seeded with everybody still at
+  // home, the live show's roll call was four people it could say nothing about.
   for (const person of dmRoster) {
-    const invited = await invite(dmwest, person, 'Booth staff', { from: at(0, 12), to: at(3, 19) });
-    await accept(invited, person, dmwest, { from: at(0, 12), to: at(3, 19) });
+    const invited = await invite(dmwest, person, 'Booth staff', { from: at(-1, 14), to: at(3, 19) });
+    await accept(invited, person, dmwest, { from: at(-1, 14), to: at(3, 19) });
   }
   for (const [shiftId, userId] of [
     [dmShifts[0], priya.id],

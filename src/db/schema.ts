@@ -168,6 +168,9 @@ export const shipmentHandlingEnum = pgEnum('shipment_handling', [
 /** Charged once on the way in, or separately each way. Typed, never guessed. */
 export const drayageBasisEnum = pgEnum('drayage_basis', ['round_trip', 'each_way']);
 
+/** What somebody said when asked. There is deliberately no "assumed" value. */
+export const safetyStandingEnum = pgEnum('safety_standing', ['ok', 'needs_help']);
+
 export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
 
 /** Mirrors the state machine in SCOPE.md §6b. */
@@ -1739,6 +1742,74 @@ export const shiftAssignments = pgTable(
  * Who was *actually* at the booth. Deliberately separate from shiftAssignments:
  * rostered is not present, and the gap between them is the staffing insight.
  */
+/**
+ * A roll call: somebody asked everybody at a show whether they are all right.
+ *
+ * It exists as a row because **a response is a response to a request**. Without
+ * it, "checked in safe" recorded at a show last March would mark somebody
+ * accounted for during this morning's evacuation — silently, in the flattering
+ * direction, on the headcount that gets read aloud. Responses carry the check
+ * they answer and `lib/safety/rollcall.ts` discards any that predate it.
+ *
+ * Append-only, and never deleted: "was a roll call run, and what did it find" is
+ * a question somebody may be asked about by a regulator or an insurer long after
+ * everybody involved has forgotten. `closed_at` records that whoever started it
+ * considered it finished, which is deliberately **not** the same as everybody
+ * having answered.
+ */
+export const safetyChecks = pgTable(
+  'safety_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    startedById: uuid('started_by_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    /** What happened, in the words of whoever started it. */
+    note: text('note'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedById: uuid('closed_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [index('safety_checks_show_idx').on(t.showId, t.startedAt)],
+);
+
+/**
+ * One person's answer to one roll call.
+ *
+ * `recorded_by_id` is the interesting column and it inverts §5e. Booth coverage
+ * refuses a `confirmed` typed by somebody else, because hearsay inside a
+ * staffing number is a hole that renders as a filled slot. Here the same shape
+ * gets the opposite decision: a colleague saying "I have her on the phone, she
+ * is fine" is exactly the information a roll call needs, so it **counts** — and
+ * it is labelled, because "she told us" and "he told us about her" are still
+ * different sentences and the second is worth a follow-up call.
+ *
+ * Append-only. A person who says they need help and later says they are fine has
+ * said two things, and the first one is part of the record.
+ */
+export const safetyResponses = pgTable(
+  'safety_responses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    checkId: uuid('check_id')
+      .notNull()
+      .references(() => safetyChecks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    standing: safetyStandingEnum('standing').notNull(),
+    respondedAt: timestamp('responded_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Who typed it. Equal to `user_id` when the person answered for themselves. */
+    recordedById: uuid('recorded_by_id').references(() => users.id, { onDelete: 'set null' }),
+    note: text('note'),
+  },
+  (t) => [index('safety_responses_check_idx').on(t.checkId, t.respondedAt)],
+);
+
 export const shiftPresence = pgTable(
   'shift_presence',
   {
@@ -2803,6 +2874,18 @@ export const shiftAssignmentsRelations = relations(shiftAssignments, ({ one }) =
     references: [boothShifts.id],
   }),
   user: one(users, { fields: [shiftAssignments.userId], references: [users.id] }),
+}));
+
+export const safetyChecksRelations = relations(safetyChecks, ({ one, many }) => ({
+  org: one(organizations, { fields: [safetyChecks.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [safetyChecks.showId], references: [shows.id] }),
+  startedBy: one(users, { fields: [safetyChecks.startedById], references: [users.id] }),
+  responses: many(safetyResponses),
+}));
+
+export const safetyResponsesRelations = relations(safetyResponses, ({ one }) => ({
+  check: one(safetyChecks, { fields: [safetyResponses.checkId], references: [safetyChecks.id] }),
+  user: one(users, { fields: [safetyResponses.userId], references: [users.id] }),
 }));
 
 export const shiftPresenceRelations = relations(shiftPresence, ({ one }) => ({

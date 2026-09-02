@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   Inbox,
+  LifeBuoy,
   LayoutDashboard,
   Luggage,
   MessagesSquare,
@@ -104,6 +105,11 @@ const GROUPS: Group[] = [
       // waiting on somebody else, which is worth an entry — "where has my
       // request got to" is the question the queue exists to answer.
       { href: '/travel/approvals', label: 'Approvals', Icon: Inbox },
+      // Under Travel rather than Plan, because that is what it is about: the
+      // people this app sent somewhere. Not approver-only — see
+      // `lib/safety/access.ts`; a Member who has to ask permission to see who is
+      // unaccounted for is a Member who goes and looks instead.
+      { href: '/safety', label: 'Duty of care', Icon: LifeBuoy },
     ],
   },
   {
