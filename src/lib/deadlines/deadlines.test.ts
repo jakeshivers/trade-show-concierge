@@ -9,6 +9,7 @@ import {
   THRESHOLD_DAYS,
   type AlertableDeadline,
 } from './alerts';
+import { SOON_DAYS, standingOf, type PresentableDeadline } from './present';
 import {
   DeadlineError,
   MIN_REASON,
@@ -301,5 +302,78 @@ describe('planDeadlineStatus', () => {
 
   it('refuses a status it does not have', () => {
     expect(() => planDeadlineStatus('skipped', null, 'u1', NOW)).toThrow(DeadlineError);
+  });
+});
+
+
+/**
+ * What a register row says it is, and what to do about it.
+ *
+ * Reported by a user: four chips at equal weight — `sponsorship artwork`,
+ * `missed`, `unowned`, `from a room block` — none of which said what it meant or
+ * what to do. `UI-REWORK.md` §19.
+ */
+describe('a register row, as a person reads it', () => {
+  const row = (over: Partial<PresentableDeadline> = {}): PresentableDeadline => ({
+    status: 'open',
+    daysUntil: 18,
+    ownerId: 'u1',
+    ownerName: 'Marcus Oyelaran',
+    confirmedAt: new Date('2026-08-01T00:00:00Z'),
+    penaltyEstimateCents: 65_000,
+    lodgingId: null,
+    extractedFromDocument: false,
+    dueTimeAssumed: false,
+    ...over,
+  });
+
+  it('says nothing to do when a row is owned, confirmed and ahead of its date', () => {
+    const v = standingOf(row());
+    expect(v.standing).toBe('soon');
+    expect(v.label).toBe('Due in 18 days');
+    expect(v.todo).toEqual([]);
+  });
+
+  it('warns only inside the first alert threshold, and shares that number with the engine', () => {
+    expect(standingOf(row({ daysUntil: SOON_DAYS })).standing).toBe('soon');
+    expect(standingOf(row({ daysUntil: SOON_DAYS + 1 })).standing).toBe('ahead');
+  });
+
+  it('writes a missed row in the past tense and never as something to hurry at', () => {
+    const v = standingOf(row({ daysUntil: -4 }));
+    expect(v.standing).toBe('missed');
+    expect(v.label).toBe('Missed 4 days ago');
+    // §5a: past the date the money is incurred, not at risk.
+    // "already spent rather than at risk" is the whole sentence: the money is
+    // gone, and the row still needs closing so it stops being chased.
+    expect(v.todo[0]).toMatch(/already spent/);
+    expect(v.todo[0]).toMatch(/stops being chased/);
+  });
+
+  it('puts ownership before confirmation, because an unowned row reaches nobody', () => {
+    const v = standingOf(row({ ownerId: null, ownerName: null, confirmedAt: null }));
+    expect(v.todo[0]).toMatch(/Nobody owns this/);
+    expect(v.todo[1]).toMatch(/checked this date/);
+  });
+
+  it('sends a room-block cutoff to the hotel, never to the exhibitor manual', () => {
+    // The derived row's date comes from a hotel contract. Telling somebody to
+    // check it against the manual is a confident instruction to open the wrong
+    // document, on the one row whose whole design is a single source for its date.
+    const v = standingOf(row({ lodgingId: 'l1', confirmedAt: null }));
+    expect(v.todo.join(' ')).toMatch(/Lodging tab/);
+    expect(v.todo.join(' ')).not.toMatch(/manual/);
+  });
+
+  it('says an assumed hour is an assumption, and what it costs to leave it', () => {
+    const v = standingOf(row({ dueTimeAssumed: true, confirmedAt: null }));
+    expect(v.todo.join(' ')).toMatch(/no time/);
+    expect(v.todo.join(' ')).toMatch(/surcharge/);
+  });
+
+  it('has nothing to say about a row somebody has already ordered or waived', () => {
+    expect(standingOf(row({ status: 'complete' })).todo).toEqual([]);
+    expect(standingOf(row({ status: 'complete' })).label).toBe('Ordered');
+    expect(standingOf(row({ status: 'not_applicable', ownerId: null })).todo).toEqual([]);
   });
 });

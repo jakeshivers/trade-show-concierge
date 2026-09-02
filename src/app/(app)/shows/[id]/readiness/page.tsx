@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getChecklist } from '@/lib/readiness/store';
 import { getRegister } from '@/lib/deadlines/store';
+import { standingOf, type DeadlineStanding } from '@/lib/deadlines/present';
 import { TEMPLATES } from '@/lib/readiness/templates';
 import { TASK_CATEGORIES } from '@/lib/readiness/edit';
 import {
@@ -18,6 +19,20 @@ import {
 import { loadShow } from '../detail';
 import { AddTaskForm, EditTaskForm, StatusControl, TemplateForm } from './forms';
 import { AddDeadlineForm, DeadlineRow } from './deadline-forms';
+
+/**
+ * One tone per standing, in one place. The row shows exactly one of these, so a
+ * reader's eye lands on the clock rather than on whichever chip happened to be
+ * reddest.
+ */
+const STANDING_TONE: Record<DeadlineStanding, 'good' | 'bad' | 'warn' | 'info' | 'neutral'> = {
+  missed: 'bad',
+  today: 'bad',
+  soon: 'warn',
+  ahead: 'neutral',
+  done: 'good',
+  waived: 'neutral',
+};
 import { ExtractionHistory, ReadManualForm } from './manual-forms';
 import { canExtractManual } from '@/lib/manual/access';
 import { extractorIsConfigured } from '@/lib/manual/provider';
@@ -145,38 +160,63 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
             {register.entries.map((entry) => {
               const d = entry.deadline;
               const missed = d.status === 'open' && entry.daysUntil < 0;
+              const standing = standingOf({
+                status: d.status,
+                daysUntil: entry.daysUntil,
+                ownerId: d.ownerId,
+                ownerName: entry.owner?.fullName ?? null,
+                confirmedAt: d.confirmedAt,
+                penaltyEstimateCents: d.penaltyEstimateCents,
+                lodgingId: d.lodgingId,
+                extractedFromDocument: Boolean(d.extractedFromDocument),
+                dueTimeAssumed: Boolean(d.dueTimeAssumed),
+              });
               return (
                 <li
                   key={d.id}
                   className="border-b border-border pb-3 last:border-0"
                 >
+                  {/*
+                    One badge, and the rest as sentences.
+
+                    This row used to carry up to four chips at equal weight —
+                    `sponsorship artwork`, `missed`, `unowned`, `from a room
+                    block` — and a reader could not tell which was the problem or
+                    what to do about any of them. The kind chip was the clearest
+                    tell: it repeated words already in the title next to it.
+
+                    So the badge is the one thing a register is for — where this
+                    stands against its own date — the kind is quiet text, and
+                    every other state is a line in `standing.todo` saying what is
+                    true *and* what fixing it looks like. `UI-REWORK.md` §19.
+                  */}
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className={d.status === 'not_applicable' ? 'font-medium line-through' : 'font-medium'}>
                       {d.title}
                     </span>
-                    <Badge>{d.kind.replace(/_/g, ' ')}</Badge>
-                    {d.status === 'complete' && <Badge tone="good">ordered</Badge>}
-                    {d.status === 'not_applicable' && <Badge>does not apply</Badge>}
-                    {d.lodgingId && <Badge tone="info">from a room block</Badge>}
-                    {d.status === 'open' && (
-                      <>
-                        {missed && <Badge tone="bad">missed</Badge>}
-                        {!d.confirmedAt && <Badge tone="warn">unconfirmed</Badge>}
-                        {!d.ownerId && <Badge tone="warn">unowned</Badge>}
-                      </>
-                    )}
+                    <Badge tone={STANDING_TONE[standing.standing]}>{standing.label}</Badge>
                     <span className="text-text-muted">{showDateTime(d.dueAt, show.timezone)}</span>
                     {d.penaltyEstimateCents != null && d.status === 'open' && (
                       <span className="text-bad">
                         {/* The tense is the product. Past the date it is not at risk. */}
                         {money(d.penaltyEstimateCents)}{' '}
-                        {missed ? 'already incurred' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
+                        {missed ? 'already spent' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
                       </span>
                     )}
                     <span className="ml-auto text-xs text-text-muted">
-                      {entry.owner?.fullName ?? 'Unowned'}
+                      {d.kind.replace(/_/g, ' ')} · {entry.owner?.fullName ?? 'nobody owns this'}
                     </span>
                   </div>
+
+                  {standing.todo.length > 0 && (
+                    <ul className="mt-1.5 space-y-1">
+                      {standing.todo.map((line) => (
+                        <li key={line} className="text-xs text-text-muted">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {d.lodgingId && (
                     <p className="mt-1 text-xs text-text-muted">
