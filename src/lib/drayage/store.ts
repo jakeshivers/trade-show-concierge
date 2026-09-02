@@ -85,7 +85,7 @@ export async function getShowDrayage(
       .orderBy(asc(s.shipments.mustArriveBy)),
   ]);
 
-  const freight = shipments.map(estimable);
+  const freight = shipments.filter(isDrayable).map(estimable);
   return {
     showId,
     showName: show.name,
@@ -95,7 +95,31 @@ export async function getShowDrayage(
   };
 }
 
-export function estimable(row: typeof s.shipments.$inferSelect): EstimableShipment {
+/**
+ * Is this row something the general contractor will ever put a forklift under?
+ *
+ * A `direct` consignment is a parcel to a hotel, an office or a person: it never
+ * reaches a show dock, no contractor handles it, and there is no drayage on it
+ * to estimate. The estimator must never *see* one, which is why this filters
+ * rather than the estimator branching — a parcel reaching `estimateDrayage`
+ * lands in the `no_rate` gap and reports "1 crate consigned somewhere this card
+ * does not price", turning a correct figure into a floor over freight that does
+ * not exist. `EstimableShipment.consignment` stays narrow so the compiler is
+ * what enforces this rather than a comment.
+ *
+ * Note what this deliberately does *not* key on: the size of the box. A FedEx
+ * carton addressed to show-site receiving **is** drayed — contractors bill small
+ * packages, usually at a flat rate per piece — so it stays in, and the exemption
+ * is about the dock rather than the weight.
+ */
+export function isDrayable(row: ShipmentRow): row is DrayableRow {
+  return row.consignment !== 'direct';
+}
+
+type ShipmentRow = typeof s.shipments.$inferSelect;
+type DrayableRow = ShipmentRow & { consignment: Exclude<ShipmentRow['consignment'], 'direct'> };
+
+export function estimable(row: DrayableRow): EstimableShipment {
   return {
     id: row.id,
     description: row.description,
@@ -133,6 +157,7 @@ export async function getPortfolioDrayage(
   const cardByShow = new Map(cards.map((c) => [c.showId, c] as const));
   const freightByShow = new Map<string, EstimableShipment[]>();
   for (const row of shipments) {
+    if (!isDrayable(row)) continue;
     const list = freightByShow.get(row.showId) ?? [];
     list.push(estimable(row));
     freightByShow.set(row.showId, list);

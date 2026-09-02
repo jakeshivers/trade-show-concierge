@@ -145,6 +145,25 @@ export const shipmentConsignmentEnum = pgEnum('shipment_consignment', [
   'show_site',
   /** A return leg: the crate is coming back to us, not going to a floor. */
   'office',
+  /**
+   * Straight to a hotel, an office or a person — nothing here goes through a
+   * show dock or through the general contractor.
+   *
+   * This is the value that lets the table hold a **parcel**: the two boxes of
+   * datasheets somebody UPS'd to their hotel, the replacement monitor FedEx'd
+   * overnight, the badge printer that went by USPS. Those are most of the
+   * tracking numbers a show generates and none of them fit the three above.
+   *
+   * The distinction that matters is deliberately **the dock, not the size of the
+   * box**. A FedEx carton addressed to show-site receiving is `show_site`, gets
+   * the two-edged window, and is drayed like anything else the contractor lifts
+   * — general contractors bill small packages too, and a parcel exemption keyed
+   * on weight would quietly delete that line. What `direct` means is that no
+   * contractor ever touches it, which is why `drayage/store.ts` leaves these
+   * rows out of the estimate entirely rather than reporting them as freight it
+   * could not price.
+   */
+  'direct',
 ]);
 
 /**

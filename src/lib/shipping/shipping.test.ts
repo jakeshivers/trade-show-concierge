@@ -540,7 +540,21 @@ describe('validateShipment', () => {
 
   it('keeps direction and consignment consistent', () => {
     expect(() => validateShipment(draft({ direction: 'return' }))).toThrow(/consigned to the office/);
-    expect(() => validateShipment(draft({ consignment: 'office' }))).toThrow(/advance warehouse or to show-site/);
+    expect(() => validateShipment(draft({ consignment: 'office' }))).toThrow(
+      /advance warehouse, to show-site/,
+    );
+  });
+
+  // A parcel to a hotel is the one consignment that is not a rule about a dock,
+  // which is why it is legal in both directions and never asks for a window.
+  it('takes a direct parcel either way, and never asks it for a dock time', () => {
+    expect(validateShipment(draft({ consignment: 'direct' })).consignment).toBe('direct');
+    expect(
+      validateShipment(draft({ consignment: 'direct', direction: 'return' })).direction,
+    ).toBe('return');
+    expect(
+      validateShipment(draft({ consignment: 'direct' })).receivingOpensLocal,
+    ).toBeNull();
   });
 
   it('requires a cost center, as every financial row does', () => {

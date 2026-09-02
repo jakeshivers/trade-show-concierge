@@ -32,7 +32,7 @@ const CARRIERS = [
  * Naming them "advance warehouse" and "show site" and leaving it there would be
  * a dropdown nobody could answer correctly without already knowing the answer.
  */
-type Consignment = 'advance_warehouse' | 'show_site' | 'office';
+type Consignment = 'advance_warehouse' | 'show_site' | 'office' | 'direct';
 
 function ConsignmentField({
   value,
@@ -56,6 +56,9 @@ function ConsignmentField({
           Show-site receiving — dock opens with move-in; early freight is refused
         </option>
         <option value="office">Office — the crate coming back to us</option>
+        <option value="direct">
+          Direct — to a hotel, an office or a person; no show dock, no drayage
+        </option>
       </Select>
     </Field>
   );
@@ -126,7 +129,9 @@ function Fields({
         hint={
           consignment === 'advance_warehouse'
             ? 'The advance warehouse cutoff from the service manual — usually one to three weeks before move-in, not move-in itself. Left blank if it has not been read off the manual yet.'
-            : 'The end of show-site receiving, usually the close of move-in.'
+            : consignment === 'direct'
+              ? 'When it has to be there — the day somebody checks in, usually. Blank is fine; nothing here is a dock, so there is no cutoff to miss.'
+              : 'The end of show-site receiving, usually the close of move-in.'
         }
       >
         <ZonedDateTime

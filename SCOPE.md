@@ -819,6 +819,33 @@ must never be defaulted to it — warehouses close one to three weeks earlier, s
 helpfully-prefilled date would be wrong by a fortnight and would look right.
 `src/lib/shipping/status.ts`.
 
+**A fourth consignment, added 2026-09-02 because the model could not hold a parcel.** Three
+values described three dock rules, and most of the tracking numbers a show actually
+generates belong to none of them: the two boxes somebody UPS'd to their hotel, the
+replacement monitor FedEx'd overnight, the badge printer that went USPS. Filed as
+`show_site` a parcel inherits a dock window it has no dock for; filed as `advance_warehouse`
+it inherits a cutoff nobody published for it. So `direct` — *straight to a hotel, an office
+or a person* — is what the table needed, and it is legal in both directions, because a box
+sent to a hotel on the way in and a box mailed home from the booth are the same kind of
+thing and neither is freight going to or coming off a floor.
+
+**The distinction it draws is the dock, never the size of the box**, and that is the part
+worth defending. The tempting reading is "parcel vs. freight", keyed on weight, and it is
+wrong in the direction §5n cares about: general contractors bill small packages delivered to
+show-site receiving, usually at a flat rate per piece, so a weight-based exemption would
+silently delete a real line from the drayage estimate. A FedEx carton addressed to the show
+floor stays `show_site`, keeps the two-edged window, and is drayed like anything else the
+contractor lifts. What `direct` means is that **no contractor ever touches it**, which is
+why `drayage/store.ts` filters those rows out before the estimator sees one rather than
+letting `estimateDrayage` branch. That ordering is load-bearing: a `direct` row reaching the
+estimator has no rate for its consignment, so it lands in the `no_rate` gap and reports
+*"1 crate consigned somewhere this card does not price"* — turning a complete, correct
+drayage figure into a **floor**, over a box no forklift will ever go near. Refusal 3's
+failure mode with the sign flipped. `EstimableShipment.consignment` stays narrow so the
+compiler enforces it; adding the value found the third caller (`cost/store.ts`) on its own.
+The carrier's own charge still counts on every row, parcel included — a $180 overnight is
+freight spend on that show and `/cost` adds it up. Only the *drayage estimate* excludes it.
+
 **Delivered is not received, and only a person can close that gap.** The carrier's claim is
 that a dock signed for it. Between that dock and the booth sits **drayage** — a separate
 contractor, on its own schedule, which this app cannot see and does not integrate with.

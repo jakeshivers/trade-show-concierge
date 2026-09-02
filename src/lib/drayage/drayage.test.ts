@@ -8,6 +8,7 @@ import {
   type RateCard,
 } from './estimate';
 import { validateRateCard, RateCardError } from './edit';
+import { isDrayable } from './store';
 
 /**
  * Arithmetic is not what these test. Every assertion here is about a figure that
@@ -250,5 +251,42 @@ describe('where it meets the cost rollup', () => {
     expect(cost.drayage.billedCents).toBe(390_000);
     // And it is inside the total, because it is an invoice.
     expect(cost.totalCents).toBe(510_000);
+  });
+});
+
+/**
+ * The rule that keeps a parcel out of a freight figure.
+ *
+ * Getting this wrong is silent in the worst way. A `direct` row reaching
+ * `estimateDrayage` has no rate, so it lands in the `no_rate` gap and the show
+ * reports "1 crate consigned somewhere this card does not price" — which makes
+ * a complete, correct drayage figure read as a floor, over a box that no
+ * contractor will ever touch. The exclusion is at the store so the estimator
+ * cannot be handed one; these assert the predicate the store filters on.
+ */
+describe('what the general contractor actually handles', () => {
+  it('leaves a direct parcel out, and keeps every dock consignment in', () => {
+    expect(isDrayable({ consignment: 'direct' } as never)).toBe(false);
+    expect(isDrayable({ consignment: 'advance_warehouse' } as never)).toBe(true);
+    expect(isDrayable({ consignment: 'show_site' } as never)).toBe(true);
+    expect(isDrayable({ consignment: 'office' } as never)).toBe(true);
+  });
+
+  // The exemption is the dock, never the size of the box. Contractors bill small
+  // packages delivered to show site, usually per piece, and an exemption keyed on
+  // weight would delete that line while looking like a sensible simplification.
+  it('does not exempt a small package that goes through a dock', () => {
+    const parcelToTheDock: EstimableShipment = {
+      id: 'p1',
+      description: 'One carton of datasheets, 12 lb',
+      direction: 'outbound',
+      consignment: 'show_site',
+      weightLb: 12,
+      handling: 'crated',
+    };
+    const e = estimateDrayage(CARD, [parcelToTheDock]);
+    expect(e.total.ok).toBe(true);
+    // It takes the card's minimum, exactly as a 12 lb crate would.
+    expect(e.perShipment[0].billableLb).toBe(billableWeight(12, CARD.minimumLb));
   });
 });

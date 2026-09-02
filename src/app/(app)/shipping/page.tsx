@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { asc, eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import * as sc from '@/db/schema';
 import { getActor } from '@/lib/auth/actor';
 import { getShipmentBoard, showsMissingReturnLeg } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
@@ -14,7 +17,7 @@ import {
   Td,
   Th,
 } from '../_components/ui';
-import { GoToShow } from '../_components/go-to-show';
+import { TrackPackageForm, type PickableShow } from './forms';
 import {
   CONSIGNMENT_LABEL,
   ScanCell,
@@ -50,6 +53,39 @@ export default async function ShippingBoardPage() {
   const board = await getShipmentBoard(actor, { asOf });
   const gaps = await showsMissingReturnLeg(actor.orgId, asOf);
   const status = selectTrackingProviderOrNull();
+  const mayManage = canManageShipments(actor);
+
+  // The board's own write needs two things the board itself never had: which
+  // shows exist, and the cost centers §4 makes mandatory on every financial row.
+  // Both are loaded only for somebody who may actually add freight.
+  const db = getDb();
+  const [pickable, costCenters] = mayManage
+    ? await Promise.all([
+        db
+          .select({
+            id: sc.shows.id,
+            name: sc.shows.name,
+            timezone: sc.shows.timezone,
+            moveInAt: sc.shows.moveInAt,
+            startsOn: sc.shows.startsOn,
+            endsOn: sc.shows.endsOn,
+          })
+          .from(sc.shows)
+          .where(eq(sc.shows.orgId, actor.orgId))
+          .orderBy(asc(sc.shows.startsOn)),
+        db
+          .select({ id: sc.costCenters.id, code: sc.costCenters.code, name: sc.costCenters.name })
+          .from(sc.costCenters)
+          .where(eq(sc.costCenters.orgId, actor.orgId))
+          .orderBy(asc(sc.costCenters.code)),
+      ])
+    : [[], []];
+
+  // Nearest to now first — /day-of's picker rule. Somebody holding a tracking
+  // number is almost never thinking about next April.
+  const shows: PickableShow[] = [...pickable]
+    .sort((a, b) => distance(a, asOf) - distance(b, asOf))
+    .map((s) => ({ id: s.id, name: s.name, timezone: s.timezone, moveInAt: s.moveInAt }));
   const replayed =
     ('choice' in status && status.choice.replayed) ||
     board.rows.some((r) => r.shipment.trackingProvider === 'recorded');
@@ -68,24 +104,6 @@ export default async function ShippingBoardPage() {
             the dock opens is refused rather than early.
           </>
         }
-        // Gated on the permission that renders the form: a Member who followed this
-        // would land on a Logistics tab with nothing on it to fill in.
-        action={
-          canManageShipments(actor) ? (
-            <GoToShow
-              actor={actor}
-              tab="logistics"
-              hash="new-freight"
-              label="Add freight"
-              hint={
-                <>
-                  A crate belongs to a show, so a tracking number is entered on that show’s
-                  Logistics tab — beside the timeline it will produce.
-                </>
-              }
-            />
-          ) : undefined
-        }
       />
 
       {!('choice' in status) && (
@@ -102,10 +120,19 @@ export default async function ShippingBoardPage() {
         </p>
       )}
 
+      {mayManage && shows.length > 0 && costCenters.length > 0 && (
+        <Card
+          title="Track a package or a crate"
+          subtitle="A UPS carton to somebody’s hotel and a pallet to the advance warehouse are the same row in this table. Weight, pieces and declared value live on the show’s Logistics tab, because a parcel has none of them."
+        >
+          <TrackPackageForm shows={shows} costCenters={costCenters} />
+        </Card>
+      )}
+
       {board.rows.length === 0 ? (
         <Empty>
-          No shipments. Use <strong>Add freight</strong> above — a crate belongs to a show, so it
-          is entered on that show’s Logistics tab, which is also where its event timeline lives.
+          No shipments yet. Anything with a tracking number belongs here — a pallet to the
+          advance warehouse, and equally the two boxes somebody FedEx’d to their hotel.
         </Empty>
       ) : (
         <>
@@ -250,4 +277,12 @@ function Crate({ row, asOf }: { row: ShipmentRow; asOf: Date }) {
       </Td>
     </tr>
   );
+}
+
+/** Milliseconds from now to the nearest edge of a show; zero while it is running. */
+function distance(show: { startsOn: Date; endsOn: Date }, asOf: Date): number {
+  const now = asOf.getTime();
+  if (now < show.startsOn.getTime()) return show.startsOn.getTime() - now;
+  if (now > show.endsOn.getTime()) return now - show.endsOn.getTime();
+  return 0;
 }

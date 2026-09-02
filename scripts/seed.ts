@@ -1298,6 +1298,34 @@ async function main() {
     db,
   );
 
+  // The row that is not freight at all, and is most of what a show generates.
+  //
+  // Two boxes to somebody's hotel, sent USPS, with a tracking number and no
+  // weight, no pieces worth counting and no dock. `direct` is what holds it: no
+  // general contractor ever touches it, so it is absent from the drayage
+  // estimate entirely rather than reported there as freight the card could not
+  // price — which would turn a correct figure into a floor over a box.
+  await addShipment(
+    admin,
+    automate.id,
+    {
+      description: 'Two boxes of datasheets — to the hotel front desk',
+      direction: 'outbound',
+      consignment: 'direct',
+      carrier: 'usps',
+      trackingNumber: '9405511899223197428490',
+      ownerId: priya.id,
+      // No dock, so no window to be early for. The date is when somebody checks
+      // in, and it is allowed to be absent without the row looking incomplete.
+      mustArriveOn: localOn(at(49, 17), DTW),
+      mustArriveAt: localAt(at(49, 17), DTW),
+      cost: '48.90',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
   // Deliberately unowned, and deliberately the one that goes quiet. An alert
   // addressed to an owner would reach nobody here, which is why unownedness
   // escalates rather than mutes. §5a's third correction, from a fourth direction.

@@ -1056,6 +1056,45 @@ booking, and an "Add a flight" button would be a good-looking lie about where fl
 from. **Do not run `prettier` on this repo**: there is no config, so its defaults rewrite
 every quote and re-wrap every blurb — 132 lines of churn in one file to add six.
 
+**And a tenth finding, same day and from the same reader: the board could not take a
+tracking number for a small package.** The CTA landed somebody on a Logistics tab behind a
+form built for a pallet — carrier, consignment, both edges of a receiving window, pieces,
+weight, declared value, freight cost — which is right for a crate and absurd for the two
+boxes somebody UPS'd to their hotel, and those are most of the tracking numbers a show
+generates. Two halves:
+
+- **The model could not hold a parcel**, so `shipment_consignment` gained a fourth value,
+  **`direct`** — straight to a hotel, an office or a person, legal in both directions, no
+  dock and therefore no window. The distinction it draws is deliberately **the dock, not the
+  size of the box**: contractors bill small packages delivered to show site, usually per
+  piece, so a weight-keyed parcel exemption would silently delete a real drayage line. A
+  FedEx carton addressed to show-site receiving is still `show_site` and is still drayed.
+  What `direct` means is that no contractor touches it, so `drayage/store.ts` **filters those
+  rows out before the estimator sees one** — a `direct` row reaching `estimateDrayage` has no
+  rate for its consignment, lands in the `no_rate` gap, and turns a correct figure into a
+  *floor* over a box no forklift will go near. `EstimableShipment.consignment` stays narrow
+  so the compiler enforces it, and adding the value found the third caller (`cost/store.ts`)
+  by itself. The carrier's charge still counts on every row — a $180 overnight is freight
+  spend and `/cost` adds it up; only the drayage estimate excludes it. `SCOPE.md` §5g.
+- **`/shipping` got the write it never had.** `forms.tsx` + `actions.ts` — carrier, tracking
+  number, what is in it, which show, going to, cost center, and the dock window revealed
+  **only** when show-site receiving is picked. It is the same `addShipment` call, not a
+  leaner insert: that function is what checks the permission, validates through `edit.ts`,
+  resolves dates against the show's own zone and decides `label_created` over `in_transit`.
+  Direction is derived from the consignment rather than asked, because a control that is
+  wrong in three cases out of four exists only to be corrected by an error message. The seed
+  now sends two boxes of datasheets to a hotel front desk through the real store, and
+  `pnpm drayage` still reports Automate 2026 as **2 crates**, which is the whole proof.
+
+The chooser (`_components/go-to-show.tsx`) stays on the five boards where the write really is
+per-show; `/shipping` no longer needs it.
+
+**A stale `next dev` will lie to you about all of this.** `pnpm db:reset` deletes `.pglite`
+out from under a running server, which then serves the pre-reset database from a deleted
+inode — new columns and enum values do not exist in it, and a section gated on a query can
+render as absent with no error anywhere. Restart `pnpm dev` after `db:reset` before believing
+a screen.
+
 **The measurement worth keeping: `src/app` contains zero `dark:` variants.** Dark mode used
 to be a twin class on every line that had a colour, so adding a colour meant remembering its
 twin and forgetting was invisible to anybody working in light mode. One token carries both

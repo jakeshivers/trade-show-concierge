@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import { estimateDrayage } from '@/lib/drayage/estimate';
-import { estimable } from '@/lib/drayage/store';
+import { estimable, isDrayable } from '@/lib/drayage/store';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { NotFoundError } from '@/lib/shows/store';
 import { canSeeCost } from './access';
@@ -187,7 +187,11 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
   }
   const freightByShow = new Map<string, ReturnType<typeof estimable>[]>();
   for (const sh of shipments) {
+    // The carrier's own charge counts for every row, parcel included: a $180
+    // overnight to a hotel is real freight spend on this show. Only the drayage
+    // estimate excludes parcels, because no contractor lifts one.
     inputs.get(sh.showId)?.shipments.push({ costCents: sh.costCents, direction: sh.direction });
+    if (!isDrayable(sh)) continue;
     const list = freightByShow.get(sh.showId) ?? [];
     list.push(estimable(sh));
     freightByShow.set(sh.showId, list);
