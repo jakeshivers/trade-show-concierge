@@ -5,6 +5,7 @@ import {
   type RetentionStanding,
 } from '@/lib/leads/consent';
 import type { CoverageStanding, LeadCoverage } from '@/lib/leads/coverage';
+import { names, plural } from '../_components/text';
 import { Badge, type Tone } from '../_components/ui';
 
 /**
@@ -95,7 +96,7 @@ export function RetentionBadge({ standing }: { standing: RetentionStanding }) {
  * verdict, and "record what the person was told" is a thing to do.
  */
 export function OutboundBadge({ outbound }: { outbound: Marketability }) {
-  if (outbound.usable) return <Badge tone="good">outbound ok</Badge>;
+  if (outbound.usable) return <Badge tone="good">ok for marketing</Badge>;
   return (
     <>
       <Badge tone="warn">do not use for marketing</Badge>
@@ -104,15 +105,6 @@ export function OutboundBadge({ outbound }: { outbound: Marketability }) {
     </>
   );
 }
-
-/** Names, joined the way a person would say them out loud. */
-function names(list: { fullName: string }[]): string {
-  const all = list.map((p) => p.fullName);
-  if (all.length <= 1) return all.join('');
-  return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
-}
-
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
 /**
  * What is wrong with a show's leads, under the headline, or nothing.
@@ -131,8 +123,12 @@ export function CoverageNotes({ coverage }: { coverage: LeadCoverage }) {
     if (coverage.silent.length > 0) {
       notes.push(
         `${names(coverage.silent)} ${coverage.silent.length === 1 ? 'has' : 'have'} not entered ` +
-          'any leads. If the show is still on, asking them to add what they have is the ' +
-          'quickest way to make this number right.',
+          'any leads. ' +
+          (coverage.hasClosed
+            ? 'The show is over, so the real number is higher than this and there is no longer ' +
+              'a way to find out by how much. Worth knowing before this show is compared with ' +
+              'another one.'
+            : 'Asking them to add what they have is the quickest way to make this number right.'),
       );
     }
   }
@@ -160,7 +156,7 @@ export function CoverageNotes({ coverage }: { coverage: LeadCoverage }) {
   if (coverage.retentionOverdue > 0) {
     notes.push(
       `${plural(coverage.retentionOverdue, 'lead still holds', 'leads still hold')} personal ` +
-        'details past the date we said we would delete them. The nightly clean-up erases them ' +
+        'details past the date we said we would erase them. The nightly clean-up erases them ' +
         '— check the Alerts page if it has not been running.',
     );
   }

@@ -12,6 +12,7 @@ import {
   OutboundBadge,
   RetentionBadge,
 } from '../../../leads/_present';
+import { plural } from '../../../_components/text';
 import { loadShow } from '../detail';
 import {
   CaptureForm,
@@ -69,8 +70,8 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       <Card title="Target accounts" subtitle={targetSummary.sentence}>
         {targetBoard.standings.length === 0 ? (
           <Empty>
-            Nobody has said who this show is for. Without a list, &ldquo;we met the right people&rdquo;
-            has nothing behind it — and the day-of screen has nothing to warn anybody about.
+            Add the companies this show is for, and the booth team will be told when one of them
+            walks up — including on the Day of screen, which works with no signal.
           </Empty>
         ) : (
           <Table>
@@ -137,7 +138,7 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
         <CoverageNotes coverage={coverage} />
         {!perLead.ok && coverage.standing !== 'not_yet' && (
           <p className="mt-2 text-sm text-text-muted">
-            <span className="font-medium">Cost per lead is withheld.</span> {perLead.reason}
+            <span className="font-medium">Cost per lead is not shown yet.</span> {perLead.reason}
           </p>
         )}
         {may.capture && <CaptureForm showId={id} />}
@@ -146,11 +147,10 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       {may.manage && possiblePairs.length > 0 && (
         <Card title="Might be the same person">
           <p className="text-sm text-text-muted">
-            Same name, same company, both kept. Nothing merges these automatically, because two
-            people really can share a name at a show this size and silently dropping a real second
-            lead is the same mistake as counting a fake one — pointing the other way. Marking a
-            pair deletes nothing: the later row keeps its own consent record and its own retention
-            date, and stops being counted.
+            These have the same name and company, so they may be one person captured twice — or
+            two people who happen to share a name. Nothing is merged automatically; somebody who
+            was there has to say. Marking a pair deletes nothing: the second lead is kept and its
+            follow-up still works, it just stops being counted twice.
           </p>
           <ul className="mt-3 space-y-3">
             {possiblePairs.map((pair) => (
@@ -189,8 +189,8 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                 <Th>Name</Th>
                 <Th>Company</Th>
                 <Th>Captured by</Th>
-                <Th>Basis</Th>
-                <Th>Retention</Th>
+                <Th>Consent</Th>
+                <Th>Erase by</Th>
                 <Th>{may.redact ? '' : ''}</Th>
               </tr>
             </thead>
@@ -253,10 +253,10 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
           <div className="mt-4 space-y-2 rounded-md bg-muted p-3">
             <p className="text-sm">
               {coverage.retentionOverdue > 0
-                ? `${coverage.retentionOverdue} lead(s) here are past the date we said we would erase them.`
-                : `${coverage.retentionDueSoon} lead(s) here are due for erasure soon.`}{' '}
-              Erasure nulls the name, email, phone and notes and keeps the row, so every count and
-              every ROI figure this show has produced stays exactly where it was.
+                ? `${plural(coverage.retentionOverdue, 'lead is', 'leads are')} past the date we said we would erase their details.`
+                : `${plural(coverage.retentionDueSoon, 'lead is', 'leads are')} due to be erased soon.`}{' '}
+              Erasing removes the name, email, phone and notes, and keeps the lead itself — so
+              this show’s lead count and every figure built on it stay exactly where they are.
             </p>
             <RetentionButton showId={id} />
           </div>
@@ -266,8 +266,8 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       <Card title="Meetings">
         {meetings.length === 0 ? (
           <Empty>
-            No meetings recorded. A meeting is booked, held, or a no-show — the third is counted
-            separately, because a meeting nobody came to is not a meeting held.
+            No meetings recorded. A meeting is booked, held, or a no-show, and the three are
+            counted separately.
           </Empty>
         ) : (
           <ul className="space-y-2">
@@ -294,10 +294,9 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       {may.manage && (
         <Card title="Import a scanner CSV">
           <p className="text-sm text-text-muted">
-            Every row read lands in exactly one of accepted, rejected or already-here, and the three
-            add up to the row count — an import that quietly skipped a malformed row would report a
-            smaller number with the same confidence as a correct one. The column mapping is proposed
-            and confirmed, never applied silently.
+            Upload a scanner export and you will be shown which column becomes which field, and
+            what will happen to every row, before anything is imported. Each row is either imported,
+            rejected with a reason, or already here — nothing is skipped quietly.
           </p>
           <ImportForm showId={id} />
 

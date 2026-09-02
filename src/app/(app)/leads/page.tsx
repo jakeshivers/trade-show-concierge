@@ -4,6 +4,7 @@ import { getLeadPortfolio } from '@/lib/leads/store';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Card, Empty, PageHeader, Stat, showDate } from '../_components/ui';
 import { GoToShow } from '../_components/go-to-show';
+import { plural } from '../_components/text';
 import { CoverageHeadline, CoverageNotes } from './_present';
 
 /**
@@ -34,7 +35,7 @@ export default async function LeadsPage() {
     <div className="space-y-6">
       <PageHeader
         title="Leads"
-        blurb="Every show’s capture, most recent first. A count is only worth what the coverage behind it is."
+        blurb="Every show’s leads, most recent first. Each count says how complete it is."
         action={
           <GoToShow
             actor={actor}
@@ -51,9 +52,9 @@ export default async function LeadsPage() {
       />
 
       <div className="grid gap-3 sm:grid-cols-3">
-        <Stat label="Counts that are floors" value={String(floors)} />
-        <Stat label="Leads with no lawful basis" value={String(unrecordedBasis)} />
-        <Stat label="Past their erasure date" value={String(overdue)} />
+        <Stat label="Shows with an incomplete count" value={String(floors)} />
+        <Stat label="Leads with no consent record" value={String(unrecordedBasis)} />
+        <Stat label="Leads past their erase date" value={String(overdue)} />
       </div>
 
       {rows.length === 0 ? (
@@ -72,8 +73,10 @@ export default async function LeadsPage() {
                     {showDate(row.startsOn, row.timezone)} · {row.status}
                   </span>
                   <span className="ml-auto text-xs text-text-muted">
-                    {row.meetingsHeld} meeting(s) held · {row.meetingsBooked} booked ·{' '}
-                    {row.meetingsNoShow} no-show
+                    {row.meetingsHeld + row.meetingsBooked + row.meetingsNoShow === 0
+                      ? 'No meetings'
+                      : `${plural(row.meetingsHeld, 'meeting', 'meetings')} held · ` +
+                        `${row.meetingsBooked} booked · ${row.meetingsNoShow} no-show`}
                   </span>
                 </div>
                 <div className="mt-2">
@@ -81,7 +84,7 @@ export default async function LeadsPage() {
                   <CoverageNotes coverage={row.coverage} />
                   {!perLead.ok && row.coverage.standing !== 'not_yet' && (
                     <p className="mt-2 text-sm text-text-muted">
-                      <span className="font-medium">Cost per lead is withheld.</span>{' '}
+                      <span className="font-medium">Cost per lead is not shown yet.</span>{' '}
                       {perLead.reason}
                     </p>
                   )}
@@ -91,12 +94,6 @@ export default async function LeadsPage() {
           })}
         </div>
       )}
-
-      <p className="text-xs text-text-muted">
-        There is deliberately no year-to-date total on this page. Adding six counts whose coverage
-        runs from complete to unmeasured produces one number that reads as authoritative and is
-        not — which is the failure §8c says gets a working show cut.
-      </p>
     </div>
   );
 }

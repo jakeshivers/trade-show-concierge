@@ -593,3 +593,63 @@ the decision; page copy is addressed to whoever lives with it. When the same sen
 both jobs, it is doing the second one badly. Symptoms to grep for: a term of art on a `Badge`,
 a `(s)` plural, and any sentence that explains why we chose something rather than what is true
 and what to do.
+
+## §15 — The rest of `/leads`, and two defects the copy pass found underneath
+
+Same reader, one instruction: *"I don't want copy on the page that I cannot explain to end
+users."* §14 fixed the badges and the notes on the leads tab. This is both leads screens
+swept end to end — and the sweep is what surfaced the two real defects below, neither of
+which is about wording.
+
+**What came off the screens.** The portfolio's closing paragraph was §8c arguing with itself
+about why there is no year-to-date total; that argument belongs in the file's doc comment,
+where it already was, and the paragraph is gone rather than reworded — a footnote explaining
+a design decision is exactly what the reader objected to. `Counts that are floors` was the
+term §14 removed from a badge, still sitting on a stat tile. `Leads with no lawful basis` →
+`Leads with no consent record`; `Lawful basis: not recorded` → `Why we may follow up: not
+recorded`. The `Basis` and `Retention` column headings named our concepts rather than what is
+in the columns, and the second one holds a date: `Consent` and `Erase by`. `outbound ok` →
+`ok for marketing`, beside a refusal that already said "marketing". `Cost per lead is
+withheld` → `is not shown yet` — the reason under it was already in plain words after §14,
+and only the label was still ours. The duplicate-pair card, the meetings and target empty
+states and the CSV import blurb each explained the reasoning behind a rule; all four now
+state what is true and what the reader does about it.
+
+**Two things the reader could not have known, and one they would have.**
+
+1. **A note in the wrong tense, on a show that closed a year ago.** *"Asking them to add what
+   they have is the quickest way to make this number right"* is the correct sentence during a
+   show. It rendered under Automate 2025, status `complete`, telling a show lead to go and
+   chase two colleagues about a show that ended. The note had hedged it in prose — "**if** the
+   show is still on" — which is what a sentence does when the code has not been asked the
+   question. `hasClosed` is `hasOpened`'s mirror now (status overrides the calendar in both
+   directions, for the same reason), it is carried on `LeadCoverage` so both screens read one
+   fact, and past the show the note says the count is final and why that matters when this
+   show is compared with another. §5a's tense rule, reached from the return side. Three tests.
+2. **Eight more `(s)` plurals, four of them in text nobody sees until they press a button.**
+   §14 named `lead(s)` and `row(s)` as the tell and fixed the ones on the page; the rest were
+   in `actions.ts` success messages and a submit label. `plural` and `names` moved out of
+   `leads/_present.tsx` into **`_components/text.ts`**, dependency-free for `form.ts`'s reason
+   turned around — that file stays clear of `next/cache` so a *client* component may import
+   it, and this one stays clear of React so a **server action** may. A helper sitting beside a
+   `<Badge>` would otherwise drag components into an action module.
+3. **`pnpm smoke` had been red for a commit and nobody had run it.** §13's safety pass deleted
+   the sentence *"Nothing on this page reads a device"* — correctly; it was page copy
+   explaining why the feature has the ceiling it has — and the smoke check still looked for
+   it. So the check that exists because "a check done by hand every time is a check that
+   eventually is not done" was itself only done by hand. It now takes a card heading. **Run
+   `pnpm smoke` in the same breath as `pnpm test`**: the suite is pure and touches nothing in
+   `src/app`, so a copy pass is invisible to all 1,029 of them.
+
+**Both defects came from reading the rendered page, not from a test** — `curl` piped through a
+tag-stripper, which is `pnpm smoke`'s trick with the output actually read. That is the sixth
+and seventh time on this project, after `onConflictDoNothing`, `SOURCE_LABEL`, a deduplicated
+reading, a crate count and two in one sitting on presence. It generalises to copy: **a page's
+words are output, and output is for reading.** A sentence with a hedge in it (`if`, `where
+applicable`, `may have`) is worth a second look — it is often a fact the code holds and was
+never asked for.
+
+**Still to do:** the same sweep on the other screens. `/roi`, `/cost` and `/alerts` are the
+demo path and carry the remaining spec citations — `§8e` and `SCOPE §11.7` are on `/settings/crm`
+and `/roi` verbatim, and `§4` is a field hint on the asset form. Grep is `§`, `SCOPE`, `(s)`,
+and any sentence that says why we chose something.

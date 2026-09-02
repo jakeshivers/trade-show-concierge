@@ -17,6 +17,7 @@ import {
 } from '@/lib/leads/store';
 import { addTarget, removeTarget, TargetError } from '@/lib/dayof/store';
 import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
+import { plural } from '../../../_components/text';
 
 /**
  * The Leads tab's writes.
@@ -124,7 +125,8 @@ export async function runRetention(_prev: FormState, form: FormData): Promise<Fo
     ok:
       result.erased === 0
         ? 'Nothing was past its date. Nothing was erased.'
-        : `${result.erased} lead(s) erased across the workspace. Every lead count is unchanged.`,
+        : `${plural(result.erased, 'lead', 'leads')} erased across the workspace. Every lead ` +
+          'count is unchanged.',
   };
 }
 
@@ -265,10 +267,11 @@ export async function commit(_prev: FormState, form: FormData): Promise<FormStat
     refresh(showId);
     return {
       ok:
-        `${result.written} lead(s) imported. ${planned.plan.rejected.length} rejected, ` +
-        `${planned.plan.duplicates.length} already here — all of them listed on the import record below.` +
+        `${plural(result.written, 'lead', 'leads')} imported. ${planned.plan.rejected.length} ` +
+        `rejected, ${planned.plan.duplicates.length} already here — all of them listed on the ` +
+        'import record below.' +
         (planned.plan.basisUnmapped
-          ? ' No column carried a lawful basis, so every one of these is recorded with none.'
+          ? ' No column said why we may follow up, so these are recorded without that.'
           : ''),
     };
   } catch (err) {

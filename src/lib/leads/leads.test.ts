@@ -11,7 +11,7 @@ import {
 } from './consent';
 import { CsvError, inferMapping, parseCsv, planImport, type ColumnMapping } from './parse';
 import { findMatch, findPossiblePairs, isBlocking, type DedupeCandidate } from './dedupe';
-import { assessCoverage, mayQuotePerLead, type CountableLead } from './coverage';
+import { assessCoverage, hasClosed, mayQuotePerLead, type CountableLead } from './coverage';
 import { planLeadAlerts, type AlertableShow } from './alerts';
 import { validateLead, validateMeeting, validateRedactionReason, LeadError } from './edit';
 import { hashToken, issueKey, KEY_PREFIX, readBearer } from './intake';
@@ -419,6 +419,35 @@ describe('capture coverage', () => {
     expect(c.basis.consent).toBe(0);
     // But it is still a lead that was captured, so the count holds.
     expect(c.leadCount).toBe(1);
+  });
+});
+
+describe('whether capture can still change', () => {
+  // The note under a thin count tells somebody to go and ask two colleagues to
+  // enter their leads. That is the right sentence during a show and the wrong
+  // one afterwards, and it used to be hedged in prose because nothing computed
+  // it. §5a's tense rule, on the return side.
+  it('is closed once the show is past, and open while it is running', () => {
+    expect(hasClosed(show({ status: 'live' }), new Date('2026-08-21T12:00:00Z'))).toBe(false);
+    expect(hasClosed(show({ status: 'live' }), new Date('2026-09-01T12:00:00Z'))).toBe(true);
+  });
+
+  it('lets the status close a show the calendar still calls open', () => {
+    // The mirror of `hasOpened`: somebody marking a show complete is a person
+    // saying so, and it beats the dates in both directions.
+    expect(hasClosed(show({ status: 'complete' }), new Date('2026-08-21T12:00:00Z'))).toBe(true);
+    expect(hasClosed(show({ status: 'cancelled' }), new Date('2026-08-21T12:00:00Z'))).toBe(true);
+  });
+
+  it('carries the answer on the coverage, so both screens read one fact', () => {
+    const running = assessCoverage(
+      { show: show({ status: 'live' }), staff: staff(3), leads: [lead()] },
+      new Date('2026-08-21T12:00:00Z'),
+    );
+    expect(running.hasClosed).toBe(false);
+    expect(assessCoverage({ show: show(), staff: staff(3), leads: [lead()] }, NOW).hasClosed).toBe(
+      true,
+    );
   });
 });
 

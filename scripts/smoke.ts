@@ -56,14 +56,19 @@ async function routes(): Promise<Check[]> {
     // sentence that only renders when a show *has* an unknown-basis lead, so it
     // silently depended on which show sorted first. The column heading is there
     // whenever the tab resolved its data, which is what this check is for.
-    { path: `/shows/${id}/leads`, expect: 'Lawful basis' },
+    { path: `/shows/${id}/leads`, expect: 'Target accounts' },
     { path: `/shows/${id}/clone`, expect: 'lone' },
     // Approver-only, like /cost. As a Member both of these render the refusal
     // instead of the figures, which is the access model working rather than a
     // smoke failure — same caveat as /settings/security below.
     { path: `/shows/${id}/cost`, expect: 'has cost so far' },
     { path: `/shows/${id}/roi`, expect: 'Was it worth it' },
-    { path: `/shows/${id}/safety`, expect: 'Nothing on this page reads a device' },
+    // Stale for a commit: the sentence this looked for was page copy explaining
+    // *why* the feature has the ceiling it has, and the safety copy pass deleted
+    // it. Both cards here title themselves differently once a roll call is open,
+    // so this takes the resting-state heading — the show smoke picks is the
+    // earliest one, which is not the one the seed runs a roll call on.
+    { path: `/shows/${id}/safety`, expect: 'Who is expected here' },
     { path: '/safety', expect: 'Duty of care' },
     { path: '/readiness', expect: 'eadiness' },
     { path: '/alerts', expect: 'engines' },
@@ -76,7 +81,7 @@ async function routes(): Promise<Check[]> {
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
     { path: '/assets', expect: 'lost between shows' },
-    { path: '/leads', expect: 'coverage behind it' },
+    { path: '/leads', expect: 'how complete it is' },
     { path: '/day-of', expect: 'while you still have a connection' },
     // The only page here whose content is *not* server-rendered, so the phrase
     // has to be one the shell prints before the client has read IndexedDB or

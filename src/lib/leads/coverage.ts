@@ -71,6 +71,16 @@ export type LeadCoverage = {
   standing: CoverageStanding;
   /** True when the count must be introduced with "at least". */
   isFloor: boolean;
+  /**
+   * Whether the show is over.
+   *
+   * Here for the tense, which is §5a's rule on the return side. "Ask them to
+   * add what they have" is the right sentence while a show is running and the
+   * wrong one a year after it closed — and the note used to hedge it in prose
+   * ("if the show is still on") because it did not have this. A hedge is what a
+   * sentence does when the code has not been asked the question.
+   */
+  hasClosed: boolean;
   /** One sentence, in the tense the standing deserves. */
   headline: string;
   basis: Record<LawfulBasis, number>;
@@ -94,6 +104,19 @@ export function hasOpened(
 ): boolean {
   if (show.status === 'live' || show.status === 'complete') return true;
   return asOf.getTime() >= show.startsOn.getTime();
+}
+
+/**
+ * Whether capture can still change. `hasOpened`'s mirror, and the status
+ * overrides the calendar for the same reason: a show somebody has marked
+ * complete is over whatever the dates say.
+ */
+export function hasClosed(
+  show: { endsOn: Date; status: string },
+  asOf: Date,
+): boolean {
+  if (show.status === 'complete' || show.status === 'cancelled') return true;
+  return asOf.getTime() > show.endsOn.getTime();
 }
 
 export function assessCoverage(
@@ -128,6 +151,7 @@ export function assessCoverage(
   }
 
   const opened = hasOpened(show, asOf);
+  const closed = hasClosed(show, asOf);
   const capturingStaff = boothStaff.filter((s) => capturedBy.has(s.userId)).length;
 
   // Order matters, and the third line is the one worth arguing about. "Nobody
@@ -154,6 +178,7 @@ export function assessCoverage(
     silent,
     standing,
     isFloor,
+    hasClosed: closed,
     headline: headlineFor(counted.length, capturingStaff, boothStaff.length, standing),
     basis,
     retentionOverdue,

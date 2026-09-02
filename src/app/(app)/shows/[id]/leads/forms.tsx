@@ -16,6 +16,7 @@ import {
 } from './actions';
 import { FIELD_LABEL, type LeadField } from '@/lib/leads/parse';
 import type { FormState } from '../../../_components/form';
+import { plural } from '../../../_components/text';
 import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
 
 const input = controlClass('compact');
@@ -32,7 +33,7 @@ const input = controlClass('compact');
  */
 
 const BASIS_OPTIONS = [
-  { value: '', label: 'Lawful basis: not recorded' },
+  { value: '', label: 'Why we may follow up: not recorded' },
   { value: 'legitimate_interest', label: 'Legitimate interest (they gave us the badge)' },
   { value: 'consent', label: 'Consent (they were told, and agreed)' },
 ];
@@ -270,7 +271,7 @@ export function ImportForm({ showId }: { showId: string }) {
 
           <p className="text-xs text-text-muted">
             {state.filename ? <span className="font-medium">{state.filename}</span> : 'File'} ·{' '}
-            {state.counts.rowsRead} row(s) read · {state.counts.accepted} would be imported,{' '}
+            {state.counts.rowsRead} rows read · {state.counts.accepted} would be imported,{' '}
             {state.counts.rejected} rejected, {state.counts.duplicates} already here.
           </p>
 
@@ -296,10 +297,10 @@ export function ImportForm({ showId }: { showId: string }) {
 
           {state.basisUnmapped && (
             <p className="text-xs text-warn">
-              No column is mapped to a lawful basis, so every lead in this file will be recorded
-              with none. That is the honest outcome for a scanner export — they will be counted and
-              followed up, and withheld from anything outbound until somebody records what the booth
-              actually said.
+              No column says why we may follow up, so these leads will be imported without that on
+              record. Scanner exports usually do not carry it. They will still be counted and you can
+              still follow up on the conversation, but they will not go to marketing or a CRM until
+              somebody records what the person was told.
             </p>
           )}
 
@@ -318,7 +319,7 @@ export function ImportForm({ showId }: { showId: string }) {
 
           <div className="flex items-center gap-3">
             <Submit pending={committing} busy="Importing…">
-              Import {state.counts.accepted} lead(s)
+              Import {plural(state.counts.accepted, 'lead', 'leads')}
             </Submit>
             <QuietSubmit formAction={action} pending={pending} busy="Re-reading…">
               Re-check with this mapping
