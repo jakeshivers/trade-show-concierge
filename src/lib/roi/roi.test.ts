@@ -293,7 +293,9 @@ describe('the ratios, and what they refuse', () => {
       NOW,
     );
     expect(roi.costPerLead.ok).toBe(false);
-    expect((roi.costPerLead as { reason: string }).reason).toContain('overstates cost per lead');
+    // The reason must name the *direction* of the error — too few leads makes each
+    // one look dearer — because that is the half that drives the wrong decision.
+    expect((roi.costPerLead as { reason: string }).reason).toContain('more expensive');
   });
 
   it('withholds cost per lead over a cost floor too, in the opposite direction', () => {

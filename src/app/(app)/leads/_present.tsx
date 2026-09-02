@@ -27,11 +27,20 @@ export const COVERAGE_TONE: Record<CoverageStanding, Tone> = {
   not_yet: 'neutral',
 };
 
+/*
+ * What the badge says, in words somebody who has not read `coverage.ts` can act
+ * on. `partial` used to read **"a floor"** — a term of art from the docs, sat
+ * next to a headline that already says "At least 7, from 2 of 4 people on the
+ * booth". It named the *shape* of the number to a reader who wanted to know what
+ * was wrong with it. "Undercounted" is the same fact and is a sentence: the real
+ * number is higher, and two people can tell you by how much. `UI-REWORK.md` §13's
+ * rule — a doc comment explains the design, page copy explains the act.
+ */
 export const COVERAGE_LABEL: Record<CoverageStanding, string> = {
-  sound: 'everyone on the booth',
-  partial: 'a floor',
+  sound: 'complete count',
+  partial: 'undercounted',
   none: 'nothing recorded',
-  unknown: 'coverage unknown',
+  unknown: 'no booth roster',
   not_yet: 'not open yet',
 };
 
@@ -89,42 +98,70 @@ export function OutboundBadge({ outbound }: { outbound: Marketability }) {
   if (outbound.usable) return <Badge tone="good">outbound ok</Badge>;
   return (
     <>
-      <Badge tone="warn">not for outbound</Badge>
+      <Badge tone="warn">do not use for marketing</Badge>
       <div className="mt-0.5 text-xs text-text-muted">{outbound.reason}</div>
       {outbound.fix && <div className="text-xs text-text-muted">{outbound.fix}</div>}
     </>
   );
 }
 
-/** What is wrong with a show's leads, under the headline, or nothing. */
+/** Names, joined the way a person would say them out loud. */
+function names(list: { fullName: string }[]): string {
+  const all = list.map((p) => p.fullName);
+  if (all.length <= 1) return all.join('');
+  return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * What is wrong with a show's leads, under the headline, or nothing.
+ *
+ * Every line here is read by somebody deciding what to do next, so every line
+ * says what is true **and what fixing it looks like**. They used to be written
+ * in the codebase's own voice — "this is the number a rep can still change while
+ * they are standing there" is a sentence from `SCOPE.md` §8c explaining *why the
+ * feature exists*, which is not the same thing as telling a show lead to go and
+ * ask two colleagues to type their leads in. The `lead(s)` and `row(s)` were the
+ * tell: nobody had read them as sentences. `UI-REWORK.md` §13.
+ */
 export function CoverageNotes({ coverage }: { coverage: LeadCoverage }) {
   const notes: string[] = [];
   if (coverage.standing === 'partial' || coverage.standing === 'none') {
     if (coverage.silent.length > 0) {
       notes.push(
-        `Nothing from ${coverage.silent.map((s) => s.fullName).join(', ')}. ` +
-          'This is the number a rep can still change while they are standing there.',
+        `${names(coverage.silent)} ${coverage.silent.length === 1 ? 'has' : 'have'} not entered ` +
+          'any leads. If the show is still on, asking them to add what they have is the ' +
+          'quickest way to make this number right.',
       );
     }
   }
   if (coverage.standing === 'unknown') {
     notes.push(
-      'Nobody is rostered on a booth shift for this show, so there is nothing to measure the count against. It is not zero coverage; it is unmeasured.',
+      'Nobody is scheduled on a booth shift for this show, so there is no way to tell whether ' +
+        'this is everything. Add shifts on the Team tab and the count starts checking itself.',
     );
   }
   if (coverage.duplicateCount > 0) {
     notes.push(
-      `${coverage.duplicateCount} row(s) duplicate another lead and are held out of the count — duplicates make a show look cheaper per lead than it was.`,
+      `${plural(coverage.duplicateCount, 'lead looks', 'leads look')} like the same person ` +
+        `captured twice, so ${coverage.duplicateCount === 1 ? 'it is' : 'they are'} left out ` +
+        'of the count. Counting them would make the show look cheaper per lead than it was.',
     );
   }
   if (coverage.basis.unknown > 0) {
     notes.push(
-      `${coverage.basis.unknown} lead(s) carry no lawful basis. They are lawfully held for the follow-up the person started and are withheld from anything outbound.`,
+      `${plural(coverage.basis.unknown, 'lead has', 'leads have')} no record of what the person ` +
+        'was told about being contacted. You can still follow up on the conversation they ' +
+        `started, but ${coverage.basis.unknown === 1 ? 'it will' : 'they will'} not be sent to ` +
+        'marketing or a CRM. Open the lead to record it.',
     );
   }
   if (coverage.retentionOverdue > 0) {
     notes.push(
-      `${coverage.retentionOverdue} lead(s) still hold personal data past the date we said we would erase it.`,
+      `${plural(coverage.retentionOverdue, 'lead still holds', 'leads still hold')} personal ` +
+        'details past the date we said we would delete them. The nightly clean-up erases them ' +
+        '— check the Alerts page if it has not been running.',
     );
   }
   if (notes.length === 0) return null;

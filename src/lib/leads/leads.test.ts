@@ -429,7 +429,7 @@ describe('cost per lead', () => {
     expect(verdict.ok).toBe(false);
     // Dividing by an undercount makes cost-per-lead too *high*, which reads as
     // a bad show — so the wrong decision it drives is cutting a show that worked.
-    expect(verdict.reason).toContain('overstates');
+    expect(verdict.reason).toContain('more expensive');
   });
 
   it('is quotable when everybody on the booth contributed', () => {

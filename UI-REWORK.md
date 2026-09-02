@@ -557,3 +557,39 @@ action confirmations are now written for a person who has never seen the code. T
 distinctions are unchanged — none of the refusals moved — only who the sentences are aimed at.
 **Doc comments explain the design to the next engineer; page copy explains the act to the
 person doing it, and the two are not the same text.**
+
+## §14 — The docs' vocabulary had leaked onto the screens
+
+Same reader, same day, two more: *"a floor — where did this chip come from?"* on the leads
+tab, and *"why is this text block there?"* about the notes under the count.
+
+Both are one defect. `SCOPE.md` argues about **floors**, **coverage**, **lawful basis** and
+**withheld** because those distinctions are the product. Somewhere between the argument and
+the screen, the argument's *words* were pasted onto badges and bullets that a show lead reads
+while deciding what to do this afternoon.
+
+- **"a floor" was a badge next to a headline that already said "At least 7 leads, from 2 of 4
+  people on the booth".** It named the *shape* of the number to somebody who wanted to know
+  what was wrong with it, and it was strictly redundant with the "At least" two inches to its
+  left. It is **"undercounted"** now. `sound` → "complete count", `unknown` → "no booth
+  roster". `/cost`'s badge had the same leak twice: "a floor" → "some costs missing", "thin" →
+  "most costs missing".
+- **The notes under the count were `SCOPE.md` §8c in the first person.** *"This is the number
+  a rep can still change while they are standing there"* explains **why the feature exists**;
+  it does not tell a show lead to ask two colleagues to enter their leads. Every note now
+  states the fact and what fixing it looks like, and the names are joined with an "and".
+- **`lead(s)` and `row(s)` were the tell.** Four notes were built by concatenating a count to
+  a singular noun with a parenthesised plural, which is what template text looks like when
+  nobody has read it back as a sentence. There is a `plural()` helper now, and one for names.
+- **`mayQuotePerLead`'s refusal was reasoning, not an explanation.** "Dividing by an
+  undercount overstates cost per lead, which reads as a bad show" is the correct argument for
+  *why the rule exists*. What the reader needs is the consequence and the remedy: too few
+  leads makes each look dearer, that is the number people cut a show over, and it appears once
+  everyone has entered theirs. The two tests that asserted on the old sentence now assert on
+  the direction of the error, which is the thing that must not change.
+
+**The rule, stated once for the next screen:** a doc comment is addressed to whoever maintains
+the decision; page copy is addressed to whoever lives with it. When the same sentence is doing
+both jobs, it is doing the second one badly. Symptoms to grep for: a term of art on a `Badge`,
+a `(s)` plural, and any sentence that explains why we chose something rather than what is true
+and what to do.

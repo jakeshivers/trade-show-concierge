@@ -20,10 +20,13 @@ export const COVERAGE_TONE: Record<string, Tone> = {
   empty: 'neutral',
 };
 
+/* "a floor" and "thin" were the docs' words for these, on a badge read by
+ * somebody deciding whether to trust the number beside it. What they need to
+ * know is how much of the bill is missing. See `leads/_present.tsx`. */
 export const COVERAGE_LABEL: Record<string, string> = {
   complete: 'complete',
-  partial: 'a floor',
-  thin: 'thin',
+  partial: 'some costs missing',
+  thin: 'most costs missing',
   empty: 'nothing recorded',
 };
 

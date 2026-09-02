@@ -196,18 +196,24 @@ function headlineFor(
  */
 export function mayQuotePerLead(coverage: LeadCoverage): { ok: boolean; reason?: string } {
   if (coverage.leadCount === 0) {
-    return { ok: false, reason: 'No leads are recorded, so there is nothing to divide by.' };
+    return { ok: false, reason: 'No leads are recorded yet, so there is nothing to divide the cost by.' };
   }
   if (coverage.standing === 'none' || coverage.standing === 'unknown') {
     return {
       ok: false,
-      reason: 'Capture coverage is unknown, so a per-lead figure would be a guess with a decimal point.',
+      reason:
+        'Nobody is scheduled on a booth shift, so there is no way to tell how many leads were ' +
+        'missed. A cost-per-lead figure here would be a guess with a decimal point on it.',
     };
   }
   if (coverage.standing === 'partial') {
     return {
       ok: false,
-      reason: `${coverage.silent.length} of ${coverage.boothStaff} people on the booth recorded nothing. Dividing by an undercount overstates cost per lead, which reads as a bad show.`,
+      reason:
+        `${coverage.silent.length} of ${coverage.boothStaff} people on the booth entered no ` +
+        'leads, so the real count is higher than this. Dividing the cost by too few leads ' +
+        'makes each one look more expensive than it was — and that is the number people cut ' +
+        'a show over. It will appear once everyone has entered theirs.',
     };
   }
   return { ok: true };
