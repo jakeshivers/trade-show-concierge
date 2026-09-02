@@ -1,6 +1,7 @@
 import type { ShowCost } from '@/lib/cost/rollup';
 import type { LeadCoverage } from '@/lib/leads/coverage';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
+import { byMostRecentlyOpened } from '@/lib/shows/proximity';
 import type { AttributionSettings, ShowAttribution } from './attribution';
 import { MODEL_LABEL } from './attribution';
 
@@ -429,7 +430,17 @@ export function summarizeRoiPortfolio(
     // expensive shows are the decisions. Ranking by multiple would put every
     // recent show at the bottom for the reason §8e names, and somebody would
     // cancel one.
-    shows: [...shows].sort((a, b) => b.cost.totalCents - a.cost.totalCents),
+    // Most recent show first — `/leads`' retrospective order, and this page has
+    // the stronger claim to it. §8e already says a show's verdict is not final
+    // for six to twelve months, so this is a report on what has happened and the
+    // nearest thing to now is the show that just closed. Ranking by cost is
+    // still deliberately *not* ranking by multiple (that puts every recent show
+    // at the bottom by construction and somebody cancels one); it is now the
+    // tie-break rather than the key.
+    shows: [...shows].sort(
+      (a, b) =>
+        byMostRecentlyOpened(a, b, asOf) || b.cost.totalCents - a.cost.totalCents,
+    ),
     settings,
     asOf,
     totalCostCents,

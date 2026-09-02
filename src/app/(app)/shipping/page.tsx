@@ -6,6 +6,7 @@ import { getActor } from '@/lib/auth/actor';
 import { getShipmentBoard, showsMissingReturnLeg } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
 import { canManageShipments } from '@/lib/shipping/access';
+import { distanceToNow } from '@/lib/shows/proximity';
 import type { ShipmentRow } from '@/lib/shipping/board';
 import {
   Badge,
@@ -93,7 +94,7 @@ export default async function ShippingBoardPage() {
   // Nearest to now first — /day-of's picker rule. Somebody holding a tracking
   // number is almost never thinking about next April.
   const shows: PickableShow[] = [...pickable]
-    .sort((a, b) => distance(a, asOf) - distance(b, asOf))
+    .sort((a, b) => distanceToNow(a, asOf) - distanceToNow(b, asOf))
     .map((s) => ({ id: s.id, name: s.name, timezone: s.timezone, moveInAt: s.moveInAt }));
   const replayed =
     ('choice' in status && status.choice.replayed) ||
@@ -298,10 +299,3 @@ function Crate({ row, asOf }: { row: ShipmentRow; asOf: Date }) {
   );
 }
 
-/** Milliseconds from now to the nearest edge of a show; zero while it is running. */
-function distance(show: { startsOn: Date; endsOn: Date }, asOf: Date): number {
-  const now = asOf.getTime();
-  if (now < show.startsOn.getTime()) return show.startsOn.getTime() - now;
-  if (now > show.endsOn.getTime()) return now - show.endsOn.getTime();
-  return 0;
-}

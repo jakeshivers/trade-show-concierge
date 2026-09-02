@@ -841,6 +841,41 @@ in a unique index is an idempotency rail with an off switch, and *"the seeded pl
 stays"* is a claim a test cleanup cannot make about rows it created through a cascade it did
 not think about.
 
+**The ordering rule, arrived at across every board on 2026-09-02.** Each of these screens was
+ranked worst-first, and each was re-sorted by the reader every time they opened it. What the
+day produced is a rule rather than seven decisions: **a board's order is its clock, and the
+only questions are which clock and which direction.**
+
+| Screen | Direction | Clock |
+| --- | --- | --- |
+| `/flights` | prospective | scheduled departure |
+| `/shipping` | prospective | receiving deadline |
+| `/assets` | prospective | whichever of *due out* / *due back* is still ahead |
+| `/readiness` | prospective | days until the show opens |
+| `/leads` | retrospective | most recently opened show |
+| `/roi` | retrospective | most recently opened show |
+| `/cost` | neither | proximity to now, in either direction |
+| `/safety` | neither | proximity to now, in either direction |
+| `/alerts` | **none** | severity — see below |
+
+Three things generalise. **Severity is the tie-break, never the key** — what it was protecting
+is in the summary, the row's tone and the alert beside it, none of which have to be scanned
+for. **Direction follows the tense of the page**: obligations run soonest-first, reports run
+backwards, and the two screens that are genuinely both — cost accrues before a show and is
+invoiced after it; an incident is about who is on the ground *now* — use proximity in either
+direction. And **a ranking that fights the clock is usually a list carrying rows that should
+not be on it**, which is why every one of these grew a horizon at the same time and why the
+horizons differ: a landed flight is over, a crate leaves when a person confirms it, an asset
+only when somebody finds it, and a lead count never, because old capture is what this year's
+is judged against.
+
+`/alerts` is the boundary and stayed put. A board lists dated obligations; a feed's rows are
+*sentences*, and the only clock on one is `created_at` — the night an engine first said it,
+which is a fact about our sweep schedule rather than about the thing. Ordering on it puts
+tonight's `info` above last week's `critical`, which is the failure the severity model exists
+to prevent, and the dates that would make a clock meaningful are on the rows the alerts are
+*about* — now sorted by exactly those. It took the horizon half instead.
+
 ### 5g. Shipping — what "on time" has to mean when a crate can also be too early (step 14)
 
 The feature reads as "track our shipments", and built that way it is a delivery-date

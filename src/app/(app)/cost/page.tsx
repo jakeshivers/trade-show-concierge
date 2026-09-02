@@ -58,8 +58,10 @@ export default async function CostPortfolioPage() {
         title="True cost"
         blurb={
           <>
-            Every committed show, biggest first. Assembled by nobody: the flights were bought
-            here, the hotel rows are here and the crates were tracked here, so this is a query.
+            Every committed show, nearest first — most of a show’s spend is committed before it
+            opens and its invoices land after it closes, so the one you are spending on is the
+            one nearest today, either side. Assembled by nobody: the flights were bought here,
+            the hotel rows are here and the crates were tracked here, so this is a query.
             What takes the work is the last column — a cost figure that does not say what it is
             missing is a bill somebody made up.
           </>

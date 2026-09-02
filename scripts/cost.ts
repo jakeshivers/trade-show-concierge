@@ -1,7 +1,7 @@
 /**
  * The true-cost rollup, without a screen. SCOPE.md §8a.
  *
- *   pnpm cost               # every committed show, biggest first
+ *   pnpm cost               # every committed show, nearest to now first
  *   pnpm cost <show id>     # one show, line by line, with its gaps
  *
  * §8a's claim is that this number is a query rather than a week of spreadsheet
@@ -98,7 +98,7 @@ async function main() {
   }
 
   const portfolio = await getCostPortfolio(actor, {}, db);
-  console.log('\nTrue cost — every committed show, biggest first\n');
+  console.log('\nTrue cost — every committed show, nearest to now first\n');
   for (const cost of portfolio.shows) {
     const flag = cost.isFloor ? '≥' : ' ';
     console.log(

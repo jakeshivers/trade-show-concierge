@@ -409,11 +409,35 @@ describe('the portfolio', () => {
     expect(p.portfolioMultiple).toEqual({ ok: true, multiple: 4 });
   });
 
-  it('orders by cost rather than by multiple', () => {
-    // Ranking by multiple puts every recent show last for §8e's reason, and
-    // somebody cancels one.
-    const p = summarizeRoiPortfolio([immature, mature], DEFAULT_SETTINGS, 0, NOW);
-    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-a', 'show-b']);
+  /**
+   * Most recent show first, and cost — never the multiple — breaks the tie.
+   *
+   * The ordering moved to the clock on 2026-09-02 with every other board, and
+   * this page has the strongest claim to the *retrospective* direction of it:
+   * §8e says a verdict is not final for six to twelve months, so this is a
+   * report on what already happened and the nearest thing to now is the show
+   * that just closed. What has not changed is the refusal underneath: ranking by
+   * multiple puts every recent show last by construction, and somebody cancels
+   * one.
+   */
+  it('orders by how recently a show closed, not by its multiple', () => {
+    const p = summarizeRoiPortfolio([mature, immature], DEFAULT_SETTINGS, 0, NOW);
+    // show-b ended two days ago; show-a sixty. The four-times multiple on show-a
+    // does not lift it, and neither does its cost.
+    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-b', 'show-a']);
+  });
+
+  it('breaks a tie between two shows of the same age on cost', () => {
+    const cheap = rollUpShowRoi(
+      roiInputs({
+        show: { id: 'cheap', name: 'Cheap', status: 'complete', startsOn: d(-4), endsOn: d(-2) },
+        cost: cost({ showId: 'cheap', totalCents: 10_000_00 }),
+      }),
+      DEFAULT_SETTINGS,
+      NOW,
+    );
+    const p = summarizeRoiPortfolio([cheap, immature], DEFAULT_SETTINGS, 0, NOW);
+    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-b', 'cheap']);
   });
 
   it('refuses a portfolio multiple when nothing is old enough to score', () => {

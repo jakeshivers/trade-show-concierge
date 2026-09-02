@@ -57,8 +57,8 @@ export default async function RoiPortfolioPage() {
         title="ROI"
         blurb={
           <>
-            Cost against pipeline, per show. The cost half is ours and needs nobody to assemble
-            it; the return half needs a CRM. Every figure carries its attribution window, and a
+            Cost against pipeline, per show, most recently closed first. The cost half is ours
+            and needs nobody to assemble it; the return half needs a CRM. Every figure carries its attribution window, and a
             figure that cannot honestly be quoted says so instead of appearing anyway.{' '}
             <span className="text-text-muted">{figureLabel(portfolio.settings)}.</span>
           </>

@@ -32,7 +32,13 @@ async function requireShow(actor: Actor, showId: string, db: Db) {
   return show;
 }
 
-export type ShowRollCall = RollCall & { showId: string; showName: string };
+export type ShowRollCall = RollCall & {
+  showId: string;
+  showName: string;
+  /** Carried so the portfolio can order on the clock without a second query. */
+  startsOn: Date;
+  endsOn: Date;
+};
 
 export async function getRollCall(
   actor: Actor,
@@ -152,7 +158,7 @@ export async function getRollCall(
     responses,
   );
 
-  return { ...call, showId, showName: show.name };
+  return { ...call, showId, showName: show.name, startsOn: show.startsOn, endsOn: show.endsOn };
 }
 
 /** Every show with somebody travelling, for the portfolio view. */

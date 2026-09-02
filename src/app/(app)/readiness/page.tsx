@@ -40,9 +40,9 @@ export default async function ReadinessPortfolio() {
         title="Readiness"
         blurb={
           <>
-            Every committed show, worst first. Ranked by how far behind pace each one is —
-          not by its score, because a low score a long way out is not a problem and a high
-          score next week can be.
+            Every committed show, soonest first. What is wrong with one is the sentence beside
+            it, judged against pace rather than against its score — a low score a long way out
+            is not a problem and a high score next week can be.
           </>
         }
         action={

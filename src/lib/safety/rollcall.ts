@@ -1,3 +1,4 @@
+import { distanceToNow, type ShowWindow } from '@/lib/shows/proximity';
 import { PRESENCE_ORDER, type Presence, type PresenceEvidence } from './presence';
 
 /**
@@ -96,6 +97,36 @@ export type RollCall = {
    */
   summary: string;
 };
+
+/**
+ * Which show to look at first, across the calendar.
+ *
+ * Beside `rollCallOrder` and for its reason: the portfolio screen and
+ * `pnpm rollcall` must not order the same shows differently, and until this
+ * moved out of `safety/page.tsx` only the screen sorted at all — the CLI
+ * printed whatever order the database handed back, which happened to look
+ * right. Two views of one incident, disagreeing about which show is at the top,
+ * is the failure this whole module is written to avoid.
+ *
+ * Nearest show first, in either direction — during an incident the question is
+ * *who is on the ground now*, and `distanceToNow` is zero for a show's whole run.
+ * The one thing that outranks the clock is not a ranking so much as the feature's
+ * subject: **somebody who has said they need help comes first regardless of when
+ * their show is.** Everything else the old ranking carried — an open roll call
+ * with people still silent, somebody with no phone number — is on the row in its
+ * own words, and breaks ties between shows equally near.
+ */
+export function rollCallShowOrder<T extends ShowWindow & Pick<RollCall, 'needsHelp' | 'request' | 'outstanding' | 'unreachable' | 'people'>>(
+  a: T,
+  b: T,
+  asOf: Date,
+): number {
+  if ((a.needsHelp > 0) !== (b.needsHelp > 0)) return a.needsHelp > 0 ? -1 : 1;
+  const byClock = distanceToNow(a, asOf) - distanceToNow(b, asOf);
+  if (byClock !== 0) return byClock;
+  const rank = (c: T) => (c.request && c.outstanding > 0 ? 0 : c.unreachable > 0 ? 1 : 2);
+  return rank(a) - rank(b) || b.people.length - a.people.length;
+}
 
 /**
  * Who to call first.

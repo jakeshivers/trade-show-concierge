@@ -4,6 +4,7 @@ import {
   groupFeed,
   linkFor,
   orderFeed,
+  resolveAndForget,
   standingDays,
   standingOf,
   summarizeFeed,
@@ -100,6 +101,41 @@ describe('ordering', () => {
     const tonight = alert({ id: 'new', severity: 'critical', createdAt: hoursAgo(1) });
     const old = alert({ id: 'old', severity: 'critical', createdAt: daysAgo(20) });
     expect(orderFeed([tonight, old], NOW).map((a) => a.id)).toEqual(['old', 'new']);
+  });
+
+  /**
+   * The feed is the one list that deliberately did **not** move to the clock
+   * when every board did on 2026-09-02, and this pins why.
+   *
+   * A board lists dated obligations, so the soonest is the most urgent. A feed's
+   * rows are sentences, and the only clock on one is `created_at` — the night an
+   * engine first said it, which is a fact about our sweep schedule rather than
+   * about the thing. Ordering on it puts tonight's `info` above last week's
+   * `critical`, which is what the severity model exists to prevent. The dates
+   * that would make a clock meaningful are on the rows the alerts are *about*,
+   * and those pages are now sorted by exactly them.
+   */
+  it('does not let a fresh info outrank a standing critical', () => {
+    const fresh = alert({ id: 'fresh', severity: 'info', createdAt: hoursAgo(0.1) });
+    const standing = alert({ id: 'standing', severity: 'critical', createdAt: daysAgo(9) });
+    expect(orderFeed([fresh, standing], NOW).map((a) => a.id)).toEqual(['standing', 'fresh']);
+  });
+
+  /**
+   * What the feed *did* take from that day: the horizon. A resolved alert is
+   * worth seeing the morning after — it is the only evidence on the page that
+   * the sweep closes things as well as opening them — and filing after a week.
+   * Nothing unacknowledged or still-true is ever dropped, however old, because
+   * age is the reason to look at those rather than a reason to hide them.
+   */
+  it('forgets a long-resolved alert and keeps an old unacknowledged one', () => {
+    const longDone = alert({ id: 'long-done', createdAt: daysAgo(40), resolvedAt: daysAgo(30) });
+    const justDone = alert({ id: 'just-done', createdAt: daysAgo(3), resolvedAt: daysAgo(1) });
+    const oldAndOpen = alert({ id: 'old-open', createdAt: daysAgo(90) });
+    const kept = resolveAndForget([longDone, justDone, oldAndOpen], NOW).map((a) => a.id);
+    expect(kept).toContain('just-done');
+    expect(kept).toContain('old-open');
+    expect(kept).not.toContain('long-done');
   });
 });
 

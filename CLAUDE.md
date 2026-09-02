@@ -1130,6 +1130,29 @@ per-show; `/shipping` no longer needs it.
   end, where a show closed out more than thirty days ago stops being this board's problem.
   Nothing is hidden by it: `showsMissingReturnLeg` reads the table directly and still fires.
   `SCOPE.md` §5g.
+- **Every remaining list followed on the same day, and the exercise produced a rule.** A
+  board's order is its clock; the only question is *which* clock and *which direction*.
+  **Prospective** lists (obligations) run soonest-first: `/flights`, `/shipping`, `/assets`,
+  `/readiness`. **Retrospective** ones (reports on what happened) run the clock backwards:
+  `/leads`, `/roi`. **`/cost` is neither**, because a show's spend is committed before it
+  opens and its invoices land after it closes, so it is ordered by *proximity to now in either
+  direction* — and `/safety` is the same, since during an incident the question is who is on
+  the ground now. Severity is the tie-break everywhere, never the key, except that on
+  `/safety` somebody who has **said they need help** still comes above everything: that is the
+  feature's subject rather than a ranking. `src/lib/shows/proximity.ts` holds
+  `distanceToNow` / `byMostRecentlyOpened`, which had already been hand-written twice.
+- **`/alerts` is the one list that deliberately did not move, and that is the boundary of the
+  rule.** A board lists dated obligations; a feed's rows are *sentences*, and the only clock
+  on one is `created_at` — the night an engine first said it, a fact about our sweep schedule
+  rather than about the thing. Ordering on it puts tonight's `info` above last week's
+  `critical`. The dates that would make a clock meaningful are on the rows the alerts are
+  *about*, and those pages are now sorted by exactly them. The feed took the **horizon** half
+  instead: `resolveAndForget` drops alerts resolved more than a week ago, and never drops an
+  unacknowledged or still-true one however old, because age is the reason to look at those.
+- **A comparator in a page is a comparator two views can disagree on.** `/safety` sorted in
+  `safety/page.tsx` while `pnpm rollcall` printed whatever the database returned — which
+  happened to look right. `rollCallShowOrder` is in `rollcall.ts` now and both call it; two
+  views of one incident with different shows at the top is what that module exists to prevent.
 - **The board is ordered soonest-first now, and the horizon is why.** It was worst-first for
   twelve steps on the argument that departure order buries the leg that needs somebody. The
   horizon answered that rather than refuting it: with landed legs gone, every row is a flight

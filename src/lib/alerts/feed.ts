@@ -152,7 +152,25 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
   unknown: 'Other',
 };
 
-/** Live work, worst first, oldest first within a severity. */
+/**
+ * Live work, worst first, oldest first within a severity — and the one list in
+ * this product that deliberately did **not** move to the clock on 2026-09-02.
+ *
+ * Every other board here lists dated obligations, so the soonest one is the most
+ * urgent and ordering by severity meant a reader re-sorting the page in their
+ * head. A feed is a different object. Its rows are *sentences*, not work items,
+ * and the only clock on one is `created_at` — the night an engine first said it,
+ * which is a fact about our sweep schedule rather than about the thing. Ordering
+ * on it puts an `info` raised last night above a `critical` raised last week,
+ * which is the failure the severity model exists to prevent, and the due dates
+ * that would make a clock meaningful live on the rows the alerts are *about* —
+ * on `/shipping` and `/flights`, now sorted by exactly those dates.
+ *
+ * What the feed does take from that day is the other half: settled rows sink,
+ * and `resolveAndForget` takes long-resolved ones off entirely. Oldest-first
+ * *within* a severity is itself a clock, and the right one — a critical standing
+ * for nine nights is more neglected than one raised tonight.
+ */
 export function orderFeed(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
   return [...alerts].sort((a, b) => {
     const aStanding = standingOf(a, asOf);
@@ -164,6 +182,31 @@ export function orderFeed(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
     if (bySeverity !== 0) return bySeverity;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
+}
+
+/**
+ * How long a resolved alert stays in the feed.
+ *
+ * `resolved` means the condition stopped being true, which the engine decided by
+ * not planning it again — nobody dismissed anything. Keeping those rows for a
+ * while is the point: *"the crate arrived"* is worth seeing the morning after,
+ * and it is the only evidence on the page that the sweep is closing things
+ * rather than only opening them. Past a few days it is filing, and it competes
+ * with live work for the top of a list somebody reads under pressure.
+ */
+export const FEED_RESOLVED_DAYS = 7;
+
+/**
+ * Drop what has been resolved long enough to be history.
+ *
+ * The horizon every board grew on 2026-09-02, in the form a feed can take. It
+ * only ever removes rows the engines have already closed: an alert nobody has
+ * acknowledged, or one acknowledged and still true, stays however old it is —
+ * age is the *reason* to look at those, not a reason to hide them.
+ */
+export function resolveAndForget(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
+  const cutoff = asOf.getTime() - FEED_RESOLVED_DAYS * 86_400_000;
+  return alerts.filter((a) => !a.resolvedAt || a.resolvedAt.getTime() >= cutoff);
 }
 
 export type FeedSummary = {

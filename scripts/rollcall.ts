@@ -21,6 +21,7 @@ import * as schema from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
 import { BASIS_LABEL } from '../src/lib/safety/presence';
 import { getRollCall, getRollCallPortfolio, type ShowRollCall } from '../src/lib/safety/store';
+import { rollCallShowOrder } from '../src/lib/safety/rollcall';
 
 const db = getDb();
 
@@ -88,10 +89,17 @@ function one(call: ShowRollCall) {
 }
 
 async function all(actor: Actor) {
-  const calls = await getRollCallPortfolio(actor);
-  const travelling = calls.filter((c) => c.people.some((p) => p.presence.kind !== 'not_travelling'));
+  const now = new Date();
+  const calls = await getRollCallPortfolio(actor, now);
+  // Ordered through the same comparator the screen uses. This printed whatever
+  // the database handed back until 2026-09-02, which happened to look right —
+  // two views of one incident disagreeing about which show is at the top is the
+  // failure this module is written to avoid.
+  const travelling = calls
+    .filter((c) => c.people.some((p) => p.presence.kind !== 'not_travelling'))
+    .sort((a, b) => rollCallShowOrder(a, b, now));
 
-  console.log('\nDuty of care — who is expected where, and who could not be reached\n');
+  console.log('\nDuty of care — nearest show first, and anybody needing help above all\n');
   if (travelling.length === 0) {
     console.log('  Nobody is travelling to any show.');
     return;

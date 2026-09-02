@@ -269,7 +269,12 @@ describe('coverage', () => {
 });
 
 describe('portfolio', () => {
-  it('ranks by size and counts how many figures are floors', () => {
+  /**
+   * Nearest show first, biggest figure breaking the tie. Both shows here share
+   * the same dates, so this still asserts the size ordering it always did — the
+   * clock cannot separate them.
+   */
+  it('ranks by size between two shows the same distance away, and counts the floors', () => {
     const big = rollUpShowCost(
       inputs({ expenses: [{ category: 'Booth space', amountCents: 560_000, paid: true }] }),
       NOW,
@@ -281,10 +286,42 @@ describe('portfolio', () => {
       }),
       NOW,
     );
-    const p = summarizePortfolio([small, big]);
+    const p = summarizePortfolio([small, big], NOW);
     expect(p.shows[0].showName).toBe('Automate 2026');
     expect(p.incomplete).toBe(1);
     expect(p.totalCents).toBe(561_000);
+  });
+
+  /**
+   * And the clock outranks the money, which is the change. Cost is the one page
+   * that is neither purely prospective nor purely retrospective — most of a
+   * show's spend is committed before it opens and the invoices land after it
+   * closes — so the order is proximity in either direction, and a small show
+   * running this week outranks a large one next year.
+   */
+  it('puts the nearest show first even when a distant one costs more', () => {
+    const near = rollUpShowCost(
+      inputs({
+        show: { ...inputs().show, id: 'near', name: 'Near', startsOn: NOW, endsOn: NOW },
+        shipments: [{ costCents: 1_000, direction: 'outbound' }],
+      }),
+      NOW,
+    );
+    const distantAndHuge = rollUpShowCost(
+      inputs({
+        show: {
+          ...inputs().show,
+          id: 'far',
+          name: 'Far',
+          startsOn: new Date(NOW.getTime() + 300 * 86_400_000),
+          endsOn: new Date(NOW.getTime() + 303 * 86_400_000),
+        },
+        expenses: [{ category: 'Booth space', amountCents: 9_999_00, paid: true }],
+      }),
+      NOW,
+    );
+    const p = summarizePortfolio([distantAndHuge, near], NOW);
+    expect(p.shows.map((s) => s.showName)).toEqual(['Near', 'Far']);
   });
 });
 

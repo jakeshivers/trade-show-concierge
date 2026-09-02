@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getRollCallPortfolio } from '@/lib/safety/store';
 import { canStartRollCall } from '@/lib/safety/access';
+import { rollCallShowOrder } from '@/lib/safety/rollcall';
 import { Badge, Card, Empty, PageHeader } from '../_components/ui';
 import { GoToShow } from '../_components/go-to-show';
 
@@ -23,22 +24,21 @@ export const dynamic = 'force-dynamic';
 
 export default async function SafetyPortfolio() {
   const actor = await getActor();
-  const calls = await getRollCallPortfolio(actor);
+  const asOf = new Date();
+  const calls = await getRollCallPortfolio(actor, asOf);
   const travelling = calls.filter((c) =>
     c.people.some((p) => p.presence.kind !== 'not_travelling'),
   );
 
-  const ranked = [...travelling].sort((a, b) => {
-    const rank = (c: (typeof travelling)[number]) =>
-      c.needsHelp > 0 ? 0 : c.request && c.outstanding > 0 ? 1 : c.unreachable > 0 ? 2 : 3;
-    return rank(a) - rank(b) || b.people.length - a.people.length;
-  });
+  // The comparator lives in `rollcall.ts`, not here, so this page and
+  // `pnpm rollcall` cannot put a different show at the top of the same incident.
+  const ranked = [...travelling].sort((a, b) => rollCallShowOrder(a, b, asOf));
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Duty of care"
-        blurb="Who is expected where, what says so, and who could not be reached. Nothing here reads a device — every standing is inferred from records this app already keeps."
+        blurb="Who is expected where, what says so, and who could not be reached — nearest show first, except that anybody who has said they need help comes above everything. Nothing here reads a device; every standing is inferred from records this app already keeps."
         action={
           canStartRollCall(actor) ? (
             <GoToShow

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { listShows } from '@/lib/shows/store';
+import { distanceToNow } from '@/lib/shows/proximity';
 import type { Actor } from '@/lib/auth/actor';
 import { cn } from './cn';
 import { dateRange, place } from './ui';
@@ -60,9 +61,7 @@ export async function GoToShow({
   const shows = await listShows(actor, asOf);
   if (shows.length === 0) return null;
 
-  const ordered = [...shows].sort(
-    (a, b) => distance(a.endsOn, a.startsOn, asOf) - distance(b.endsOn, b.startsOn, asOf),
-  );
+  const ordered = [...shows].sort((a, b) => distanceToNow(a, asOf) - distanceToNow(b, asOf));
 
   return (
     <details className="group relative">
@@ -108,10 +107,3 @@ export async function GoToShow({
   );
 }
 
-/** Milliseconds from now to the nearest edge of the show, zero while it is running. */
-function distance(endsOn: Date, startsOn: Date, asOf: Date): number {
-  const now = asOf.getTime();
-  if (now < startsOn.getTime()) return startsOn.getTime() - now;
-  if (now > endsOn.getTime()) return now - endsOn.getTime();
-  return 0;
-}

@@ -261,6 +261,41 @@ describe('portfolio', () => {
     expect(ranked[1].behindBy).toBeLessThanOrEqual(0);
   });
 
+  /**
+   * And the clock is the key now, with severity breaking ties.
+   *
+   * The pace model already made this board mostly clock-shaped — that is what
+   * the test above is about — but severity-first still put a March emergency
+   * above a show opening next week, which is a re-sort the reader has to undo.
+   * The pace verdict is on every row in its words and its tone; it decides the
+   * order only between two shows opening the same day.
+   */
+  it('puts the sooner show first even when a later one is in more trouble', () => {
+    const soonAndFine = show({
+      id: 'soon',
+      startsOn: new Date('2026-03-08T12:00:00Z'),
+      readiness: scoreChecklist([t({ status: 'complete' }), t({ status: 'complete' })], NOW),
+    });
+    const laterAndBroken = show({
+      id: 'later',
+      startsOn: new Date('2026-05-01T12:00:00Z'),
+      readiness: scoreChecklist([], NOW),
+      missedDeadlines: 3,
+      missedDeadlineCents: 400_000,
+    });
+    const ranked = rollUpPortfolio([laterAndBroken, soonAndFine], NOW);
+    expect(ranked.map((r) => r.id)).toEqual(['soon', 'later']);
+    // The trouble is still reported, it is just not what decides the order.
+    expect(ranked[1].severity).toBe('critical');
+  });
+
+  it('breaks a tie between two shows opening the same day on severity', () => {
+    const day = new Date('2026-04-01T12:00:00Z');
+    const fine = show({ id: 'fine', startsOn: day });
+    const broken = show({ id: 'broken', startsOn: day, readiness: scoreChecklist([], NOW) });
+    expect(rollUpPortfolio([fine, broken], NOW).map((r) => r.id)).toEqual(['broken', 'fine']);
+  });
+
   it('says a show has no checklist rather than calling it 0% ready', () => {
     const [row] = rollUpPortfolio(
       [show({ startsOn: new Date('2026-03-20T12:00:00Z'), readiness: scoreChecklist([], NOW) })],

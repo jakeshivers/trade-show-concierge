@@ -49,6 +49,7 @@
  *    not do. So it is reported in days, outside the total, and says why.
  */
 
+import { distanceToNow } from '@/lib/shows/proximity';
 import type { DrayageEstimate, Quotable } from '@/lib/drayage/estimate';
 
 export type CostCategory =
@@ -152,6 +153,13 @@ export type DrayageMemo = {
 export type ShowCost = {
   showId: string;
   showName: string;
+  /**
+   * Carried so the portfolio can order on the clock without loading the shows a
+   * second time — and so the page and the rollup cannot end up with two
+   * different ideas of when a show is.
+   */
+  startsOn: Date;
+  endsOn: Date;
   lines: CostLine[];
   /** The sum. A floor, not a total, whenever coverage is not `complete`. */
   totalCents: number;
@@ -462,6 +470,8 @@ export function rollUpShowCost(input: CostInputs, asOf: Date = new Date()): Show
   return {
     showId: input.show.id,
     showName: input.show.name,
+    startsOn: input.show.startsOn,
+    endsOn: input.show.endsOn,
     lines: ordered,
     totalCents,
     paidCents,
@@ -593,10 +603,20 @@ export type PortfolioCost = {
   unrecorded: number;
 };
 
-export function summarizePortfolio(shows: ShowCost[]): PortfolioCost {
+export function summarizePortfolio(shows: ShowCost[], asOf: Date = new Date()): PortfolioCost {
   return {
-    // Biggest first: a portfolio is read to find where the money went.
-    shows: [...shows].sort((a, b) => b.totalCents - a.totalCents),
+    // Nearest show first, in either direction, with the biggest figure breaking
+    // ties. Cost is the one page here that is neither purely prospective nor
+    // purely retrospective — most of a show's spend is committed before it opens
+    // and the invoices land after it closes — so neither of the two orders the
+    // other boards use is right, and proximity is what "the show I am spending
+    // on" actually means. Biggest-first was the old key and is still what
+    // separates two shows the same distance away.
+    shows: [...shows].sort(
+      (a, b) =>
+        distanceToNow(a, asOf) - distanceToNow(b, asOf) ||
+        b.totalCents - a.totalCents,
+    ),
     totalCents: shows.reduce((n, s) => n + s.totalCents, 0),
     paidCents: shows.reduce((n, s) => n + s.paidCents, 0),
     creditFundedCents: shows.reduce((n, s) => n + s.creditFundedCents, 0),
