@@ -1,8 +1,9 @@
 import { getActor } from '@/lib/auth/actor';
 import { canSeeCost } from '@/lib/cost/access';
-import { getShowCost } from '@/lib/cost/store';
+import { costCentersForExpense, getShowCost, listShowExpenses } from '@/lib/cost/store';
 import { Card, Empty, money } from '../../../_components/ui';
 import { CostHeadline, CostLines, CostMemos } from '../../../cost/_present';
+import { FileExpenseForm, RemoveExpenseForm } from './forms';
 
 /**
  * One show's true cost. §8a.
@@ -31,7 +32,11 @@ export default async function ShowCostTab({ params }: { params: Promise<{ id: st
     );
   }
 
-  const cost = await getShowCost(actor, id);
+  const [cost, expenses, costCenters] = await Promise.all([
+    getShowCost(actor, id),
+    listShowExpenses(actor, id),
+    costCentersForExpense(actor),
+  ]);
 
   return (
     <div className="space-y-6">
@@ -59,6 +64,39 @@ export default async function ShowCostTab({ params }: { params: Promise<{ id: st
             is billed months in advance.
           </p>
         )}
+      </Card>
+
+      <Card
+        title="Invoices filed against this show"
+        subtitle="What somebody typed in, as opposed to what the other tabs already know. Booth space, services and anything else with a bill behind it."
+      >
+        {expenses.length === 0 ? (
+          <p className="text-sm text-text-muted">
+            Nothing filed yet. Until something is, the lines above are built only from what the
+            travel, lodging, logistics and assets tabs already record — which is why the figure
+            says <em>at least</em>.
+          </p>
+        ) : (
+          <ul className="space-y-1 text-sm">
+            {expenses.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-baseline gap-x-3">
+                <span className="font-medium">{money(e.amountCents)}</span>
+                <span>{e.description}</span>
+                <span className="text-xs text-text-muted">
+                  {e.category}
+                  {e.costCenterName ? ` · ${e.costCenterName}` : ''}
+                  {e.paid ? ' · paid' : ' · owed'}
+                </span>
+                <span className="ml-auto">
+                  <RemoveExpenseForm expenseId={e.id} />
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+        <div className="mt-4 border-t border-border pt-4">
+          <FileExpenseForm showId={id} costCenters={costCenters} />
+        </div>
       </Card>
 
       <Card

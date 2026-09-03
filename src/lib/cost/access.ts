@@ -21,3 +21,22 @@ import { canApprove } from '@/lib/auth/actor';
 export function canSeeCost(actor: Actor): boolean {
   return canApprove(actor);
 }
+
+/**
+ * Who files an invoice against a show.
+ *
+ * The same audience that reads the figure, and deliberately not the wider
+ * "anybody" gate that confirming a crate or capturing a lead gets. Those two are
+ * loose because the person holding the fact is whoever is standing there — in a
+ * warehouse at 6am, or at a booth at hour six of day two — and a gate would
+ * leave the field empty forever.
+ *
+ * An invoice is the opposite: it arrives at a desk, it is a claim about money
+ * that lands in a cost center, and the number it moves is the one a budget is
+ * set from next year. Nobody is standing next to it. So it sits with the people
+ * who can already read the total, which also means writing one can never reveal
+ * more than reading already does.
+ */
+export function canRecordCost(actor: Actor): boolean {
+  return canApprove(actor);
+}

@@ -5,7 +5,8 @@ import { estimateDrayage } from '@/lib/drayage/estimate';
 import { estimable, isDrayable } from '@/lib/drayage/store';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { NotFoundError } from '@/lib/shows/store';
-import { canSeeCost } from './access';
+import { canRecordCost, canSeeCost } from './access';
+import { validateExpense } from './edit';
 import {
   rollUpShowCost,
   summarizePortfolio,
@@ -299,4 +300,114 @@ export async function getCostPortfolio(
     ...summarizePortfolio(costs),
     statuses: new Map(shows.map((sh) => [sh.id, sh.status])),
   };
+}
+
+/* ------------------------------ filing an invoice --------------------------- */
+
+/**
+ * The write the cost rollup never had.
+ *
+ * Org-scoped through the show, like every other write in this module reads —
+ * the show is fetched under `actor.orgId` and a miss is `NotFoundError` rather
+ * than a permission error, so a wrong id cannot be used to discover that a show
+ * exists in another org.
+ */
+export async function addExpense(
+  actor: Actor,
+  showId: string,
+  input: Parameters<typeof validateExpense>[0],
+  db: Db = getDb(),
+): Promise<string> {
+  if (!canRecordCost(actor)) throw new ForbiddenError('record what a show cost');
+
+  const show = await db.query.shows.findFirst({
+    where: and(eq(s.shows.id, showId), eq(s.shows.orgId, actor.orgId)),
+  });
+  if (!show) throw new NotFoundError();
+
+  const clean = validateExpense(input);
+
+  // The cost center has to belong to this org too. Without this check the
+  // required-cost-center rule above is satisfiable with somebody else's id,
+  // which would file this org's money against another org's budget line.
+  const centre = await db.query.costCenters.findFirst({
+    where: and(
+      eq(s.costCenters.id, clean.costCenterId),
+      eq(s.costCenters.orgId, actor.orgId),
+    ),
+  });
+  if (!centre) throw new NotFoundError();
+
+  const [row] = await db
+    .insert(s.expenses)
+    .values({
+      showId,
+      category: clean.category,
+      description: clean.description,
+      amountCents: clean.amountCents,
+      costCenterId: clean.costCenterId,
+      paid: clean.paid,
+      incurredOn: clean.incurredOn,
+    })
+    .returning({ id: s.expenses.id });
+  return row.id;
+}
+
+/**
+ * Removing a line filed by mistake.
+ *
+ * A hard delete rather than a soft one, and that is a considered difference from
+ * how this codebase treats a lead or a credit. Those are erased or written off
+ * because something downstream counts them and the count must not move
+ * silently. An expense has no such reader: the rollup sums what is there, so a
+ * row removed today simply stops being counted, which is exactly what somebody
+ * who filed $30,400 instead of $3,040 wants. The alternative — a voided row that
+ * still shows on the tab — would make the screen's own argument ("a blank line
+ * is not a zero") harder to read rather than easier.
+ */
+export async function deleteExpense(
+  actor: Actor,
+  expenseId: string,
+  db: Db = getDb(),
+): Promise<string> {
+  if (!canRecordCost(actor)) throw new ForbiddenError('remove a cost line');
+
+  const row = await db
+    .select({ id: s.expenses.id, showId: s.expenses.showId })
+    .from(s.expenses)
+    .innerJoin(s.shows, eq(s.expenses.showId, s.shows.id))
+    .where(and(eq(s.expenses.id, expenseId), eq(s.shows.orgId, actor.orgId)))
+    .limit(1);
+  if (row.length === 0) throw new NotFoundError();
+
+  await db.delete(s.expenses).where(eq(s.expenses.id, expenseId));
+  return row[0].showId;
+}
+
+/** The cost centers a person may file against — this org's, by name. */
+export async function costCentersForExpense(actor: Actor, db: Db = getDb()) {
+  return db
+    .select({ id: s.costCenters.id, name: s.costCenters.name })
+    .from(s.costCenters)
+    .where(eq(s.costCenters.orgId, actor.orgId))
+    .orderBy(s.costCenters.name);
+}
+
+/** The expense rows filed against one show, so they can be read and corrected. */
+export async function listShowExpenses(actor: Actor, showId: string, db: Db = getDb()) {
+  if (!canSeeCost(actor)) throw new ForbiddenError('see what a show cost');
+  return db
+    .select({
+      id: s.expenses.id,
+      category: s.expenses.category,
+      description: s.expenses.description,
+      amountCents: s.expenses.amountCents,
+      paid: s.expenses.paid,
+      costCenterName: s.costCenters.name,
+    })
+    .from(s.expenses)
+    .innerJoin(s.shows, eq(s.expenses.showId, s.shows.id))
+    .leftJoin(s.costCenters, eq(s.expenses.costCenterId, s.costCenters.id))
+    .where(and(eq(s.expenses.showId, showId), eq(s.shows.orgId, actor.orgId)))
+    .orderBy(s.expenses.category);
 }
