@@ -12,12 +12,9 @@ admin-defined spend and schedule constraints.
   travel policy, ROI, non-negotiables, build order (§10), and open decisions (§11).
 - **`RESEARCH.md`** — competitive analysis. Explains *why* the service-manual deadline
   engine and ticket-credit recovery are the differentiators.
-- **`UI-REWORK.md`** — **approved, not started, gates nothing.** The app layer's
-  consolidation *and* a visual redesign ("modern, bright colors, easy to navigate"), in
-  eight tranches. §6 is the foundation survey — Tailwind v4 CSS-first with no config file,
-  `lucide-react`/`clsx`/`tailwind-merge` already installed and unused, and the
-  `@theme inline` trap that breaks runtime dark mode. **Read §6 before writing any CSS**,
-  and read the whole thing before adding a sixth `forms.tsx`.
+- **`UI-REWORK.md`** — **done, all eight tranches**, plus findings §9–§12 added afterwards.
+  §6 is the foundation survey — Tailwind v4 CSS-first with no config file, and the
+  `@theme inline` trap that breaks runtime dark mode. **Read §6 before writing any CSS.**
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
@@ -42,1741 +39,987 @@ the next step with no further explanation. If it couldn't, the step isn't finish
 ## Where we are
 
 Phase A (**the vertical slice through the booking spine**) is done; Phase B is done; Phase D
-has started. **Steps 22 (LLM deadline extraction), 23 (the drayage estimator) and 24 (duty of care)
-are done** — §5a's post-v1 half, and the
-first feature here that the seed deliberately cannot demonstrate. Step 21 is **half done and marked `[~]` in §10**: the transport and the
-scheduler shipped, hosting and the SSO rollout did not and cannot here — both need a cloud
-account or a real IdP, and §9's ground rule forbids wiring one unasked.
+has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
+in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
+cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
+one unasked. 996 tests, no keys required.
 
-**Done:** steps 1–12 — local Postgres + schema + `getActor()` seam; the policy engine;
-the Duffel adapter with the booking schema corrected against real payload shapes; the
-request state machine with dry-run booking end to end; live purchasing behind the flag
-with a kill switch and a readable audit trail; the ticket credit ledger; Clerk wired
-to the seam with per-org login-method control and a first app shell; the planning
-core — show list, show detail tabs, My Itinerary, cloning, and intake; the travel
-request UI with the approvals queue; readiness — a writable checklist, templates,
-scoring that refuses to call an unplanned show ready, and a portfolio ranked on pace;
-the service manual deadline engine — a writable register and escalating alerts that
-know the difference between money at risk and money already spent; and team & lodging — a
-writable roster whose booth coverage refuses to count anybody who has not confirmed or is
-not in town, cross-show double-booking compared on travel windows, side events with guest
-lists, and hotels whose room block cutoff *is* a deadline register row rather than a second
-clock; and flight tracking — a status provider behind the usual interface, a board ordered
-by what is wrong rather than by what leaves next, and delay alerts that only speak when a
-delay costs the arrival buffer the ticket was approved under; and shipping — an EasyPost
-adapter behind the usual interface, an event timeline that a nightly poll cannot double,
-and a receiving *window* with two edges, because freight that arrives before a show-site
-dock opens is refused rather than early; and the conversational assistant — a chat agent
-whose access model is its tool list rather than its prompt, which reads through the same
-org-scoped stores a screen reads through and drafts requests a person still has to
-confirm; and assets & collateral — a chain of custody that is finally a log rather than a
-flag, an availability verdict that refuses a booth three different ways, and an inventory
-whose on-hand figure is a projection of a ledger rather than a number somebody typed; and
-the alerts feed and the true-cost rollup — one screen that finally reads what five engines
-have been writing to the `alerts` table since step 11, and a cost figure that leads with
-what it is missing rather than with the number; and leads & meetings — capture that anybody
-can do, a count that says "at least" and names who recorded nothing, an import in which
-every row read is accounted for, a lawful basis that is never manufactured out of a blank
-column, an erasure that removes the person without moving the count, and a REST intake
-endpoint whose principal is deliberately not an `Actor`; and ROI — a CRM adapter narrow
-enough that it cannot become a CRM, an attribution model that decides first touch across the
-whole calendar, and a dashboard whose most important output is the list of figures it
-refuses to print; and the offline day-of PWA — one screen that holds its own data, says how
-old it is, takes a capture with no network and re-sends it on the same rail a badge scanner
-retries on, and tells somebody at the booth that the person in front of them is one of the
-accounts the booth was bought for; and the notification transport and the nightly job — a
-Slack adapter behind the usual interface, a planner that refuses five different ways before
-it interrupts anybody, a zero-key transport that composes the real message and delivers it
-to nobody rather than pretending, and a job whose *absence* is now a thing the alerts page
-can say out loud.
-996 tests, no keys required.
+Read `git log` for the long version of any step: each commit documents what was learned
+building it, and this file keeps only what a fresh session needs before touching code. The
+**Ground rules** section below is the enforcement layer — every rule a step discovered is
+restated there, so that section is the one to read in full.
+
+### The practice, and it has now paid off six times
+
+Steps 17, 19, 22, 23 and 24 each found a real defect by **reading the CLI's output** —
+`onConflictDoNothing` muting recurrences, `SOURCE_LABEL` mislabelling a whole engine, a
+deduplicated reading counted as unread, a crate count that made freight invisible, and two in
+one sitting on presence. None was caught by a test, because in every case the test had been
+written to the same wrong rule. **Run the CLI and read what it says** before believing a green
+suite.
+
+**A stale `next dev` will lie to you about everything below.** `pnpm db:reset` deletes
+`.pglite` out from under a running server, which then serves the pre-reset database from a
+deleted inode — new columns and enum values do not exist in it, and a section gated on a query
+can render as absent with no error anywhere; once the inode is really gone the server throws
+`ErrnoError { errno: 44 }` and every request hangs for minutes. Restart `pnpm dev` after
+`db:reset` before believing a screen. `db:reset` prints that sentence when it finishes, because
+knowing the rule did not stop it happening twice.
+
+**And a stale service worker will lie harder, across the whole app.** `public/sw.js` served
+`/_next/static/` cache-first on a comment asserting those names are content-hashed — true of
+`next build`, false of `next dev`, where Turbopack reuses chunk names as files change. That
+pins one build's bytes into the *browser* permanently: an hour-old chunk against a current
+render, `is not a function`, hydration failure, surviving a dev restart because nothing on the
+server can reach the stale copy. The worker's scope is `/`, so the blast radius was the whole
+app rather than `/day-of`. It is **told** which mode it is in (`/sw.js?mode=dev`, from
+`_register.tsx`) rather than sniffing a hostname; production unchanged, dev network-first with
+a cache fallback. `CACHE` is `day-of-v2` so a poisoned browser heals on next load. If one is
+stuck: DevTools → Application → Service Workers → Unregister, or Clear site data.
+
+**Do not run `prettier` on this repo.** There is no config, so its defaults rewrite every
+quote and re-wrap every blurb — 132 lines of churn in one file to add six.
+
+### The spine and the seam (steps 1–7)
+
+Local Postgres + schema + the `getActor()` seam; the pure policy engine (47 tests); the Duffel
+adapter with the booking schema corrected against real payload shapes; the request state
+machine with dry-run booking end to end; live purchasing behind a flag with a kill switch and a
+readable audit trail; the ticket credit ledger; and Clerk wired to the seam with per-org
+login-method control and a first app shell.
 
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
-escalation with re-price-on-approval after the offer expires, `no_options` with the
-reasons worth relaxing, the request expiry sweep, the kill switch, credit-first
-escalation, the credit expiry sweep, and the audit trail as a person reads it. Read
-that output before reading the code; it is the fastest way to understand the spine.
-`pnpm booking:audit <id | idempotency-key>` prints the same trail for any one request,
-`pnpm credits` prints the credit ledger, and `pnpm deadlines` prints the deadline register
-with the alerts the engine would send tonight, in the words it would send them.
-`pnpm roster` prints booth coverage across every show — every shift's target beside what it
-can *actually* field, the people it cannot count and why, and the shifts a naive roster
-count would have called full. `pnpm flights` prints the flight board and what the alert
-engine would say tonight — which, on most legs, is nothing. `pnpm shipping` prints every
-crate worst-first, the receiving window each is judged against, and the one alert that has
-no shipment behind it: a show that moved out with freight and nothing recorded coming back.
-`pnpm alerts` prints what one person is actually owed — `--as` somebody else and the table
-is different, which is the access model rather than a filter — and `pnpm alerts --sweep`
-runs all five engines and reports what each one *resolved* as well as what it raised.
-`pnpm cost` prints every show's true cost worst-first with its coverage, and
-`pnpm cost <show id>` prints one show line by line with every gap named in the words the
-screen uses. `pnpm leads` prints capture worst-first — the count, the word in front of it,
-who on the booth recorded nothing, and why cost per lead is being withheld — and
-`pnpm leads --retention` is the one command in this product that destroys data on purpose,
-erasing the person and leaving the count exactly where it was.
+escalation with re-price-on-approval after the offer expires, `no_options` with the reasons
+worth relaxing, the request expiry sweep, the kill switch, credit-first escalation, the credit
+expiry sweep, and the audit trail as a person reads it. **Read that output before reading the
+code**; it is the fastest way to understand the spine.
 
-**What step 24 added, and where:** `src/lib/safety/` — duty of care, §5o. **HubSpot was the
-written pick and was dropped on contact with reality**: the entire argument for it was that a
-free developer tier makes `pnpm hubspot:capture` buildable, and with no account available it
-would have become a *fourth* written-to-the-docs-and-hoped adapter replacing a seam that
-honestly throws. It stays throwing; §11.6's "one well rather than both adequately" is
-unchanged.
+Step 7's correction, still standing: a login-method restriction is enforced at sign-in and we
+are not present at sign-in, so our gate checks the credentials an account **holds**, not the
+one it used. It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
+`src/lib/auth/mode.ts` is dependency-free so `proxy.ts` can read it without pulling PGlite's
+WASM into the proxy bundle. One Clerk bug was confirmed and fixed with no key: `authMode()`
+returned `'dev'` when exactly one of the two keys was set, so a deployment with the publishable
+key injected and the secret forgotten served `DEV_ACTOR_EMAIL`'s seeded user to everyone,
+silently. One key is now `AuthConfigError`.
 
-`RESEARCH.md` ranks duty of care ninth and justifies it in one sentence — *"we know where
-everyone is"* — and this module is what taking that seriously produces. **We do not.** What
-the app holds is a badge scan at 8:04, a carrier's word about a flight, a hotel stay, and a
+### The planning core (step 8)
+
+`src/lib/shows/` — pure decisions apart from the rows, the split every step since has followed.
+`clone.ts` is a pure planner (source + options → a plan of what to write, plus plain-language
+lists of what it carried and what it deliberately did not); `intake.ts` is pure validation and
+the decidable-status guard; `visibility.ts` holds the one visibility rule the screens share;
+`store.ts` is the only file touching the database and org-scopes at the source rather than
+loading-then-checking. `show_decisions` is append-only with a written rationale required in
+both directions. The datetime primitives gained `instantToZoned`,
+`shiftDaysPreservingLocalTime` and `calendarDaysBetween`. Screens: `/shows`, `/shows/new`,
+`/shows/[id]` with tab routes, `/shows/[id]/clone`, `/itinerary`.
+
+Two corrections, both ground rules below: **"see own shows" scopes travel, not the calendar**, and
+**a clone that copies too much manufactures facts**.
+
+### The travel UI (step 9)
+
+`src/lib/travel/review.ts` is the design core and is pure: `offerStanding` answers *what does
+approving this actually do right now* in four cases (live / held-and-guaranteed / held-but-not /
+expired), `STATUS` says what each machine status means to a person waiting on one, and
+`availableActions` returns what an actor may do **with a reason attached to every refusal**.
+`provider.ts` selects the flight provider from the environment and is the first code to do so.
+`queue.ts` is the org-scoped, `travelerScope`-narrowed read layer. Screens: `/travel`,
+`/travel/new`, `/travel/[id]` (which is `pnpm booking:audit` as a page, reusing
+`getAuditTrail`) and `/travel/approvals`.
+
+Three corrections, all ground rules below: **an approval screen that shows a fare beside an Approve
+button lies about half the time**, so the offer's standing is on the queue row and the predicate
+moved out of `agent.ts` into `review.ts`; **cancel does not tell the airline**, and only a button
+made that visible; and **the config layer is where "no fake data behind a real integration" is
+easiest to break**, so `selectProvider` has no fallback.
+
+### Readiness (step 10)
+
+`src/lib/readiness/` — the first *writable* show tab. `score.ts` returns a **breakdown, not a
+number**, and `null` — *unplanned* — for a show with no checklist; `templates.ts` holds the
+built-in library (25-task standard, 8-task tabletop) and a pure apply planner that is idempotent
+and dates tasks on the show's local calendar; `edit.ts` is pure validation plus the
+written-reason rule; `access.ts` is the permission split; `portfolio.ts` is the pace model and
+the ranking. Screens: `/shows/[id]/readiness` writable, `/readiness` as the portfolio rollup.
+The seed builds MedTech's checklist by **running `applyTemplate` and `setTaskStatus` for real**.
+
+Four corrections, all ground rules below: `readinessScore([]) === 100` **said an unplanned show was
+a finished one**, which on a ranked portfolio sorts the untouched show above every show somebody is
+working on; **a single percentage hides the shape of what is left**; **skipping is a change to the
+plan wearing the costume of a status**; and **a portfolio ranked by readiness buries the
+emergency** — 40% eight months out is on schedule and 70% in nine days is not.
+
+### The deadline engine (step 11)
+
+`src/lib/deadlines/` — the service-manual engine, and this product's #1 feature. `alerts.ts` is
+pure and holds the whole argument: the T-30 / T-14 / T-3 / day-of thresholds, the 45-day
+confirmation chase, who each alert is addressed to, which *tense* it is written in, the dedupe
+key that voids itself when a date moves, and `summarizeExposure` — the one exposure model,
+shared by the register screen, the portfolio and the CLI. `edit.ts` is pure validation (a local
+time of day, penalties through `money/decimal.ts`, a written reason for `not_applicable`).
+`store.ts` carries `sweepDeadlineAlerts`. The register on `/shows/[id]/readiness` is writable
+and each row shows what the engine will say about it next and to whom. The seed grew an
+unconfirmed, an unowned and a missed deadline so all four alert cases are live, and produces
+its alert rows by **running the real sweep**.
+
+Its four corrections — a date is chased, never an amount; past the date a penalty is *incurred*
+and the audience changes; an unowned deadline escalates; the dedupe key carries the date — are
+all restated as ground rules below.
+
+### Team & lodging (step 12)
+
+`src/lib/team/coverage.ts` is pure and holds the whole argument: `standingFor` says whether one
+assigned person can actually work one slot (on the roster, confirmed, in town), `coverageFor`
+reports `assignedCount` beside `effectiveCount` and flags a shift **overstated** when a roster
+count would have called it full, and `planPersonalClashes` catches the booth shift that runs
+into the dinner. `team/conflicts.ts` is cross-show double-booking compared on
+`arrives_on → departs_on`, marked `possible` rather than `certain` where it fell back to show
+dates. `team/edit.ts` carries `describeDetachment` — the sentence naming what un-staffing
+somebody does *not* cancel. `lodging/edit.ts` refuses a cutoff inside the stay;
+`lodging/store.ts` is where a cutoff derives its register row. Schema:
+`show_attendees.responded_at`, `booth_shifts.updated_at`, `lodgings`/`side_events` cost centers,
+`show_deadlines.lodging_id` (unique), unique `(side_event_id, user_id)`. Screens:
+`/shows/[id]/team` writable and `/shows/[id]/lodging` as a sixth tab. The seed builds all of it
+through the real stores and grew a fifth show (Sensors Converge, overlapping Automate) so both
+conflict cases are live.
+
+Four corrections, all ground rules below: a roster count lies about the future the way a presence
+count reports the past (assigned ≠ able to be there, and `overstated` names the shifts the naive
+count would have reassured you about); the confirmation has to come from the person, because
+coverage counts confirmations; a double-booking is between travel windows, and a missing window
+makes the finding `possible`; and the room block cutoff must not get a second clock.
+
+### Flight tracking (step 13)
+
+`src/lib/integrations/flightstatus/` — the second integration behind an interface. `types.ts`
+reports what a carrier says about one leg at one moment, and `NoRecord` is deliberately not
+`phase: 'unknown'`. `aeroapi/` is FlightAware AeroAPI v4 (wire / normalize / client), written
+to the published schema and **never run against a live key**. `recorded/` replays AeroAPI-shaped
+payloads through the *real* normalizer; what it records is a **shape** projected onto whichever
+leg it is asked about, so a canned block time never reports a transcontinental delay on a
+shuttle. `src/lib/flights/status.ts` is pure: `freshnessOf` / `effectiveStatus`,
+`bufferVerdict` (§7's arrival buffer re-run against live times, reading the required hours out
+of the *resolved travel policy*) and `reconcile`, which keeps a carrier's re-timing apart from
+a delay. `board.ts` orders by what is wrong rather than by what leaves next. `store.ts`
+org-scopes through the *traveler* rather than through the nullable show, and carries
+`materializeFlights`. Schema: `flights.show_id` nullable, `leg_direction`, both airport zones,
+`provider_scheduled_*`, `schedule_changed_at`, `diverted_to_airport`, `status_provider`,
+`booking_id` + `segment_index` (unique). The seed produces flight status by **running the real
+sweep**, pinning which payload each leg replays: a red-eye that loses its buffer, a roomy
+morning flight that is fine, and a flight *home* that is late and deliberately silent.
+
+Five corrections, all ground rules below: **the booking spine was buying tickets the tracking layer
+could not see** — nothing had ever written a `flights` row, so every ticket the agent bought was
+invisible on My Itinerary, the Travel tab and the board; a delay that costs the buffer is the news;
+a re-timing is a third thing, beside the plan; not knowing is not on time, and it is the default;
+and an alert is keyed to the standing, not the number.
+
+### Shipping (step 14)
+
+`src/lib/integrations/shipping/` — EasyPost Tracker v2 (wire / normalize / client, **never run
+against a live key**), plus a `recorded` provider that replays EasyPost-shaped payloads through
+the real normalizer, projecting a recorded **shape** onto the crate's actual transit window and
+handing back only scans that have already happened — so a replay can never show a crate
+delivered on the day its label was printed, and `stalled`, whose whole content is the *absence*
+of recent scans, stays distinguishable from `on_time`. Its scan locations are roles ("Origin
+hub"), not cities. `src/lib/shipping/status.ts` is pure: the two-edged `windowVerdict` with
+`too_early` as a real standing, `stallOf`, `freshnessOf` / `effectiveStatus`, and `reconcile`,
+which captures the carrier's promise *once* so `brokenSincePromise` can ever be true.
+`alerts.ts` carries `planReturnGapAlert` — the one planner in the product that fires on an
+absence. `board.ts` orders by what is wrong. `access.ts`: confirming a crate reached the booth
+is available to **anybody**. Schema: `shipments.consignment`, `receiving_opens_at`, `owner_id`,
+`received_at` / `received_by_id`, `promised_delivery`, `estimate_changed_at`,
+`tracking_provider`, an `unknown` status; `shipment_events.source` + `fingerprint` unique on
+`(shipment_id, fingerprint)`. Screens: `/shipping`, and the show's Logistics tab became
+writable — it was the last read-only one. `_present.tsx` is the shipment vocabulary both
+screens render through, because the moment two screens draw a crate they can disagree about
+what `too_early` looks like.
+
+**The seed grew two shows, and that was a finding rather than a convenience.** Every seeded
+show was fifty or more days out, so no crate had plausibly shipped and a shipping feature
+seeded against that calendar would have had an empty timeline on every row. There is now a
+**live** show (a crate delivered to a dock nobody has confirmed at the booth, one that missed
+show-site receiving, one that has gone quiet) and a **prior-year** show that moved out seven
+weeks ago with outbound freight and nothing recorded coming back.
+
+Five corrections, all ground rules below: a crate has a window, not a deadline, and early is a
+failure too; delivered is not received, and only a person can close that gap; silence is the
+failure mode and nothing in the payload reports it, which is why the sweep plans against every
+shipment rather than the ones that changed; §5f's rule about the leg home inverts, so the sharpest
+alert here has no shipment row behind it; and a poll returns the whole timeline, not a delta, which
+is what the fingerprint is for. One small bug proved the general rule: `expectedArrival` trusted
+`estimated_delivery` on a shipment with **no tracking number**, so a crate nobody had handed to a
+carrier was reported as *"will miss the receiving deadline"* — a confident claim about a truck,
+sourced from nothing, hiding the actual problem.
+
+### The conversational assistant (step 15)
+
+`src/lib/integrations/llm/` — the fourth integration, and the first where a vendor SDK exists.
+`types.ts` performs **one exchange and runs no loop**, because running a tool means choosing an
+actor to run it as and that choice must not live in an adapter. `anthropic/client.ts` is the
+Messages API through `@anthropic-ai/sdk`, so unlike the others there is **no `wire.ts` and no
+fixture file of payloads we invented** — the vendor ships the types. `scripted/` is the zero-key
+model and it replays **tool plans, never prose**.
+
+`src/lib/assistant/tools.ts` is the whole step: fifteen tools, every one an existing org-scoped
+store function called as the asking actor through the same `access.ts` gate a screen goes
+through — no query, no join, no org id from the model. `access.ts` is subtractive, so a withheld
+tool is never described. `prompt.ts` carries **tense and nothing load-bearing**. `loop.ts` is a
+manual loop with three bounds of ours (`MAX_TURNS`, `MAX_TOOL_CALLS`, and a `max_tokens` stop
+that is never presented as an answer). `draft.ts` refuses to file without the person's own
+words, refuses to guess a time zone, and carries a `FlightProvider` whose every method rejects.
+`serialize.ts` sends instants rather than formatted local strings. `store.ts` scopes a
+conversation to a **user**. Schema: `assistant_conversations` (provider recorded per
+conversation) and `assistant_messages` (append-only; a `tool` row keeps the validated input and
+the store's actual result, because the prose is the paraphrase). Screens: `/assistant` and
+`/assistant/[id]`, with each tool step rendered *beside* the answer and openable. The seed
+produces two transcripts by **running the real loop against the real tools** — a member and an
+admin asking questions whose *results* differ while nothing about the prompt does.
+
+Five corrections: **a withheld tool must not be described, and naming one must get the same answer
+as inventing one** — "that tool exists but is not available to you" is a *map*; **a `recorded`
+provider can replay a payload, not prose**, so the scripted model's one canned sentence
+characterises nothing and the test asserts it contains no digits; **`submitTravelRequest` inferred
+human confirmation from the *absence* of raw text**, which is right for a form and catastrophic for
+a parser; **a follow-up must not be answered from the previous turn's tool result**, because a
+result is a snapshot of rows that have since moved; and **a transcript belongs to the person in
+it** — the only table here scoped to a user. (A related bug, caught by an empty `/assistant` page:
+this file's own test cleanup deleted *every* conversation rather than its own.)
+
+### Assets & collateral (step 16)
+
+`src/lib/assets/custody.ts` is pure and holds three arguments: the seven-state custody chain,
+`availabilityFor` (three refusals, each with its reason — **reserved is not available and
+available is not serviceable**), and `freightCoverage`, where assets meet step 14's shipping
+rows. `conflicts.ts` compares **reservation windows rather than show dates** and adds
+`turnaround` as a `possible` finding. `inventory.ts` is the collateral half — on hand minus
+committed, low stock judged on what is *free*, an allocation's three states, and the projection
+over the ledger. `alerts.ts` carries both dedupe-key shapes at once (§5a's date for a
+reservation, §5b's bucket for a quantity). `edit.ts` requires a condition on return and a
+written note when it comes back worse. `access.ts` puts sign-out, check-in and counting a shelf
+in **anybody's** hands. `store.ts` scopes through the **asset's own org** — a third posture
+beside shipping's show and flights' traveler, falling out of the domain: a booth belongs to the
+company between shows, which is most of its life and all of the time it goes missing.
+
+Schema: `assets.cost_center_id` + a unique asset tag; `asset_reservations.condition_on_checkout`,
+`returned_by_id`, unique `(asset, show)`; `collateral_items.cost_center_id` + unique SKU; a new
+append-only **`collateral_entries`** with signed deltas and a `(allocation, kind)` rail;
+`collateral_allocations.issued_at` / `issued_by_id` / `returned_at` / `returned_by_id`. Screens:
+`/assets`, and the **Logistics tab now renders three models on one page** — the crate, what is
+inside it, and the collateral — which is why step 16 came after step 14. The seed builds it
+through the real stores, including a booth signed out to last spring's Detroit show and never
+checked in, which is the sentence the schema comment has carried since step 1.
+
+Six corrections, all ground rules below: reserved ≠ available ≠ serviceable; the reservation window
+is not the show window and **§5e inverts** (show dates *under*-report an asset's clash, and
+adjacent is not clear); "in what condition" is only answerable as a delta; signing out and checking
+in belong to **anybody**; on hand is not available, and an uncounted return is not a zero return;
+and past a point "return it" is the wrong sentence — a $84,000 booth nobody has seen in six weeks
+is an insurance conversation.
+
+### The alerts feed and the true-cost rollup (step 17)
+
+`alerts/feed.ts` is pure and is the whole argument: an alert row records that a notification was
+**owed at an instant**, and a feed shows it later, so `standingOf` reports which of five things
+it has become — `new`, `repeating`, `unchecked`, `acknowledged`, `resolved`. `linkFor` reads
+`source` rather than regexing a dedupe key. `groupFeed` collapses one sentence said by many
+rows. `alerts/access.ts` refuses an org-wide read at all. `alerts/store.ts` is the **only** file
+that writes the table: `syncConditionAlerts` takes an engine's complete current plan, upserts
+it, and **closes every key the engine no longer plans**. `alerts/sweep.ts` runs every engine and
+names the ones that could not run. `cost/rollup.ts` is pure and holds the six refusals;
+`cost/store.ts` loads every show's inputs in a fixed number of queries so the portfolio and a
+show's tab cannot disagree; `cost/access.ts` is Travel Manager and Admin. Schema: `alerts`
+gained `source`, `kind` (`condition` vs `notice`), `last_seen_at`, `occurrences`, `resolved_at`,
+`acknowledged_by_id`. Screens: `/alerts`, `/cost`, a **Cost** tab not rendered at all for a
+Member, and one line on the overview above everything else. The seed completes one deadline and
+re-runs the sweep so a genuinely **resolved** row exists, and acknowledges one alert *as the
+person it was addressed to*.
+
+Five corrections, all ground rules below: **`onConflictDoNothing` muted every recurrence, and only a
+feed made it reachable** — a condition that ended and came back reused the row somebody
+acknowledged weeks ago, arriving pre-dismissed; only an engine may resolve an alert, and it can only
+do so because it plans over everything; an engine dedupes a fact, a feed has to dedupe a sentence;
+**a dry run is not spend, and the seeded workspace is made entirely of dry runs** (same shape three
+more times — a credit is not a discount, stock consumed is not stock bought, committed is not
+paid); and a cost figure that does not say what it is missing is §5a's fabricated bill at the scale
+of a show.
+
+### Leads & meetings (step 18)
+
+`src/lib/leads/` — the first table here holding personal data about somebody who is not our
+user. `coverage.ts` is pure and is the argument §8c was missing: a count is introduced with
+**"at least"** whenever anybody rostered on a booth shift recorded nothing, the silent people
+are *named*, "on the booth" is a shift assignment rather than attendance, an unrostered show is
+`unknown` and never 0 of 0 — and `mayQuotePerLead` **withholds** cost per lead over a thin
+denominator instead of publishing it with an asterisk. `consent.ts` is the GDPR half: `unknown`
+is a recorded answer rather than a default, consent with no timestamp or no recorded notice is a
+claim about consent, and **erasure is redaction**. `parse.ts` is a CSV reader (quotes, embedded
+newlines, CRLF, Excel's BOM) plus an import planner in which accepted + rejected + duplicate
+always equals the row count. `dedupe.ts` is identity *within a show* — the scanner's reference,
+then the email, and name-plus-company as a suspicion that is never auto-merged — and
+`findPossiblePairs` is what makes that refusal honest rather than a nicer word for discarded.
+`alerts.ts` mostly says nothing. `intake.ts` is the REST credential, and an `IntakePrincipal` is
+deliberately not an `Actor`. `access.ts` splits the count from the person behind it, and capture
+from erasure.
+
+Schema: `leads` gained `source`, `import_id`, `external_ref` (unique per `(show, ref)`),
+`duplicate_of_id`, `consent_notice`, `redacted_at` / `redacted_by_id` / `redaction_reason`;
+`meetings` gained `no_show_at` and `created_by_id`; new append-only **`lead_imports`** (which
+keeps every rejection with its row number) and **`intake_keys`** (hash only, show-scoped,
+revoked rather than deleted). Screens: `/leads`, a **Leads** tab shown to everybody, and
+`/settings/intake`. `POST /api/intake/leads` is the first route here that authenticates without
+`getActor()`, and `src/proxy.ts` marks `/api/intake` public in Clerk mode because it carries its
+own credential. The assistant gained `lead_capture` — counts and coverage, no personal data. The
+seed captures at the booth as four different people, posts through the **real** intake path
+including the retry a scanner makes on bad wifi, imports a CSV through the **real** parser (one
+row with no name, one duplicate — both rejected by the planner rather than by hand), and runs
+the sweep **before and after** the import so a genuinely resolved lead alert exists.
+
+Six corrections, all ground rules below: a lead count that does not say who did not capture is
+§8a's fabricated bill on the return side, and cost per lead is **withheld** rather than caveated
+because the error runs *high*, which reads as a bad show; duplicates inflate in the flattering
+direction, which is the direction nobody audits; an import that skips a row reports a smaller number
+with the same confidence; a lawful basis is never manufactured out of an absent column; erasure must
+not erase the count; and the intake endpoint must not be an `Actor` — and **a retry is a success**,
+because a 409 teaches an integration to treat a recorded lead as a failure.
+
+### ROI (step 19)
+
+`src/lib/integrations/crm/` — the fifth integration, and the first where §11.6's "one well
+rather than both adequately" resolved to *one at a time* rather than to one. `types.ts` carries
+**exactly one write method**, because §8b's "never own the pipeline" only survives a second
+customer if the interface is structurally unable to widen; it also splits `matchByExternalId`
+from `matchByEmail`, because one sends nothing about a person and the other sends a stranger's
+address to a third party. `salesforce/` is REST v60 + SOQL, written to the published reference
+and **never run against a live org**. `hubspot/client.ts` is **declared and throws on every
+method**. `recorded/` replays a conversion *shape*, not a pipeline. `roi/provider.ts` selects
+with **no fallback** and answers `hubspot` with what finishing it takes.
+
+`src/lib/roi/attribution.ts` is pure and is the honest hard part: five refusals, of which the
+first — first touch is decided across the **whole calendar** — is the one a naive implementation
+gets wrong forever and silently. `rollup.ts` is pure and holds §5k: the two-floors rule, the
+replayed-pipeline withholding, matching coverage as a third floor, §8e's maturity horizon as an
+enforcement rather than a footnote, and `Quotable` — a figure or the sentence saying why there is
+not one. `alerts.ts` is the **seventh engine**, reports an unanswered question rather than a
+broken thing, and deliberately never alerts on a low multiple. `store.ts` gates email matching
+on `marketabilityOf` and keeps `withheld` apart from `unmatched` in every count. `access.ts`
+inherits the cost gate, and the assistant gained `show_roi` — the **second tool ever withheld
+from a Member**.
+
+Schema: `crm_links` (how a match was made, and whether the attribution went back),
+`crm_opportunities` (the CRM's facts, cached — and **no attribution stored**, because it is
+derived at read time so changing the window re-derives rather than migrates) and `crm_sync_runs`
+(append-only, keeps every refusal); `show_outcomes` gained `attribution_model`, `source`,
+`replayed`. Screens: `/roi`, a **ROI** tab not rendered for a Member, `/settings/crm`. **The
+seed grew an eighth show and that was the finding**: every show was either in the future or six
+weeks closed, so every ROI verdict was correctly withheld and the dashboard could not be shown
+working at all. MedTech Summit 2025 is fourteen months back with a *complete* cost — the only
+show whose multiple is quotable — and one buyer on it was met again at Automate 2025, so
+cross-show first touch is a row rather than an assertion in a test.
+
+Six corrections: **two floors in a quotient do not cancel; they widen**; **a replayed
+opportunity is a different object from a replayed crate, and a banner is not enough**; **first
+touch is a fact about our own data, and the naive test favours the newest show forever** (two
+more fell out — influenced pipeline deliberately does not sum, and when first touch lands
+outside the window the runner-up does not inherit); **our own consent posture is a hole in the
+pipeline figure, on purpose, and it must not look like the vendor's fault** — withheld is us
+refusing, unmatched is the CRM answering; **an unbuilt adapter must not be able to produce a
+finding**, because "we captured 41 leads and the CRM knows none of them" is a real and alarming
+answer this product exists to surface; and **three defects in the Salesforce client a
+docs-written fixture could never have caught** — `query()` did not follow `nextRecordsUrl`
+(Salesforce pages at 2,000 records, so a large customer got a quietly short pipeline figure
+reported with the confidence of a correct one), `opportunitiesFor` interpolated *every* matched
+contact id into one SOQL string riding in a GET query string, and `CurrencyIsoCode` exists
+**only in a multi-currency org** so the obvious query fails outright on most orgs. All three are
+covered by unit tests against a mock transport.
+
+**The repair:** `alerts/store.ts` kept a hand-written `SOURCES` array beside the union in
+`feed.ts`, and adding `'roi'` to the type compiled everywhere, wrote correct rows, and read
+every one back as `unknown` — so a whole engine's output was labelled "Other" and `linkFor` sent
+it to the wrong page. Nothing failed. It was caught by reading the CLI's output. The guard is
+now derived from `SOURCE_LABEL`, whose `Record<AlertSource, string>` the compiler already checks
+exhaustively.
+
+### The offline day-of PWA (step 20)
+
+`src/lib/dayof/` — the first step that changes how the *client* works. **`targets.ts` and
+`outbox.ts` are pure and shipped to the browser**, because a target-company alert has to fire
+while the name is being typed and a queue has to be reconciled with no server to ask.
+`targets.ts` matches a company **exactly, after stripping legal suffixes, and never fuzzily** —
+the failure of a loose match is somebody at a booth telling a stranger their company is one we
+came for — and *met* is derived from the leads rather than stored. `outbox.ts` is the device
+queue: every item accounted for, `reconcile` throws rather than dropping one, a rejected item is
+**kept and marked** instead of retried forever, and our own re-send (`already`) is deliberately
+a different answer from somebody else's `duplicate`. `snapshot.ts` carries one instant and
+`degradeVerdicts` takes the present tense off a crate line past forty-five minutes while leaving
+the recorded facts standing. `access.ts` puts the screen and the target list in **anybody's**
+hands and editing the list in an approver's. `store.ts` builds the snapshot in a fixed number of
+queries and drains the queue **through the real `captureLead`**, as the person who typed it.
+
+Schema: a new **`show_targets`** — with no `met_at` column, deliberately — and
+`meetings.external_ref`, unique per show. Routes: `GET /api/day-of/snapshot` is the only screen
+here whose data leaves the server as data, and `POST /api/day-of/sync` answers **every** item it
+is sent. Screens: `/day-of` (a picker ordered by proximity to *now*), `/day-of/[id]` — **the
+only page here that is not a Server Component, whose server half deliberately fetches
+nothing** — and a Target accounts card on the show's Leads tab. `public/sw.js` is hand-written
+and caches only the day-of pages; `src/app/manifest.ts` starts at `/day-of`. The seed grows four
+target accounts through the real store: one met, one met under a different spelling, one
+must-meet that is unmet *and* unowned, and one watch.
+
+Eight corrections, most of them ground rules below: a cached screen is §5f's unchecked flight with
+every row at once, and worse, because it is drawn and nothing about a phone with no bars says the
+crate reading is from Tuesday; a fact and a verdict age differently, and blanking both is not the
+cautious option; the server half of the page must fetch nothing; a queued capture is not a captured
+lead and the counts never merge — the word is *device* rather than *pending*, because what a person
+needs to understand is a location; a rejected item is kept, since deleting it destroys the only copy
+of a real conversation and retrying forever leaves a badge that is always on; our own re-send and
+somebody else's duplicate must stay different answers; a cache outlives the session that was allowed
+to read it, so the snapshot carries its actor and a mismatch **wipes** IndexedDB and the worker's
+caches; and **`pnpm smoke` cannot check this page, and that is the first time** — the phrase in the
+HTML is the *shell*. The check is kept because it still catches a broken import, and the gap is
+named: this page was verified by driving a headless browser against a running dev server, which is
+not in `pnpm test` and should not be.
+
+### Notifications and the nightly job (step 21, `[~]`)
+
+`src/lib/integrations/notify/` — the sixth integration, and the first that carries something
+**out** of the workspace rather than asking a supplier a question. That inverts the risk the
+other five manage: a transport cannot report a false crate, but it can put a colleague's fare in
+a room that was never entitled to it, and unlike a wrong reading that cannot be corrected on the
+next poll. So `types.ts` takes a **resolved address and a rendered message and does nothing
+else** — no database, no audience, no idea what an alert is. `slack/` is the Web API, written to
+the published reference and **never run against a live workspace**; it asks for exactly three
+scopes and is write-only. `console/` is deliberately **not** a `recorded` provider.
+`notify/provider.ts` selects with no fallback, with one difference from the other five: unset is
+a legitimate state and resolves to `console`, while a *name this app does not have* still
+throws, because a typo must not quietly resolve to the transport that reaches nobody.
+
+**`notify/plan.ts` is the whole step**: pure, and five refusals — an `info` condition stays on
+the screen while a notice goes at any severity, eleven rows are one sentence (through
+`groupFeed`, never a second grouping), switching a transport on does not replay history, only
+somebody who was told is told it ended, and a personal alert never reaches a shared room. It
+takes **no user id and does no lookup**, so the only rows it can put in a message are rows a
+query already narrowed — `assistant/tools.ts`'s posture, one layer out. `store.ts` is the only
+caller of a transport. `access.ts` puts a destination in the **subject's own hands and not an
+admin's**. `src/lib/schedule/nightly.ts` is sweep → erase → carry, and it stops rather than
+delivering last night's answers as tonight's; `principal.ts` is the second principal here that
+is not an `Actor`, and the first that erases.
+
+Schema: **`notification_channels`** (a person's destination, resolved by the transport and never
+typed), **`notification_deliveries`** (append-only; the rail is
+`(alert, channel, phase, alert_created_at)`, the last segment inheriting `alerts/store.ts`'s own
+recurrence decision rather than inventing a second one) and **`scheduled_runs`** (append-only;
+`trigger` keeps "somebody ran it" and "it runs" apart). `FeedAlert` gained `userId`. Routes:
+`POST /api/cron/nightly`, and `/api/cron` is public in Clerk mode for a sharper reason than
+`/api/intake` — a scheduler has no browser, so a Clerk bounce answers 302 and every hosted cron
+reads that as success. Screens: `/settings/notifications`, **the only entry under Settings that
+is not admin-only**, and one line on `/alerts` the feed could never say about itself. The seed
+connects two people through the real store, runs the delivery pass **twice** (the second carries
+nothing — the rail holds), and records one `manual` run.
+
+Five corrections, all ground rules below: **a `recorded` transport is the one replay this codebase
+cannot have**, because what a transport produces is an event in the world and there is no shape of
+that which is not a claim; **Slack answers failures with HTTP 200**, so the correct client for every
+other provider here is the wrong one and that failure has no symptom; idempotency had to be
+inherited rather than invented; turning a transport on must not replay a year of alerts at somebody;
+and the order the refusals run in changes what a number means — the floor comes first, so
+`unreachable` counts alerts worth carrying.
+
+**The repair:** `pnpm alerts --sweep`, `pnpm flights` and `pnpm shipping` ran without `dotenv`
+while `next dev` loads `.env.local`, so the CLI and the app disagreed about the environment:
+the sweep reported the flight and freight engines as **could not run** on a workspace where they
+were configured. "Could not run is not nothing to say" is a sentence the whole design leans on,
+and it was being produced by the script's own env loading. All four provider-selecting CLIs load
+`.env.local` now.
+
+### LLM deadline extraction (step 22)
+
+`src/lib/manual/` and `src/lib/integrations/extract/` — §5a's post-v1 half and the missing half
+of this product's own #1 feature. The two risks flagged as decide-first were settled and
+committed **before any code was written**, and both held; they are recorded at the end of
+`SCOPE.md` §5a with the six corrections that turned up afterwards.
+
+`pdf.ts` is the only file in this product that touches a PDF. It reads a document into
+**numbered pages of plain text** and does nothing else, and that narrowness is the design: the
+model is sent text *we* extracted and never the document, because §5a's rule is that a human
+confirms every extracted deadline and **a person can only confirm against something**. Had the
+PDF gone to the model, its page-and-quote citation would be model output — indistinguishable on
+screen from a real one, and confirming against a hallucinated quote *launders* a guess into a
+figure the engine quotes as established. `anchor.ts` is therefore the file that makes the feature
+safe to confirm at all: a snippet either occurs on the page it cites or the deadline never
+becomes a row, `wrong_page` is kept apart from `not_found`, and the match is on normalized
+whitespace and never fuzzy. `candidates.ts` is the whole argument — six refusals, and **accepted
++ rejected + duplicate always equals what came in**. `coverage.ts` is the arbiter and is
+deliberately stupid. `store.ts` writes the run before it writes any deadline.
+
+`integrations/extract/types.ts` is the seventh integration and is a **new interface rather than
+a widened `AssistantModel`**: it performs one exchange with a document and **no tools at all**,
+because folding it into the assistant's interface would put a tool list within reach of a code
+path whose input is a file from outside the company. `anthropic/client.ts` uses structured
+output (`output_config.format`) rather than a tool, for the same reason, and has **no `wire.ts`
+and no invented fixtures**. Unlike every other adapter here it **has been run against a live
+key**, which is why step 22 was picked over Slack, SSO, hosting, AeroAPI and EasyPost.
+
+Schema: new append-only **`manual_extractions`** (`lead_imports`' shape and its reason — every
+rejection with its page, and `truncated`, because a half-read manual reports fewer deadlines
+with the confidence of a full one), and `show_deadlines` gained `extraction_id`, `source_page`,
+`source_snippet`, `due_time_assumed`. Screens: the readiness tab grew a **Read the exhibitor
+service manual** card that leads with the refusals rather than the count, and every extracted
+row renders its page and verbatim quote **next to the control that confirms it**.
+`next.config.ts` raises the Server Action body limit to match `MAX_MANUAL_BYTES` so the refusal
+comes from the store with a sentence rather than from the framework with a body-size error.
+**The seed deliberately does not extract anything** — see correction 3.
+
+Six corrections and one repair:
+
+1. **An anchored deadline does not anchor its penalty, and the penalty is the half that becomes
+   a bill.** A model can reproduce a real sentence perfectly and attach an amount that is nowhere
+   in the document, and the snippet still verifies. An amount now has to appear **inside the
+   verified snippet**, compared on digits, and when it does not the figure is dropped while
+   `penaltyNote` survives.
+2. **A time of day is never invented, and step 11's rule inverts.** That step made a local time
+   mandatory because a warehouse closing at 4:00pm rounded to 5pm is a drayage penalty — a rule
+   about not *rounding a printed hour*. Most manuals print no hour at all, so applied naively it
+   files an assumption in the exact column it exists to protect.
+3. **The seed cannot demonstrate this feature, and must not — the first step where that is
+   true.** Extraction needs a key, and seeding extracted-looking rows with hand-written snippets
+   would file deadlines claiming to have been read off a document nothing read, on the screen
+   where somebody confirms them into quoted penalties.
+4. **A deduplicated reading still counts as read, and only the probe found it.** The first
+   version scored only surviving rows, so every cutoff a well-organised manual prints twice
+   appeared on the unclaimed list as a possible miss. An arbiter that cries wolf is the one
+   failure an arbiter cannot have. No test caught it because the tests were written to the rule.
+5. **A wrong kind is corrected rather than rejected.** The taxonomy is ours, so a misfiled row is
+   a labelling mistake; it lands as `other` with the model's word recorded. The opposite call is
+   right for a date that will not parse.
+6. **A test that asserts a seed property by reading every row stops being true the moment
+   somebody uses the product.** `tests/foundation.test.ts` required every `advance_order`
+   deadline to carry a dollar figure and queried the whole table; the first extracted deadline
+   broke it legitimately. It is scoped to hand-entered rows now.
+
+**The repair, and it is this file's own ground rule.** `scripts/deadlines.ts` rendered due dates
+with `toISOString().slice(0, 10)` and had done since step 11 — invisible for eleven steps because
+every seeded deadline carries a daytime hour, and visible within a minute of the first extracted
+deadline, which is filed at 23:59 local and is therefore *tomorrow* in UTC. The register printed
+every one of them **a day late**. The UI rework found four copies of this in `src/app`; this was
+a fifth, in `scripts/`, where nothing was watching. The other `toISOString().slice(0, 10)` calls
+under `scripts/` are on **date-only columns** and are correct; `scripts/leads.ts` is the one
+arguable case left and is deliberately untouched, because fixing it means choosing *whose* zone
+a lead was captured in.
+
+### The drayage estimator (step 23)
+
+`src/lib/drayage/` — §5n, and the first thing this product **predicts** rather than records. It
+closes the largest silent line in §8a: the carrier's freight charge gets a crate to a dock, and
+drayage is everything after that — off the truck, to the booth, empty stored, empty returned,
+out again — billed by the general contractor off a rate card in that show's own manual, and on a
+medium booth it costs more than the freight did.
+
+`estimate.ts` is pure and is the whole step: hundredweight, the card's minimum, and **six
+refusals**. `edit.ts` validates a card (rates through `money/decimal.ts`, a decimal-point slip
+caught, blank ≠ zero). `access.ts` puts the rates with whoever runs the show and the **packing of
+a crate in anybody's hands**. `store.ts` is org-scoped through the show and loads the portfolio
+in a fixed number of queries the way `cost/store.ts` does — and for its reason, since both
+compute the same figure.
+
+Schema: new **`drayage_rate_cards`** (one row per show, upsert rather than history — a rate card
+is a transcription of a document rather than a decision, so what is worth keeping is whether it
+was *checked*; `confirmed_at` holds that and any edit withdraws it, exactly as re-dating a
+deadline does) and **`shipments.handling`** (`crated` / `uncrated` / `unknown`). `basis` has
+**no database default and no pre-selected option in the form**. Cost: `CostInputs` gained
+`drayage`, `ShowCost` gained a `DrayageMemo` that sits **beside** the total, and the *shipping
+line* gained a gap when there is freight and no quotable estimate — because the person who needs
+to know drayage is missing is reading the shipping figure, not a memo under it. Screens: a
+**Drayage** card on the Logistics tab with the arithmetic showing, a packing control on every
+crate, and a fourth memo on the Cost tab and `/cost`. The seed writes a confirmed card on
+Automate, an **unchecked** one on the live show, and deliberately leaves Sensors Converge with
+real freight and no card at all.
+
+The six refusals, and the second is the one that matters: **no rate card, no number** (a $0
+drayage line on a show with six crates reads as *drayage was free*); **rounding is per shipment
+and never in aggregate** — two 150 lb crates are two shipments, each takes the 200 lb minimum, so
+400 lb is billable and summing first bills three hundredweight, **25% light**, in the direction
+§5j already named as the one nobody audits, and nothing about the wrong version looks wrong; **a
+crate with no weight is not a weightless crate**, which lives or dies on one line in `store.ts`
+because `numeric` arrives as a string and `Number(null)` is 0; **a round-trip card is one
+charge, not two**, so either guess is a 100% error and there is no default anywhere in the stack;
+**uncrated is a surcharge and `unknown` is not `crated`**, which is the *honest* half of §5j
+rather than a violation of it; and **an estimate is not an invoice and never joins the total** —
+"estimated $2,400, billed $3,900" is a question worth asking, and the answer is usually the fifth
+refusal.
+
+Two corrections:
+
+1. **A condition with no clock is not an alert, so this feature deliberately gets no engine.**
+   The obvious eighth engine says *this show has freight and no rate card* — true, actionable,
+   and still wrong. All seven existing engines fire on something that **changes with time**. "No
+   rate card" is true the moment freight is recorded, stays true until somebody types one, and
+   never sharpens; a permanently-true alert that never escalates is a nag, and §5a's whole
+   argument is that one of those teaches a team to close the next alert unread. `/cost` already
+   says it, on the line somebody is reading.
+2. **A crate count derived from what was priced reports a show with six crates as having none** —
+   found by reading `pnpm drayage`, not by a test. With no card the estimator prices nothing, so
+   *a show with no freight* and *a show whose freight nobody can price* rendered identically.
+   `considered` is on the estimate now and the accounting holds:
+   `perShipment + coveredByRoundTrip + unweighed + unpriceable === considered`.
+
+### Duty of care (step 24)
+
+`src/lib/safety/` — §5o, and the first feature here that the seed deliberately cannot
+demonstrate. `RESEARCH.md` ranks duty of care ninth and justifies it in one sentence — *"we know
+where everyone is"* — and this module is what taking that seriously produces. **We do not.**
+What the app holds is a badge scan at 8:04, a carrier's word about a flight, a hotel stay, and a
 travel window somebody typed in June: evidence of *expected* presence at some instant in the
 past, never a location. **Nothing here reads a device**, and the moment something does this
 stops being a feature about who to call and becomes one about watching staff.
 
-`presence.ts` is pure and turns that evidence into a standing with **what it rests on and how
-old it is**. `rollcall.ts` is pure and holds the distinction the feature exists to protect:
-**presence and safety are different questions and one must never answer the other** — the
-person who badged in twelve minutes ago is who you most need to hear from about a 10am
-incident, so presence decides *who to call first* and only an answer closes a name.
-`access.ts` is the loosest gate in the codebase. `store.ts` builds every person's evidence in
-a **fixed number of queries**, which matters here for a reason the other modules did not
-have: this screen is read while something is going wrong.
+`presence.ts` is pure and turns that evidence into a standing with **what it rests on and how old
+it is**. `rollcall.ts` is pure and holds the distinction the feature exists to protect:
+**presence and safety are different questions and one must never answer the other** — the person
+who badged in twelve minutes ago is who you most need to hear from about a 10am incident, so
+presence decides *who to call first* and only an answer closes a name. `access.ts` is the loosest
+gate in the codebase. `store.ts` builds every person's evidence in a **fixed number of queries**,
+which matters here for a reason the other modules did not have: this screen is read while
+something is going wrong.
 
 Schema: **`safety_checks`** (a roll call is a row because a response is a response to a
-*request*) and **`safety_responses`** (append-only; `recorded_by_id` is the interesting
-column and it inverts §5e). Screens: `/safety` in the nav under Travel, and a **Safety** tab
-on the show — the tenth, and shown to **everybody**, which is the loosest tab gate here.
-`pnpm rollcall` / `pnpm rollcall <show id>` is the model without a screen. The seed runs a
-real roll call on the live show through the real store: Priya answers for herself, Tomás is
-answered **by Priya**, Ingrid has not answered, and Reese has not answered *and* has no phone
-number — so her silence means nothing and the count says so separately.
-
-**The five refusals:**
-
-1. **Unknown is not absent, and §5e inverts.** Booth coverage refuses to flag an unrecorded
-   travel window because flagging everybody flags nobody. A roll call is the opposite: the
-   person nothing can locate is the entire output and sorts **first**. Same gap, other
-   direction, because the cost of the two mistakes has swapped places.
-2. **A response is a response to a request.** One recorded before the roll call started does
-   not count, or "checked in safe" from a show last March marks somebody accounted for during
-   this morning's evacuation — silently, on the headcount read aloud.
-3. **A relayed answer counts, and §5e inverts a second time.** A `confirmed` typed by
-   somebody else is hearsay in a staffing number and lands as `secondhand`, uncounted. "I have
-   her on the phone, she is fine" is the same shape and the opposite decision: discarding it
-   has people ringing round a name already reached. It counts and it is **labelled**.
-4. **Contactable is not contacted.** "12 of 14 reached" over a roster where three have no
-   phone number is a lie about reach. They are counted apart and named — and the moment that
-   is useful is **before** an incident, which is why it is on the screen when nothing is
-   happening.
-5. **Nobody is marked safe by the system.** No timeout turning silence into assent, no
-   inference from a badge scan, and **no bulk "mark everyone safe"** — the obvious button, and
-   the only control that could produce a complete headcount without anybody having spoken.
-
-**The two corrections, both found by running the CLI rather than by a test:**
-
-1. **A travel window that has not started is not "nothing recorded".** Everybody at the live
-   show read `unknown` and sorted to the top — a list telling somebody to go and find four
-   colleagues who were at home, hours from a flight they had not taken. *Nothing recorded* and
-   *has not left yet* are opposite facts and only one is a person to worry about.
-2. **An interval that contains now does not age; an observation does.** Staleness was keyed
-   by *kind*, so a travel window covering this moment rendered `(stale)` because it had
-   *started* eighteen hours ago — which says "we have not heard in 18 hours" when the truth is
-   "we never had a signal, only a plan". It is keyed by **basis** now: a badge scan and a
-   landing perish, a window and a hotel stay do not, and their weakness is that they were
-   never precise, which is already carried by their producing `in_town` rather than
-   `at_venue`.
-
-That is the fourth, fifth and sixth defect this project has found by reading CLI output
-rather than from a test — after step 17's `onConflictDoNothing`, step 19's `SOURCE_LABEL`,
-step 22's deduplicated reading and step 23's crate count. **Reading the output is the
-practice**, and it is now the highest-yield thing in this repo.
-
-**What step 23 added, and where:** `src/lib/drayage/` — the drayage estimator, §5n, and the
-first thing this product **predicts** rather than records. It closes the largest silent line
-in §8a: the carrier's freight charge gets a crate to a dock, and drayage is everything after
-that — off the truck, to the booth, empty stored, empty returned, out again — billed by the
-general contractor off a rate card in that show's own manual, and on a medium booth it costs
-more than the freight did.
-
-`estimate.ts` is pure and is the whole step: hundredweight, the card's minimum, and **six
-refusals**. `edit.ts` validates a card (rates through `money/decimal.ts`, a decimal-point
-slip caught, blank ≠ zero). `access.ts` puts the rates with whoever runs the show and the
-**packing of a crate in anybody's hands**. `store.ts` is the only file touching rows,
-org-scoped through the show, and loads the portfolio in a fixed number of queries the way
-`cost/store.ts` does — and for its reason, since both now compute the same figure.
-
-Schema: new **`drayage_rate_cards`** (one row per show, upsert rather than history — a rate
-card is a transcription of a document rather than a decision, so what is worth keeping is
-whether it was *checked*; `confirmed_at` holds that and any edit withdraws it, exactly as
-re-dating a deadline does) and **`shipments.handling`** (`crated` / `uncrated` / `unknown`).
-`basis` has **no database default and no pre-selected option in the form**. Cost: `CostInputs`
-gained `drayage`, `ShowCost` gained a `DrayageMemo` that sits **beside** the total, and the
-*shipping line* gained a gap when there is freight and no quotable estimate — because the
-person who needs to know drayage is missing is reading the shipping figure, not a memo under
-it. Screens: a **Drayage** card on the Logistics tab with the arithmetic showing, a packing
-control on every crate, and a fourth memo on the Cost tab and `/cost`. `pnpm drayage` /
-`pnpm drayage <show id>` is the model without a screen. The seed writes a confirmed card on
-Automate, an **unchecked** one on the live show, and deliberately leaves Sensors Converge
-with real freight and no card at all.
-
-**The six refusals, and the second is the one that matters:**
-
-1. **No rate card, no number.** A $0 drayage line on a show with six crates reads as
-   *drayage was free* — §5a's fabricated bill with the sign flipped.
-2. **Rounding is per shipment and never in aggregate.** Two 150 lb crates are two shipments;
-   each takes the 200 lb minimum, so 400 lb is billable. Summing first gives 300 lb and bills
-   three hundredweight — **25% light**, on a figure nobody has an invoice to check yet, in
-   the direction §5j already named as the one nobody audits. Nothing about the wrong version
-   looks wrong.
-3. **A crate with no weight is not a weightless crate.** `weight_lb` is nullable, `numeric`
-   arrives as a string, and `Number(null)` is 0 — so this refusal lives or dies on one line
-   in `store.ts`. The crate is counted, named, and the figure becomes a floor.
-4. **A round-trip card is one charge, not two.** Estimating over the outbound *and* the
-   return crate doubles the biggest line on the show; reading a round-trip card as each-way
-   halves it. Either guess is a 100% error, so there is no default anywhere in the stack.
-5. **Uncrated is a surcharge and `unknown` is not `crated`.** This is the *honest* half of
-   §5j rather than a violation of it: that rule forbids defaulting to a **substantive**
-   value, and "nobody has said" is what it asks for. A card that states no special-handling
-   rate has not said the surcharge is nil either — an uncrated crate under a silent card is a
-   gap, not a crate billed at par.
-6. **An estimate is not an invoice and never joins the total.** `creditFundedCents` and
-   `consumedCents` are outside it because they are real money in the wrong period; this is
-   outside because **nobody has been billed it**. Once the real bill is filed the estimate
-   stays beside it, which is where the feature earns its place — "estimated $2,400, billed
-   $3,900" is a question worth asking, and the answer is usually refusal 5.
-
-**The two corrections step 23 turned up:**
-
-1. **A condition with no clock is not an alert, so this feature deliberately gets no
-   engine.** The obvious eighth engine says *this show has freight and no rate card* — true,
-   actionable, and exactly what the feed is for. It is still wrong. All seven existing
-   engines fire on something that **changes with time**: a date approaching, a scan going
-   quiet, a credit expiring, a lead passing its retention. "No rate card" is true the moment
-   freight is recorded, stays true until somebody types one, and never sharpens. A
-   permanently-true alert that never escalates is a nag, and §5a's whole argument is that one
-   of those teaches a team to close the next alert unread. `/cost` already says it, on the
-   line somebody is reading, and a second voice on a different schedule is §5e's room-block
-   cutoff in another costume.
-2. **A crate count derived from what was priced reports a show with six crates as having
-   none** — and it was found by reading `pnpm drayage`, not by a test. With no card the
-   estimator prices nothing, so a count taken from the priced rows was zero, and *a show with
-   no freight* and *a show whose freight nobody can price* rendered identically. That is the
-   exact misreading the feature exists to prevent, produced by its own output. `considered`
-   is on the estimate now and the accounting holds:
-   `perShipment + coveredByRoundTrip + unweighed + unpriceable === considered`. Third time a
-   defect has surfaced from reading CLI output rather than from a test — step 17's
-   `onConflictDoNothing`, step 19's `SOURCE_LABEL`, step 22's deduplicated reading.
-
-**What step 22 added, and where:** `src/lib/manual/` and
-`src/lib/integrations/extract/` — LLM deadline extraction, §5a's post-v1 half and the
-missing half of this product's own #1 feature. The two risks `CLAUDE.md` flagged as
-decide-first were settled and committed **before any code was written**, and both held;
-they are recorded at the end of `SCOPE.md` §5a along with the six corrections that turned
-up afterwards.
-
-`pdf.ts` is the only file in this product that touches a PDF. It reads a document into
-**numbered pages of plain text** and does nothing else, and that narrowness is the design:
-the model is sent text *we* extracted and never the document, because §5a's rule is that a
-human confirms every extracted deadline and **a person can only confirm against something**.
-Had the PDF gone to the model, its page-and-quote citation would be model output —
-indistinguishable on screen from a real one, and confirming against a hallucinated quote
-*launders* a guess into a figure the engine quotes as established, which is exactly what
-"moving a confirmed date withdraws the confirmation" exists to prevent. `anchor.ts` is
-therefore the file that makes the feature safe to confirm at all: a snippet either occurs on
-the page it cites or the deadline never becomes a row, `wrong_page` is kept apart from
-`not_found`, and the match is on normalized whitespace and never fuzzy. `candidates.ts` is
-the whole argument — six refusals, and **accepted + rejected + duplicate always equals what
-came in** (`leads/parse.ts`'s rule). `coverage.ts` is the arbiter and is deliberately
-stupid. `store.ts` writes the run before it writes any deadline. `access.ts` deliberately
-does *not* get the anybody-can-do-it split, for two reasons at once.
-
-`integrations/extract/types.ts` is the seventh integration and is a **new interface rather
-than a widened `AssistantModel`**: it performs one exchange with a document and **no tools
-at all**, because folding it into the assistant's interface would put a tool list within
-reach of a code path whose input is a file from outside the company. `anthropic/client.ts`
-uses structured output (`output_config.format`) rather than a tool, for the same reason, and
-like the assistant's adapter has **no `wire.ts` and no invented fixtures** — the vendor ships
-the types. Unlike every other adapter here it **has been run against a live key**, which is
-why step 22 was picked over Slack, SSO, hosting, AeroAPI and EasyPost.
-
-Schema: new append-only **`manual_extractions`** (`lead_imports`' shape and its reason —
-proposed, accepted, rejected, duplicates, every rejection with its page, and `truncated`
-because a half-read manual reports fewer deadlines with the confidence of a full one), and
-`show_deadlines` gained `extraction_id`, `source_page`, `source_snippet` and
-`due_time_assumed`. Screens: the readiness tab grew a **Read the exhibitor service manual**
-card that leads with the refusals rather than the count, and every extracted row now renders
-its page and its verbatim quote **next to the control that confirms it**. `next.config.ts`
-raises the Server Action body limit to match `MAX_MANUAL_BYTES`, so the refusal comes from
-the store with a sentence rather than from the framework with a body-size error.
-`pnpm manual <show id> <file.pdf>` is the engine without a screen and
-`pnpm manual:probe <file.pdf> --opens …` is the capture-equivalent. **The seed deliberately
-does not extract anything** — see correction 3.
-
-**The six corrections step 22 turned up, and one repair:**
-
-1. **An anchored deadline does not anchor its penalty, and the penalty is the half that
-   becomes a bill.** The anchor proves the *date* was read off the page and proves nothing
-   about a figure quoted beside it: a model can reproduce a real sentence perfectly and
-   attach an amount that is nowhere in the document, and the snippet still verifies. §5a's
-   thesis is that "$2,800 surcharge if missed" gets acted on where a date does not, so that
-   is precisely the field that must not be inventable. An amount now has to appear **inside
-   the verified snippet**, compared on digits so "$3,125.00" and "3125.00" are one claim, and
-   when it does not the figure is dropped while `penaltyNote` survives — "25–40% surcharge"
-   is a true thing the manual said, and a dollar amount nobody printed is a fabricated bill
-   *with a citation attached*, which is worse than one without.
-2. **A time of day is never invented, and step 11's rule inverts.** That step made a local
-   time mandatory because a warehouse closing at 4:00pm rounded to 5pm is a drayage penalty —
-   a rule about not *rounding a printed hour*. Most manuals print no hour at all, so applied
-   naively it files an assumption in the exact column it exists to protect. An extracted row
-   with no printed time is created at end of day, **flagged**, alerts normally as a date, and
-   **cannot be confirmed** until somebody sets the hour. Editing clears the flag, because
-   typing a time is a person deciding what the hour is whether or not they changed it.
-3. **The seed cannot demonstrate this feature, and must not — the first step where that is
-   true.** Every step since 8 built its screens' contents through the real stores, and §9
-   requires `pnpm db:reset && pnpm test` to work with zero keys. Both cannot hold here:
-   extraction needs a key, and the alternative — seeding extracted-looking rows with
-   hand-written snippets — would file deadlines claiming to have been read off a document
-   nothing read, on the screen where somebody confirms them into quoted penalties. Same
-   argument that leaves this the one integration with **no `recorded` provider**.
-4. **A deduplicated reading still counts as read, and only the probe found it.** The sweep
-   asks "did the extractor *see* this date", and the first version scored only surviving
-   rows — so every cutoff a well-organised manual prints twice appeared on the unclaimed list
-   as a possible miss. An arbiter that cries wolf is the one failure an arbiter cannot have.
-   No test caught it because the tests were written to the rule; reading `pnpm manual:probe`
-   output caught it in one line, which is how step 17 found `onConflictDoNothing` and step 19
-   found `SOURCE_LABEL`.
-5. **A wrong kind is corrected rather than rejected.** The taxonomy is ours, so a misfiled
-   row is a labelling mistake and discarding a real February cutoff over it trades a date for
-   a category. It lands as `other` with the model's word recorded. The opposite call is right
-   for a date that will not parse, because there is nothing there to recover.
-6. **A test that asserts a seed property by reading every row stops being true the moment
-   somebody uses the product.** `tests/foundation.test.ts` required every `advance_order`
-   deadline to carry a dollar figure — correct about `scripts/seed.ts`, and it queried the
-   whole table. The first extracted deadline broke it legitimately, by correction 1. It is
-   scoped to hand-entered rows now, which is what it always meant.
-
-**The repair, and it is this file's own ground rule.** `scripts/deadlines.ts` rendered due
-dates with `toISOString().slice(0, 10)` and had done since step 11. Invisible for eleven
-steps because every seeded deadline carries a daytime hour, so UTC and the show's calendar
-agreed — and visible within a minute of the first extracted deadline, which is filed at
-23:59 local and is therefore *tomorrow* in UTC. The register printed every one of them **a
-day late**: a register that moves a date by a day is the failure the §5a engine exists to
-prevent, arriving through the tool built to inspect it. The UI rework found four copies of
-this in `src/app`; this was a fifth, in `scripts/`, where nothing was watching. The other
-`toISOString().slice(0, 10)` calls under `scripts/` are on **date-only columns** and are
-correct; `scripts/leads.ts` is the one arguable case left and is deliberately untouched,
-because fixing it means choosing *whose* zone a lead was captured in.
-
-**What step 21 added, and where:** `src/lib/integrations/notify/` — the sixth integration
-behind the usual interface, and the first that carries something **out** of the workspace
-rather than asking a supplier a question. That inverts the risk the other five manage: a
-transport cannot report a false crate, but it can put a colleague's fare in a room that was
-never entitled to it, and unlike a wrong reading that cannot be corrected on the next poll.
-So `types.ts` takes a **resolved address and a rendered message and does nothing else** — no
-database, no audience, no idea what an alert is. `slack/` is the Web API (wire / client),
-written to the published reference and **never run against a live workspace**, in the same
-words AeroAPI's, EasyPost's and Salesforce's headers use; it asks for exactly three scopes
-and is write-only. `console/` is deliberately **not** a `recorded` provider (below).
-`notify/provider.ts` selects with no fallback, with one difference from the other five: unset
-is a legitimate state and resolves to `console`, while a *name this app does not have* still
-throws, because a typo must not quietly resolve to the transport that reaches nobody.
-
-`src/lib/notify/` is the model, split the way everything since step 8 has been.
-**`plan.ts` is the whole step**: pure, and five refusals — an `info` condition stays on the
-screen while a notice goes at any severity, eleven rows are one sentence (through
-`groupFeed`, never a second grouping), switching a transport on does not replay history,
-only somebody who was told is told it ended, and a personal alert never reaches a shared
-room. It takes **no user id and does no lookup**, so the only rows it can put in a message
-are rows a query already narrowed — `assistant/tools.ts`'s posture, one layer out.
-`store.ts` is the only caller of a transport and the only writer of the two tables.
-`access.ts` puts a destination in the **subject's own hands and not an admin's**.
-`src/lib/schedule/` is the job: `nightly.ts` (sweep → erase → carry, and it stops rather than
-delivering last night's answers as tonight's) and `principal.ts` (the second principal here
-that is not an `Actor`, and the first that erases).
-
-Schema: **`notification_channels`** (a person's destination, resolved by the transport and
-never typed; `kind` exists so the planner can refuse a channel), **`notification_deliveries`**
-(append-only, and the rail is `(alert, channel, phase, alert_created_at)` — the last segment
-inherits `alerts/store.ts`'s own recurrence decision rather than inventing a second one), and
-**`scheduled_runs`** (append-only; `trigger` keeps "somebody ran it" and "it runs" apart).
-`FeedAlert` gained `userId`, carried so the channel refusal can be a pure function.
-Routes: `POST /api/cron/nightly`, and `/api/cron` is public in Clerk mode for a sharper reason
-than `/api/intake` — a scheduler has no browser, so a Clerk bounce answers 302 and every
-hosted cron reads that as success. Screens: `/settings/notifications`, **the only entry under
-Settings that is not admin-only**, and one line on `/alerts` that the feed could never say
-about itself. `pnpm nightly` / `--dry` / `--deliver` / `--standing` is the job without a
-screen. The seed connects two people **through the real store**, runs the delivery pass
-**twice** (the second carries nothing — the rail holds), and records one `manual` run, which
-is the honest standing of a freshly seeded workspace.
-
-**The five corrections step 21 turned up, and one repair:**
-
-1. **A `recorded` transport is the one replay this codebase cannot have.** The other five
-   obey a single rule — describe a *shape*, assert nothing about this workspace — and they
-   work because what is replayed is a supplier's *answer*. A transport has no answer. What it
-   produces is an event in the world: somebody's phone buzzed. There is no shape of that
-   which is not simply a claim, and a fixture returning `sent` would fill the delivery log
-   with the exact lie the feature exists to prevent — a screen saying everybody was told, on
-   a workspace where nothing has ever been carried anywhere. So `console` composes the real
-   message, from the real alerts, through the real planner, and delivers it **to nobody**:
-   `outcome: 'rendered'`, `reachesPeople: false`, and `/settings/notifications` leads with
-   the sentence rather than hiding it.
-2. **Slack answers failures with HTTP 200, and the correct client for every other provider
-   here is the wrong one.** Duffel, AeroAPI, EasyPost and Salesforce all use status codes, so
-   `if (!res.ok) throw` is right four times and catastrophic the fifth: a bad token, a person
-   not in the workspace, an archived channel and a malformed payload all arrive as
-   `200 {"ok": false, "error": …}`. A client that checks `res.ok` records all of them as
-   delivered, and **that failure has no symptom** — the log fills with `sent`, the screen says
-   everybody was told, and nobody's phone ever buzzes. One `call()` reads `ok` before anything
-   else, and it is the one thing about this adapter a docs-written fixture *can* catch.
-3. **Idempotency had to be inherited rather than invented, and a recurrence is the proof.**
-   The tempting rail is "one delivery per alert". That is right for a condition holding nine
-   nights and wrong for one that resolved and came back — which is news, and which
-   `alerts/store.ts` already marks by restarting `created_at`. So the rail carries
-   `alert_created_at` and the transport gets both cases from the alert store's own decision. A
-   second, quietly different dedupe rule beside the first is the `SOURCE_LABEL` trap in
-   another costume.
-4. **Turning a transport on must not replay a year of alerts at somebody.** The obvious first
-   run against an existing workspace delivers every standing alert at once, and the person it
-   happens to turns the integration off inside a minute and is right to. Anything raised
-   before the destination existed is **suppressed with that reason recorded**, so the log can
-   say why somebody was not told rather than being silent about it — and a recurrence is
-   still news, because `created_at` restarts.
-5. **The order the refusals run in changes what a number means.** Judging "is there anywhere
-   to send this" before "is this worth an interruption" makes the run report a person with
-   nine `info` rows and no Slack account as nine missed notifications — a shortfall the
-   transport was never going to fill, growing every time an engine says something quiet. The
-   floor comes first, so `unreachable` counts **alerts worth carrying**; and the
-   never-told check comes before it too, so an absent destination is not blamed for a
-   resolution nobody was owed.
-
-**The repair:** `pnpm alerts --sweep`, `pnpm flights` and `pnpm shipping` ran without
-`dotenv`, while `next dev` loads `.env.local`. So the CLI and the app disagreed about the
-environment: `pnpm alerts --sweep` reported the flight and freight engines as **could not
-run** on a workspace where they were configured, and the endpoint running the same sweep a
-minute later ran them. "Could not run is not nothing to say" is a sentence the whole design
-leans on, and it was being produced by the script's own env loading rather than by the
-workspace. All four provider-selecting CLIs load `.env.local` now.
-
-**What step 20 added, and where:** `src/lib/dayof/` — the offline day-of screen, and the
-first step that changes how the *client* works rather than adding another model behind
-another screen. Split the way everything since step 8 has been, with two files that are new
-in kind: **`targets.ts` and `outbox.ts` are pure and shipped to the browser**, because a
-target-company alert has to fire while the name is being typed and a queue has to be
-reconciled with no server to ask. `targets.ts` matches a company **exactly, after stripping
-legal suffixes, and never fuzzily** — the failure of a loose match is not a wrong row, it is
-somebody at a booth telling a stranger their company is one we came for — and *met* is
-derived from the leads rather than stored. `outbox.ts` is the device queue: every item is
-accounted for, `reconcile` throws rather than dropping one, a rejected item is **kept and
-marked** instead of retried forever, and our own re-send (`already`) is deliberately a
-different answer from somebody else's duplicate. `snapshot.ts` carries one instant and
-`degradeVerdicts` takes the present tense off a crate line past forty-five minutes while
-leaving the recorded facts standing. `access.ts` puts the screen and the target list in
-**anybody's** hands and editing the list in an approver's. `store.ts` builds the snapshot in
-a fixed number of queries and drains the queue **through the real `captureLead`**, as the
-person who typed it.
-
-Schema: a new **`show_targets`** — with no `met_at` column, deliberately — and
-`meetings.external_ref`, unique per show, which is `leads.external_ref`'s idempotency rail
-extended to the other thing a booth records. Routes: `GET /api/day-of/snapshot` is the only
-screen in this product whose data leaves the server as data, and `POST /api/day-of/sync`
-answers **every** item it is sent. Screens: `/day-of` (a picker, ordered by proximity to
-*now*), `/day-of/[id]` — **the only page here that is not a Server Component, whose server
-half deliberately fetches nothing** — and a Target accounts card on the show's Leads tab.
-`public/sw.js` is hand-written and caches only the day-of pages; `src/app/manifest.ts` is the
-installable manifest and starts at `/day-of`. `pnpm day-of` / `pnpm day-of <show id> --stale
-90` is the model without a screen. The seed grows four target accounts on the live show
-through the real store: one met, one met under a different spelling, one must-meet that is
-unmet *and* unowned, and one watch.
-
-**The eight corrections step 20 turned up:**
-
-1. **A cached screen is §5f's unchecked flight with every row at once, and it is worse.**
-   There, an unrefreshed leg rendered `scheduled` — the calm one — so a board nobody had
-   asked anything in eight hours showed a full slate of on-time flights. A cached page has
-   the same defect with *no visible cause*: it is drawn, the numbers are there, and nothing
-   about a phone with no bars says the crate reading is from Tuesday. One instant on the
-   snapshot, a clock passed by every reader, and the age is a line at the top.
-2. **A fact and a verdict age differently, and blanking both is not the cautious option.**
-   "Booth 2209" does not move because a phone lost signal; "crate on time" is computed from
-   an estimate that moves hourly. So `derivedFrom` splits them, and the line that survives
-   going stale is the one that matters most on a move-in morning — *on a dock, nobody has
-   confirmed it at the booth* is a signature, not a guess about a truck. Withholding
-   everything would have removed the most actionable sentence on the screen in the name of
-   safety.
-3. **The server half of the page must fetch nothing.** Whatever HTML it returns is cached and
-   served again tomorrow, so data rendered into it would be a second copy of the show's facts
-   with no instant attached — two sources, one of them invisible, disagreeing on a morning
-   when somebody is deciding whether the booth will arrive. There is exactly one copy on the
-   device, in IndexedDB, and it carries the moment it was true. What the document holds is
-   the shell and an identity.
-4. **A queued capture is not a captured lead, and the counts never merge.** §8c's mitigation
-   is that a thin number is visibly thin; a count that quietly included rows sitting in a
-   phone would be that failure with a friendlier cause, resolving itself — wrongly — the
-   moment somebody walked past a wifi point. The word is *device* rather than *pending*,
-   because what a person needs to understand is a location, not a process.
-5. **A rejected item is kept, and that is not the obvious call.** Deleting it destroys the
-   only copy of a real conversation because a field was blank. Retrying it forever leaves a
-   badge that is always on, which is a badge that is off. So it stays, blocked, with the
-   server's own sentence on it, and it is the one thing in this app a person fixes by editing
-   what they typed.
-6. **Our own re-send and somebody else's duplicate must stay different answers.** Both are
-   duplicates to the database and only one is news. `already` means an earlier attempt landed
-   and we never heard — the ordinary case, and a success. `duplicate` means a colleague met
-   this person, which is worth saying out loud. Collapsing them tells somebody their
-   colleague got the buyer when in fact their own phone did.
-7. **A cache outlives the session that was allowed to read it.** Every row in a snapshot was
-   fetched under one person's scope and a phone in a booth gets handed to whoever is free, so
-   the snapshot carries its actor, a mismatch **wipes** IndexedDB and the worker's caches
-   rather than filtering what is drawn, and `sw.js` caches only the day-of pages — caching
-   `/cost` or `/travel` would leave a colleague's fares on a device long after the session
-   ended.
-8. **`pnpm smoke` cannot check this page, and that is the first time.** Every other route's
-   content is server-rendered, so a 200 plus a phrase proves the page resolved its data. Here
-   the phrase in the HTML is the *shell*, and everything real arrives from IndexedDB and a
-   fetch after hydration. The check is kept because it still catches a broken import, and the
-   gap is named rather than papered over: this page was verified by driving a headless
-   browser against a running dev server, which is not in `pnpm test` and should not be —
-   "no keys, no network, no browser" is a ground rule.
-
-**What step 19 added, and where:** `src/lib/integrations/crm/` — the fifth integration
-behind the usual interface, and the first where §11.6's "one well rather than both
-adequately" resolved to *one at a time* rather than to one. `types.ts` decides nothing and
-carries **exactly one write method**, because §8b's "never own the pipeline" only survives
-contact with a second customer if the interface is structurally unable to widen; it also
-splits `matchByExternalId` from `matchByEmail`, because one sends nothing about a person
-and the other sends a stranger's address to a third party. `salesforce/` is REST v60 + SOQL
-(wire / normalize / client, written to the published reference and **never run against a
-live org**, in the same words AeroAPI's and EasyPost's headers use). `hubspot/client.ts` is
-**declared and throws on every method**. `recorded/` replays a conversion *shape*, not a
-pipeline. `roi/provider.ts` selects between them with **no fallback**, and answers
-`hubspot` with what finishing it takes rather than a spelling complaint.
-
-`src/lib/roi/` is the model, split the way everything since step 8 has been.
-`attribution.ts` is pure and is the honest hard part: five refusals, of which the first —
-first touch is decided across the **whole calendar** — is the one a naive implementation
-gets wrong forever and silently. `rollup.ts` is pure and holds §5k: the two-floors rule,
-the replayed-pipeline withholding, matching coverage as a third floor, §8e's maturity
-horizon as an enforcement rather than a footnote, and `Quotable` — a figure or the sentence
-saying why there is not one. `alerts.ts` is the **seventh engine**, reports an unanswered
-question rather than a broken thing, and deliberately never alerts on a low multiple.
-`store.ts` gates email matching on `marketabilityOf` and keeps `withheld` apart from
-`unmatched` in every count it produces. `access.ts` inherits the cost gate rather than
-choosing a new one, and the assistant gained `show_roi` — **the second tool ever withheld
-from a Member**, for the same reason the Cost tab is not rendered for one.
-
-Schema: new `crm_links` (how a match was made, and whether the attribution went back),
-`crm_opportunities` (the CRM's facts, cached — and **no attribution stored**, because it is
-derived at read time so changing the window re-derives rather than migrates), and
-`crm_sync_runs` (append-only, keeps every refusal); `show_outcomes` gained
-`attribution_model`, `source` and `replayed`. Screens: `/roi` in the nav, a **ROI** tab on
-the show — the ninth, and not rendered for a Member — and `/settings/crm`. `pnpm roi` /
-`pnpm roi <show id>` / `pnpm roi --sync` is the engine without a screen. **The seed grew an
-eighth show and that was the finding**: every show was either in the future or six weeks
-closed, so every ROI verdict was correctly withheld and the dashboard could not be shown
-working at all. MedTech Summit 2025 is fourteen months back with a *complete* cost — the
-only show on the calendar whose multiple is quotable — and one buyer on it was met again at
-Automate 2025, so cross-show first touch is a row rather than an assertion in a test.
-
-**The six corrections step 19 turned up, and one repair:**
-
-1. **Two floors in a quotient do not cancel; they widen.** A lead floor pushes cost-per-lead
-   up and a cost floor pushes it down, and the tempting reading is that they roughly offset.
-   Neither magnitude is known, so the combination is unbounded in both directions while
-   *looking* better founded than either input — it is further from the missing data. So a
-   figure built on two floors is withheld rather than averaged or caveated, and
-   `mayQuotePerLead`, written a step early for exactly this, is obeyed rather than routed
-   around.
-2. **A replayed opportunity is a different object from a replayed crate, and a banner is not
-   enough.** The other three replays describe a *shape* and asserting it here is harmless. A
-   pipeline figure has no shape separable from its claim: "$290,000 sourced by MedTech" is a
-   sentence about this company, landing beside a real cost in a headline. So the replay is a
-   *conversion* shape projected onto dates we really met people, it invents no person it was
-   not asked about, it hands back nothing dated in the future (the EasyPost rule), it
-   **refuses to report a write it did not make**, and every ratio derived from it is withheld
-   as well as labelled.
-3. **First touch is a fact about our own data, and the naive test favours the newest show
-   forever.** "Created after this show, inside the window" hands every recurring buyer's
-   opportunity to whichever show met them most recently — annually, silently, in the
-   flattering direction. First touch is the earliest capture of that person *anywhere*,
-   which inverts §5j: identity is within a show for **counting** and across shows for
-   **crediting**. Two more fell out: influenced deliberately does not sum, so the portfolio
-   prints the distinct total; and when first touch lands outside the window the runner-up
-   does not inherit the credit — found by a test written to assert something else.
-4. **Our own consent posture is a hole in the pipeline figure, on purpose, and it must not
-   look like the vendor's fault.** Matching by email transmits personal data, so it is gated
-   on `marketabilityOf`; every badge-scanner lead in this workspace therefore never reaches
-   a CRM. That is step 18 working. **Withheld is us refusing and unmatched is the CRM
-   answering**, and a single "match rate" collapsing them would present a deliberate refusal
-   as a data-quality problem — which is the misreading that gets the refusal deleted.
-5. **An unbuilt adapter must not be able to produce a finding.** The obvious HubSpot stub
-   returns `[]` and `noMatch`. But "we captured 41 leads and the CRM knows none of them" is
-   a real, alarming, correct answer this product exists to surface — so a stub returning it
-   out of its own absence is §8a's fabricated bill wearing the costume of a placeholder, on
-   the screen a budget is set from. Every method throws. Not-built and nothing-found have to
-   stay different answers.
-
-6. **Three defects in the Salesforce client that a fixture written from the docs could
-   never have caught, and one of them is §5j's import rule in an adapter.** `query()` did
-   not follow `nextRecordsUrl` — Salesforce pages at 2,000 records — so a large customer
-   would have got a pipeline figure that was quietly short, reported with exactly the same
-   confidence as a correct one, with nothing to re-count against; `wire.ts` had already
-   described that field as "a path we follow rather than ignore", so the comment was right
-   and the code had not caught up. `opportunitiesFor` interpolated *every* matched contact
-   id into one SOQL string that rides in a GET query string, which is fine on the eighteen
-   leads in the seed and breaks at exactly the customer size where the feature earns its
-   place. And `CurrencyIsoCode` exists **only in a multi-currency org** — selecting a field
-   an org lacks is a hard `INVALID_FIELD`, not a null — so the obvious query fails outright
-   on the majority of Salesforce orgs; it is now probed once and falls back to the org's own
-   `DefaultCurrencyIsoCode`, *read* rather than defaulted to `USD`, because a currency label
-   is part of a money figure. All three are covered by unit tests against a mock transport,
-   which is what is verifiable without an org — the four things that are not are Q1–Q4 in
-   `pnpm salesforce:capture`.
-
-**The repair:** `alerts/store.ts` kept a hand-written `SOURCES` array beside the union in
-`feed.ts`, and adding `'roi'` to the type compiled everywhere, wrote correct rows, and read
-every one of them back as `unknown` — so a whole engine's output was labelled "Other" and
-`linkFor` sent it to the wrong page. Nothing failed. It was caught by reading the CLI's
-output, which is how step 17 found `onConflictDoNothing`. The guard is now derived from
-`SOURCE_LABEL`, whose `Record<AlertSource, string>` the compiler already checks
-exhaustively, so one check does both jobs.
-
-**What step 18 added, and where:** `src/lib/leads/` — capture, and the first table in this
-product holding personal data about somebody who is not our user. Split the way everything
-since step 8 has been. `coverage.ts` is pure and is the argument §8c was missing: a count is
-introduced with **"at least"** whenever anybody rostered on a booth shift recorded nothing,
-the silent people are *named*, "on the booth" is a shift assignment rather than attendance,
-an unrostered show is `unknown` and never 0 of 0 — and `mayQuotePerLead` **withholds** cost
-per lead over a thin denominator instead of publishing it with an asterisk. `consent.ts` is
-the GDPR half: `unknown` is a recorded answer rather than a default, consent with no
-timestamp or no recorded notice is a claim about consent, and **erasure is redaction**.
-`parse.ts` is a CSV reader (quotes, embedded newlines, CRLF, Excel's BOM) plus an import
-planner in which accepted + rejected + duplicate always equals the row count. `dedupe.ts` is
-identity *within a show* — the scanner's reference, then the email, and name-plus-company as
-a suspicion that is never auto-merged — and `findPossiblePairs` is what makes that refusal
-honest rather than a nicer word for discarded, offering the pair to somebody who was there.
-`alerts.ts` is the **sixth engine** and mostly says nothing. `intake.ts` is the REST credential, and an `IntakePrincipal` is deliberately not an
-`Actor`. `access.ts` splits the count from the person behind it, and capture from erasure.
-`edit.ts` is pure validation. `store.ts` is the only file touching rows, org-scoped through
-the show.
-
-Schema: `leads` gained `source`, `import_id`, `external_ref` (unique per `(show, ref)`),
-`duplicate_of_id`, `consent_notice`, `redacted_at` / `redacted_by_id` / `redaction_reason`
-and `updated_at`; `meetings` gained `no_show_at`, `created_by_id` and timestamps; new
-append-only **`lead_imports`** (which keeps every rejection with its row number) and
-**`intake_keys`** (hash only, show-scoped, revoked rather than deleted). Screens: `/leads`
-in the nav, a **Leads** tab on every show — the eighth, and shown to everybody — and
-`/settings/intake` under Settings. `POST /api/intake/leads` is the first route here that
-authenticates without `getActor()`, and `src/proxy.ts` marks `/api/intake` public in Clerk
-mode because it carries its own credential. The assistant gained `lead_capture` — counts and
-coverage, and no personal data at all. `pnpm leads` / `pnpm leads <show id>` /
-`pnpm leads --sweep` / `pnpm leads --retention` is the engine without a screen. The seed
-captures at the booth as four different people, posts through the **real** intake path
-including the retry a scanner makes on bad wifi, imports a CSV through the **real** parser
-(one row with no name, one duplicate — both rejected by the planner rather than by hand),
-and runs the sweep **before and after** the import so a genuinely resolved lead alert exists.
-
-**The six corrections step 18 turned up:**
-
-1. **A lead count that does not say who did not capture is §8a's fabricated bill, on the
-   return side.** §8c blamed rep behaviour, which is the cause and about a third of the
-   problem. "34 leads" carries the authority of a computed figure; if three of six people on
-   the booth recorded nothing it is a floor wearing a total's clothes. So the count is never
-   rendered bare, the silent people are named rather than counted, and the sentence is
-   computed once so the portfolio and the show's tab cannot disagree. And **cost per lead is
-   withheld**, not caveated: over an undercount it comes out too *high*, which reads as a
-   bad show, so a thin count does not merely mislead — it drives the exact decision §8c
-   warns about, cutting a show that worked.
-2. **Duplicates inflate in the flattering direction, which is the direction nobody audits.**
-   Cost per lead is a quotient, so a 15% duplicate rate makes a show look 15% cheaper per
-   lead than it was. Identity is the scanner's own reference, then the email, **within a
-   show only** — the same person met in June and October is two engagements with two costs —
-   and name-plus-company is surfaced and never auto-merged, because silently dropping a real
-   second lead is the same failure pointing the other way.
-3. **An import that skips a row reports a smaller number with the same confidence.**
-   Accepted + rejected + duplicate always equals the row count; the rejections keep their
-   row numbers and reasons on the batch record; the batch is written even when nothing was
-   accepted, or a person is certain they imported and the screen is certain they did not.
-   The mapping is confirmed rather than applied — a `Company` column that is really the
-   *exhibitor's* would be filed as every lead's employer, plausibly, forever. And an imported
-   lead is attributed to **nobody**, not to whoever uploaded the file, or one person's
-   coverage reads as perfect and everybody else's as worse.
-4. **A lawful basis is never manufactured out of an absent column.** A badge vendor's export
-   has no consent field, so a default would invent a basis from the absence of one — §5a's
-   fabricated bill in a jurisdiction that fines for it. `unknown` is a real answer; the row
-   is still lawfully held for the follow-up the person started, still counted, and withheld
-   from anything outbound. Refusing to market is not refusing to keep.
-5. **Erasure must not erase the count.** Deleting the row would move every ROI figure that
-   show ever produced, silently, months later — cost per lead would improve on its own. So
-   erasure nulls the personal columns (including `crm_external_id`, or our erasure is a
-   fiction with a footnote) and keeps the shell: the person is gone, and that a conversation
-   happened is not personal data. `retention_overdue` is `critical` from the first night,
-   being the only alert in the product that reports our own non-compliance.
-6. **The intake endpoint is the first principal here that is not a person, and it must not
-   be an `Actor`.** A service user with a role flows through `getActor()` into every store
-   function in the codebase; an `IntakePrincipal` is the wrong *type* for all of them, so
-   the compiler enforces a boundary a role check would only describe — §6f's lesson in a
-   different costume. And **a retry is a success**: scanners on convention-centre wifi retry
-   requests whose responses they never saw, and a 409 teaches an integration to treat a
-   recorded lead as a failure, after which somebody writes the loop that manufactures the
-   duplicates the endpoint exists to prevent.
-
-**What step 17 added, and where:** `src/lib/alerts/` and `src/lib/cost/`, split the way
-everything since step 8 has been. `alerts/feed.ts` is pure and is the whole argument: an
-alert row records that a notification was **owed at an instant**, and a feed shows it later,
-so `standingOf` reports which of five things it has become — `new`, `repeating`,
-`unchecked` (nothing has re-run the sweep, which is §5f's rule about an unchecked flight
-applied to the thing reporting the flights), `acknowledged` (seen, still true) and
-`resolved`. `linkFor` reads `source` rather than regexing a dedupe key. `groupFeed` collapses
-one sentence said by many rows. `alerts/access.ts` refuses an org-wide read at all.
-`alerts/store.ts` is now the **only** file that writes the table: `syncConditionAlerts`
-takes an engine's complete current plan, upserts it, and **closes every key the engine no
-longer plans**, which is the only signal a crate arriving produces. `alerts/sweep.ts` runs
-all five engines and names the ones that could not run. `cost/rollup.ts` is pure and holds
-the six refusals; `cost/store.ts` loads every show's inputs in a fixed number of queries so
-the portfolio and a show's tab cannot disagree; `cost/access.ts` is Travel Manager and
-Admin.
-
-Schema: `alerts` gained `source`, `kind` (`condition` vs `notice`), `last_seen_at`,
-`occurrences`, `resolved_at` and `acknowledged_by_id`. Screens: `/alerts` and `/cost` in the
-nav, a **Cost** tab on the show that is not rendered at all for a Member, and one line on
-the overview above everything else. The five engines' fan-out logic stayed where it was —
-each knows who cares about a stalled crate — and only the write is shared. The seed
-completes one deadline and re-runs the sweep so a genuinely **resolved** row exists, and
-acknowledges one alert *as the person it was addressed to*.
-
-**The five corrections step 17 turned up:**
-
-1. **`onConflictDoNothing` muted every recurrence, and only a feed made it reachable.** A
-   condition that ends and comes back under the same dedupe key reused the row somebody
-   acknowledged weeks ago — so the second occurrence arrived pre-dismissed and nobody was
-   told. Invisible while nothing read the table, and the first thing a feed would have
-   found. The writer upserts now, `occurrences` and `last_seen_at` move each night, and a
-   row that had resolved comes back un-acknowledged with its clock restarted.
-2. **Only an engine may resolve an alert, and it can only do so because it plans over
-   everything.** A person acknowledging is not a person fixing, so the dismiss button that
-   clears a board would be the acknowledged-and-forgotten failure with a nicer interface.
-   Resolution is therefore absence-from-tonight's-plan — which is sound *only* because all
-   five engines plan over their whole population rather than over what changed, each for
-   its own already-stated reason. An engine that planned over a subset would silently close
-   every row it did not look at.
-3. **An engine dedupes a fact; a feed has to dedupe a sentence.** Eleven people on one
-   re-timed flight is eleven correct rows and one piece of news for the manager who
-   receives all eleven. No engine can see that, because each only ever looks at one leg.
-   Grouping is a view concern and deliberately not a change to any dedupe key.
-4. **A dry run is not spend, and the seeded workspace is made entirely of dry runs.**
-   `bookings.live` is the provider's word and the ground rule above says it exists to
-   protect the true-cost rollup — this is the step where something finally read it. A
-   rollup that summed charged amounts would have looked plausible and been fiction on day
-   one. Same shape three more times: a credit is not a discount (the fare was paid last
-   year, on a cancelled ticket, and belongs to that show), stock consumed is not stock
-   bought, and committed is not paid.
-5. **A cost figure that does not say what it is missing is the fabricated bill §5a
-   refuses to quote, at the scale of a show.** A computed number carries authority a
-   spreadsheet never had, so a confidently wrong one is worse than what it replaced. Every
-   line carries its coverage, the headline word is "at least" unless nothing is missing,
-   and a *silent* line is not a zero — a show with no booth-space figure is not a cheap
-   show, it is a show nobody has entered the invoice for.
-
-**What step 12 added, and where:** `src/lib/team/` and `src/lib/lodging/`, split the way
-everything since step 8 has been. `team/coverage.ts` is pure and holds the whole argument:
-`standingFor` says whether one assigned person can actually work one slot (on the roster,
-confirmed, in town), `coverageFor` reports `assignedCount` beside `effectiveCount` and
-flags a shift **overstated** when a roster count would have called it full, and
-`planPersonalClashes` catches the booth shift that runs into the dinner. `team/conflicts.ts`
-is cross-show double-booking, compared on `arrives_on → departs_on` and marked `possible`
-rather than `certain` where it had to fall back to show dates. `team/edit.ts` is pure
-validation plus `describeDetachment` — the sentence naming what un-staffing somebody does
-*not* cancel. `team/access.ts` is the staff-vs-answer split. `lodging/edit.ts` refuses a
-cutoff that falls inside the stay; `lodging/store.ts` is where a cutoff derives its register
-row. Schema: `show_attendees.responded_at` + `updated_at`, `booth_shifts.updated_at`,
-`lodgings.cost_center_id` + `updated_at`, `side_events.cost_center_id` + `updated_at`,
-`show_deadlines.lodging_id` (unique), and a unique index on `(side_event_id, user_id)`.
-Screens: `/shows/[id]/team` is writable — invite, answer, re-window, shifts, assignment,
-check-in, side events, guest lists — and `/shows/[id]/lodging` is a new sixth tab.
-`pnpm roster` is the coverage model without a screen. The seed builds all of it **through
-the real stores**, and grew a fifth show (Sensors Converge, overlapping Automate) so both
-conflict cases are live.
-
-**The four corrections step 12 turned up:**
-
-1. **A roster count lies about the future the way a presence count reports the past.** §4
-   already keeps `booth_shift` and `shift_presence` apart because rostered ≠ present. There
-   is a third state in front of both: *assigned* is not *able to be there*. "3 of 3
-   assigned" counts rows in `shift_assignments`, and any of those three can be somebody who
-   never accepted, somebody who declined the show, somebody not on the roster at all, or
-   somebody whose flight lands after the shift starts — each a hole that renders as a
-   filled slot, and a filled slot is the one thing nobody looks at again. Coverage counts
-   who can actually stand there, and `overstated` names the shifts the naive count would
-   have reassured you about. An *unknown* travel window is not absence: plenty of people
-   drive, and flagging every unrecorded window flags the whole roster, which is the same as
-   flagging nobody. `SCOPE.md` §5e.
-2. **Because coverage counts confirmations, the confirmation has to come from the person.**
-   A `confirmed` typed by whoever built the roster is hearsay inside a staffing number. So
-   staffing only ever *invites*, `responded_at` records that the subject answered for
-   themselves, and answering an invitation plus setting your own travel window is the one
-   control a Member gets on the tab. Step 10's split — reporting is not a privilege,
-   changing the plan is — arriving from a third direction. `SCOPE.md` §3.
-3. **A double-booking is between travel windows, not between show dates.** Comparing show
-   dates flags the person who works one show Monday–Tuesday and the next Thursday–Friday —
-   the ordinary busy quarter — and a warning that fires on the normal case is one nobody
-   reads. But a *missing* window is not a clear either, and most rosters are half-empty of
-   arrival dates. So the comparison is the window, falling back to show dates where one is
-   absent, and that finding is `possible`, not `certain`, and says which side it guessed.
-   `SCOPE.md` §5e.
-4. **The room block cutoff must not get a second clock.** §4 makes it first-class because
-   missing it is among the most expensive routine mistakes — which is a description of the
-   engine step 11 built. A warning banner on the lodging screen would have been a weaker
-   copy on a different schedule, and the two would disagree, with the screen you were not
-   looking at holding the version you needed. So a cutoff **owns** a register row; the date
-   is edited on the hotel record and refused in the register. Two properties fell out of
-   the composition rather than being designed: moving the cutoff withdraws the deadline's
-   confirmation, and a derived row arrives unowned, which the engine escalates rather than
-   addressing to nobody. `SCOPE.md` §5e.
-
-**What step 11 added, and where:** `src/lib/deadlines/` — the service manual deadline
-engine, split the way the spine and the planning core are. `alerts.ts` is pure and holds
-the entire argument: the T-30 / T-14 / T-3 / day-of thresholds, the 45-day confirmation
-chase, who each alert is addressed to, which *tense* it is written in, the dedupe key that
-voids itself when a date moves, and `summarizeExposure` — the one exposure model, shared
-by the register screen, the portfolio and the CLI. `edit.ts` is pure validation: a deadline
-carries a local *time of day*, penalties parse through `money/decimal.ts`, and
-`not_applicable` needs a written reason. `access.ts` is the report / confirm /
-change-the-plan split. `store.ts` is the only file touching rows, org-scoped at the source,
-and carries `sweepDeadlineAlerts`. `show_deadlines` gained `status`, `status_note`,
-`completed_by_id`, `confirmed_by_id` and `updated_at`. The register on
-`/shows/[id]/readiness` is writable — add, edit, own, confirm, complete, waive — and each
-row shows what the engine will say about it next and to whom. `pnpm deadlines` /
-`pnpm deadlines --sweep` is the engine without a screen. The seed grew an unconfirmed, an
-unowned and a missed deadline so all four alert cases are live, and produces its alert rows
-by **running the real sweep**.
-
-**The four corrections step 11 turned up:**
-
-1. **"A human confirms a deadline before it alerts" means silence on the rows most likely
-   to be wrong.** Every cloned deadline is a prediction by construction (§5c), and those
-   are exactly the dates that pass unnoticed. But quoting "$3,125 at risk on Feb 3" for a
-   date nobody checked is a fabricated bill, and one of those teaches a team to close the
-   next alert unread. So an unconfirmed deadline is chased as a **date** — earlier, at 45
-   days, and without its penalty figure — and confirmation gates the claim about *money*,
-   not the reminder. Typing a deadline never confirms it, and moving a confirmed date
-   withdraws the confirmation, or an edit launders a guess into a quoted figure.
-   `SCOPE.md` §5a.
-2. **Past the date, "at risk" is false and the audience is wrong.** The surcharge is not at
-   risk, it is incurred, and there is nothing to hurry about — and the owner who needed the
-   reminder is not the show lead who needs the cost. A missed deadline gets one past-tense
-   alert to whoever runs the show, and does not repeat nightly. The portfolio counts those
-   cents as *incurred*, not "exposed". `SCOPE.md` §5a and §5d.
-3. **An unowned deadline is the likeliest to be missed and, addressed to its owner, reaches
-   nobody.** `owner_id` is nullable and real registers are full of nulls, so an
-   owner-addressed engine sends zero alerts on precisely those rows, silently. Unownedness
-   escalates instead of muting: the alert goes to the show runners and names the missing
-   owner as the thing to fix first.
-4. **An alert is a claim about a date, so the dedupe key carries the date.** The credit
-   ledger can key expiry warnings on the bucket alone because a credit's expiry never
-   moves. A deadline's does — that is half of what editing the register is for — and a
-   bucket-only key would leave "3 days left" standing for a date that no longer exists
-   while suppressing the one the new date deserves.
-
-**What step 10 added, and where:** `src/lib/readiness/` — the first *writable* show
-detail tab, and the module that replaced the nine-line placeholder `lib/readiness.ts`.
-Split the way the spine and the planning core are, pure decisions apart from the rows:
-`score.ts` returns a **breakdown, not a number**, and `null` — *unplanned* — for a show
-with no checklist; `templates.ts` holds the built-in library (25-task standard, 8-task
-tabletop) and a pure apply planner that is idempotent and dates every task on the show's
-local calendar; `edit.ts` is pure validation plus the written-reason rule for blocked and
-skipped; `access.ts` is the one permission split worth arguing about (below); `portfolio.ts`
-is the pace model and the ranking; `store.ts` is the only file that touches the database,
-org-scoping at the source like `shows/store.ts`. `show_tasks` gained `status_note`,
-`template_key` (unique per show), `completed_by_id`, `updated_at`. Screens: the readiness
-tab at `/shows/[id]/readiness` is writable — status control per task, add/edit/delete for
-whoever runs the show, template apply — and `/readiness` is the portfolio rollup, in the
-nav. The seed builds MedTech's checklist by **running `applyTemplate` and `setTaskStatus`
-for real**, not by typing rows.
-
-**The four corrections step 10 turned up:**
-
-1. **`readinessScore([]) === 100` said an unplanned show was a finished one.** Harmless on
-   one page; on a portfolio ranked by score it means the show nobody has touched sorts
-   above every show somebody is working on — the one that most needs attention is the one
-   the screen most reassures you about. The score is `number | null` now, `null` renders
-   as "No checklist", and never as 0% (reads as behind) or 100% (reads as done).
-   `SCOPE.md` §5d.
-2. **A single percentage hides the shape of what is left.** Blocked and not-started both
-   earn zero and are different problems; overdue does not move the number at all, because
-   the score has no clock. Scoring returns counts by status, overdue against an explicit
-   `asOf`, and the share of remaining *weight* sitting in blocked tasks — and both screens
-   lead with what is wrong rather than with the headline. `SCOPE.md` §5d.
-3. **Skipping is a change to the plan wearing the costume of a status.** A skipped task
-   leaves the denominator, so "skip it" is the fastest way to raise a readiness score
-   without doing anything. It needs a written reason and the same authority as deleting the
-   task — while *reporting progress* needs none, because a checklist only a manager can
-   tick is maintained by asking around, which is the spreadsheet we are replacing.
-   `src/lib/readiness/access.ts`, `SCOPE.md` §3 and §5d.
-4. **A portfolio ranked by readiness buries the emergency.** 40% ready eight months out is
-   on schedule; 70% ready in nine days is not. Readiness only means anything against the
-   clock, so `portfolio.ts` ranks on the gap to a pace model — linear over the 120 days
-   before open — and the page says on it that the curve is a heuristic rather than letting
-   a number imply precision it does not have. `SCOPE.md` §5d.
-
-**What step 9 added, and where:** the first screens over the booking spine.
-`src/lib/travel/review.ts` is the design core and is pure — `offerStanding` answers *what
-does approving this actually do right now* in four cases (live / held-and-guaranteed /
-held-but-not / expired), `STATUS` says what each machine status means to a person waiting
-on one, and `availableActions` returns what an actor may do **with a reason attached to
-every refusal**. `provider.ts` selects the flight provider from the environment and is the
-first code to do so — every previous caller constructed one by hand. `queue.ts` is the
-org-scoped, `travelerScope`-narrowed read layer, same posture as `shows/store.ts`.
-Screens: `/travel`, `/travel/new`, `/travel/[id]` (which is `pnpm booking:audit` as a page,
-reusing `getAuditTrail` rather than assembling a second, thinner version), and
-`/travel/approvals`. The nav gained Travel and Approvals; the show detail Travel tab now
-links through instead of naming step 9.
-
-**The three corrections step 9 turned up:**
-
-1. **An approval screen that shows a fare beside an Approve button lies about half the
-   time.** §6b settled that an approval authorizes an *amount*, not an offer, and
-   `approveRequest` implements that faithfully — but the approver only ever sees the
-   screen, and a bare number reads as a price. The standing of the offer is now on the
-   queue row itself, and the predicate that decides it moved out of `agent.ts` into
-   `review.ts` so the screen and the engine cannot disagree about what is being
-   authorized. `SCOPE.md` §6b.
-2. **Cancel does not tell the airline, and only a button made that visible.**
-   `FlightProvider.cancel()` is implemented and called by nothing; `cancelRequest` closes
-   our row and returns credits. Harmless while cancelling was script-only, reachable by a
-   person now — so on a ticketed request the button reads "Close this record" and says the
-   carrier still has to be called. Wiring it properly is the void/refund work in §6d.
-   `SCOPE.md` §6d.
-3. **The config layer is where "no fake data behind a real integration" is easiest to
-   break.** A script named `booking:dry-run` may name `RecordedFlightProvider` in its own
-   source; a web request has nobody to name it, so the choice moves into configuration —
-   and a default that quietly served replayed offers to a screen would be indistinguishable
-   there from real availability. `selectProvider` has **no fallback**: Duffel with a key,
-   `recorded` only when explicitly asked for, and otherwise an error naming the variable.
-   Screens that replay say so in a banner. Same reasoning drove the seed: it produces its
-   travel requests by running the *real* agent against the `recorded` provider rather than
-   inserting offer snapshots by hand, which would file fares no airline ever quoted as
-   evidence in the table the whole audit story rests on.
-
-**What step 8 added, and where:** `src/lib/shows/` is the planning core, split the same
-way the booking spine is — pure decisions apart from the rows. `clone.ts` is a pure
-planner (source + options → a plan of what to write, plus plain-language lists of what it
-carried and what it deliberately did not); `intake.ts` is pure validation and the
-decidable-status guard; `visibility.ts` holds the one visibility rule the screens share;
-`store.ts` is the only file that touches the database, and it org-scopes at the source
-rather than loading-then-checking. `show_decisions` in the schema is append-only, with a
-written rationale required in both directions. The datetime primitives gained
-`instantToZoned`, `shiftDaysPreservingLocalTime`, and `calendarDaysBetween`, which is what
-the clone shifts dates with. Screens: `/shows`, `/shows/new`, `/shows/[id]` with five tab
-routes, `/shows/[id]/clone`, `/itinerary`, plus `src/app/(app)/_components/ui.tsx` — a
-deliberately plain shared vocabulary, not a design system invented before ten screens
-exist to test it against. The seed grew a prospect, a *declined* show with its reasoning,
-intake history for the two originals, and three manually-entered flights so My Itinerary
-has something real in it.
-
-**The two corrections step 8 turned up:**
-
-1. **"See own shows" scopes travel, not the calendar.** §3's table draws its line around
-   travel; reading it as "a Member only sees shows they're staffed on" hides next
-   quarter's calendar from the engineer who will staff it, which is less useful and no
-   safer. The calendar and every planning fact on a show are org-wide; flights, lodging
-   assignments, and travel requests narrow to the actor unless they can approve. The
-   narrowing is in the query, so a Member's page never contains a colleague's fare.
-   `SCOPE.md` §3.
-2. **A clone that copies too much manufactures facts.** Copied rows look like this year's
-   facts. So: dates shift on the local calendar rather than by elapsed milliseconds (a
-   5:00pm deadline moved 364 days by arithmetic lands at 4:00pm across a DST boundary);
-   confirmations are never carried, so every cloned deadline arrives unconfirmed and
-   every attendee re-invited; and the "shipping plan" the scope asked us to clone turns
-   out to be shipments with tracking numbers, which a copy would fabricate — what clones
-   is the asset reservations and the deadlines that gate them. The header of
-   `src/lib/shows/clone.ts` is the long version; `SCOPE.md` §5c has the rest, and the
-   clone screen lists what it will not carry on the page.
-
-**What step 7 added, and where:** `src/lib/auth/mode.ts` — `authMode()`, dependency-free
-so `proxy.ts` can read it without pulling PGlite's WASM into the proxy bundle;
-`src/lib/auth/clerk.ts` — session → provisioned user; `src/lib/auth/login-methods.ts` —
-the login-method gate, pure and testable like the policy engine; `org_login_policies`
-(versioned, append-only, a written reason required in both directions) with
-`src/lib/auth/login-policy-store.ts` over it; `src/proxy.ts` (Next 16's rename of
-Middleware), Clerk's context in Clerk mode and a pass-through otherwise. Its correction,
-still standing: a login-method restriction is enforced at sign-in and we are not present
-at sign-in, so our gate checks the credentials an account **holds**, not the one it used.
-It fails closed. `SCOPE.md` §3, and `/settings/security` says it on screen.
-
-**`UI-REWORK.md` is done — all eight tranches** (option B: consolidation *plus* a full
-visual pass; brief "modern, bright colors, easy to navigate"). It gated nothing and step 13
-is still next. The plumbing half:
-
-- **`_components/form.ts`** — one `FormState` (`{ error?, ok? }`) plus `formErrorFrom`,
-  `optional`, `str`. It had been declared in five files and drifted into three shapes.
-  Dependency-free on purpose: client components import the type, so it must not pull
-  `next/cache`. `refresh` is deliberately **not** shared — each tab's revalidation set
-  differs in load-bearing ways.
-- **`_components/form-ui.tsx`** — `Input`/`Select`/`Textarea` (two named densities,
-  `compact` for a control inside a list row and `comfortable` for a page that is a form),
-  `Field`, `Message`, `Submit`, `QuietSubmit`, `ZonedDateTime`. `useActionState` stays at
-  all 42 call sites; only the markup around it is shared. `_components/cn.ts` is the
-  `clsx` + `tailwind-merge` pair that was already installed and unused.
-- **`lib/datetime/zoned.ts`** gained `zonedDateInput` / `zonedTimeInput` /
-  `zonedDateTimeInput`, all derived from `instantToZoned`, with tests.
-- **`shows/[id]/team/forms.tsx` is gone**, split into `roster-forms.tsx`,
-  `shift-forms.tsx` and `side-event-forms.tsx` — the three cards the page renders.
-- **`pnpm smoke`** fetches all routes against a running `pnpm dev` and checks 200 plus
-  a phrase only present once the page resolved its data.
-
-And the visual half:
-
-- **`globals.css` is the design system.** OKLCH semantic tokens — `surface`, `panel`,
-  `muted`, `border`, `border-strong`, `text`, `text-muted`, `brand`, and the four tones —
-  in the two-stage `:root` / `.dark` + **non-inline** `@theme` pattern. `@theme inline`
-  bakes values at build time and breaks runtime theming; there is **no `tailwind.config.*`**
-  and there must not be one (v4 is CSS-first). Tokens are semantic, never chromatic.
-- **Dark mode is a `.dark` class**, applied before first paint by an inline script in
-  `src/app/layout.tsx`, with a three-state control (light / system / dark) in the sidebar.
-  Absence of the stored key *is* system.
-- **`_components/sidebar.tsx`** — collapsible, 64px icon rail, grouped Plan / Travel /
-  Settings so steps 13–18 have somewhere to land. `_components/pref.ts` reads both browser
-  preferences through `useSyncExternalStore`.
-- **`ui.tsx` is a real vocabulary now** — `Table`/`Th`/`Td` (sticky headers, `numeric`
-  right-aligns *and* sets tabular figures), `PageHeader`, `Stat`, plus reworked `Card`,
-  `Badge`, `Button`, `LinkButton`.
-
-**`UI-REWORK.md` §12 is a ninth finding, added 2026-09-02 and reported by a user rather than
-by the plan: the portfolio boards had no calls to action.** Ten screens rendered a
-`PageHeader` with no `action`, so the only route to a write was "click a row, land on a show
-tab, scroll" — and `/shipping`'s one instruction ("freight is added on a show's Logistics
-tab") lived in its `Empty` state, which disappears the moment the board has a row. The cause
-is structural: every board reads across the calendar and every write belongs to one show, so
-there is no single `href` a button could carry. `_components/go-to-show.tsx` is a **chooser
-rather than a shortcut** — a `<details>` Server Component, no client JS, shows ordered by
-proximity to now, and it **refuses to guess the show**, because "the next one" files a crate
-against the wrong show as readily as the right one. Every CTA carries the gate of the form it
-points at (`Add freight` → `canManageShipments`, `Start a roll call` → `canStartRollCall`,
-the asset buttons → `canManageAssets`), while `Capture a lead` and `Open a checklist` are
-deliberately ungated for §8c's reason. `/flights` and `/itinerary` get `Request travel`
-instead, because nothing here types a flight in — legs are materialized from a ticketed
-booking, and an "Add a flight" button would be a good-looking lie about where flights come
-from. **Do not run `prettier` on this repo**: there is no config, so its defaults rewrite
-every quote and re-wrap every blurb — 132 lines of churn in one file to add six.
-
-**And a tenth finding, same day and from the same reader: the board could not take a
-tracking number for a small package.** The CTA landed somebody on a Logistics tab behind a
-form built for a pallet — carrier, consignment, both edges of a receiving window, pieces,
-weight, declared value, freight cost — which is right for a crate and absurd for the two
-boxes somebody UPS'd to their hotel, and those are most of the tracking numbers a show
-generates. Two halves:
-
-- **The model could not hold a parcel**, so `shipment_consignment` gained a fourth value,
-  **`direct`** — straight to a hotel, an office or a person, legal in both directions, no
-  dock and therefore no window. The distinction it draws is deliberately **the dock, not the
-  size of the box**: contractors bill small packages delivered to show site, usually per
-  piece, so a weight-keyed parcel exemption would silently delete a real drayage line. A
-  FedEx carton addressed to show-site receiving is still `show_site` and is still drayed.
-  What `direct` means is that no contractor touches it, so `drayage/store.ts` **filters those
-  rows out before the estimator sees one** — a `direct` row reaching `estimateDrayage` has no
-  rate for its consignment, lands in the `no_rate` gap, and turns a correct figure into a
-  *floor* over a box no forklift will go near. `EstimableShipment.consignment` stays narrow
-  so the compiler enforces it, and adding the value found the third caller (`cost/store.ts`)
-  by itself. The carrier's charge still counts on every row — a $180 overnight is freight
-  spend and `/cost` adds it up; only the drayage estimate excludes it. `SCOPE.md` §5g.
-- **`/shipping` got the write it never had.** `forms.tsx` + `actions.ts` — carrier, tracking
-  number, what is in it, which show, going to, cost center, and the dock window revealed
-  **only** when show-site receiving is picked. It is the same `addShipment` call, not a
-  leaner insert: that function is what checks the permission, validates through `edit.ts`,
-  resolves dates against the show's own zone and decides `label_created` over `in_transit`.
-  Direction is derived from the consignment rather than asked, because a control that is
-  wrong in three cases out of four exists only to be corrected by an error message. The seed
-  now sends two boxes of datasheets to a hotel front desk through the real store, and
-  `pnpm drayage` still reports Automate 2026 as **2 crates**, which is the whole proof.
-
-The chooser (`_components/go-to-show.tsx`) stays on the five boards where the write really is
-per-show; `/shipping` no longer needs it.
-
-**Two more, and one of them was a schema defect the UI made visible.**
-
-- **The carrier is read off the tracking number.** `src/lib/shipping/carrier.ts` is pure and
-  tested: UPS owns `1Z`, a USPS IMpb begins 92–95, FedEx Express is twelve digits — so asking
-  for the carrier *and* a number that already says which one is asking for the same fact
-  twice. Three bounds. It **fills a control, never the column** (a wrong `shipments.carrier`
-  answers `NoRecord`, which on the board looks exactly like freight that has gone missing),
-  and it stops inferring the moment somebody picks by hand, saying so where it then disagrees
-  rather than overruling them. It **never rejects a number** — an unmatched pattern means our
-  table is short, not that the label is wrong. And it **says what it cannot tell you**: a
-  22-digit barcode is a real USPS number and also what FedEx Ground Economy and UPS Mail
-  Innovations issue, so USPS is who can be *asked* and may not be who we shipped with.
-  `certain` is only for a prefix its owner owns. The UPS check digit is implemented and
-  verified against their published example; FedEx's and USPS's deliberately are not, because
-  a check digit we got subtly wrong accuses people of typos they did not make. Both forms
-  render `_carrier-field.tsx` rather than a pair of loose controls — `_present.tsx`'s
-  argument, applied to a form. `SCOPE.md` §5g.
-- **`/flights` shows what is still ahead, and fixing that exposed the real bug.** The board
-  cuts at twelve hours past **scheduled** arrival (never estimated — an estimate moves hourly
-  and a cancelled flight's is nothing at all, which is exactly the row that must not vanish);
-  a show-scoped call gets that show's whole record, because a Travel tab that emptied after
-  the show would hide its own subject. What the horizon uncovered: `flights.booking_id` was
-  `ON DELETE SET NULL` and the idempotency rail is `unique(booking_id, segment_index)` —
-  **Postgres treats NULLs as distinct in a unique index**, so a deleted booking left its legs
-  as rows the constraint no longer applied to, un-reconcilable forever, invisible to the
-  product, and rendered on the board as real legs. Fifty-two identical DL 1422 rows, thirty
-  per `pnpm test` run, from a `beforeEach` that deletes travel requests and never considered
-  the cascade. It is `cascade` now: a materialized leg is a **projection** of the booking,
-  and a hand-entered flight has a null `booking_id` because nothing derived it. **A nullable
-  column in a unique index is an idempotency rail with an off switch.** `SCOPE.md` §5f.
-- **`/shipping` got the same treatment, and it fits better there.** Soonest deadline first,
-  which puts an overdue crate at the top on its own — it has the earliest deadline on the
-  page, so no ranking is needed to find the emergency. A crate with **no** deadline sorts last
-  rather than first, because a missing date means a plan rather than freight and reading it as
-  the earliest is `Number(null)` in a comparator. The horizon is deliberately *not* a clock:
-  a landed flight is over, but a crate whose cutoff was last Tuesday and that nobody has
-  confirmed is the most urgent row here, so **silence and non-arrival do not expire**. Freight
-  leaves when it is *settled* — `received_at` or `cancelled` — plus §5h's tense rule at the far
-  end, where a show closed out more than thirty days ago stops being this board's problem.
-  Nothing is hidden by it: `showsMissingReturnLeg` reads the table directly and still fires.
-  `SCOPE.md` §5g.
-- **Every remaining list followed on the same day, and the exercise produced a rule.** A
-  board's order is its clock; the only question is *which* clock and *which direction*.
-  **Prospective** lists (obligations) run soonest-first: `/flights`, `/shipping`, `/assets`,
-  `/readiness`. **Retrospective** ones (reports on what happened) run the clock backwards:
-  `/leads`, `/roi`. **`/cost` is neither**, because a show's spend is committed before it
-  opens and its invoices land after it closes, so it is ordered by *proximity to now in either
-  direction* — and `/safety` is the same, since during an incident the question is who is on
-  the ground now. Severity is the tie-break everywhere, never the key, except that on
-  `/safety` somebody who has **said they need help** still comes above everything: that is the
-  feature's subject rather than a ranking. `src/lib/shows/proximity.ts` holds
-  `distanceToNow` / `byMostRecentlyOpened`, which had already been hand-written twice.
-- **`/alerts` is the one list that deliberately did not move, and that is the boundary of the
-  rule.** A board lists dated obligations; a feed's rows are *sentences*, and the only clock
-  on one is `created_at` — the night an engine first said it, a fact about our sweep schedule
-  rather than about the thing. Ordering on it puts tonight's `info` above last week's
-  `critical`. The dates that would make a clock meaningful are on the rows the alerts are
-  *about*, and those pages are now sorted by exactly them. The feed took the **horizon** half
-  instead: `resolveAndForget` drops alerts resolved more than a week ago, and never drops an
-  unacknowledged or still-true one however old, because age is the reason to look at those.
-- **A comparator in a page is a comparator two views can disagree on.** `/safety` sorted in
-  `safety/page.tsx` while `pnpm rollcall` printed whatever the database returned — which
-  happened to look right. `rollCallShowOrder` is in `rollcall.ts` now and both call it; two
-  views of one incident with different shows at the top is what that module exists to prevent.
-- **The board is ordered soonest-first now, and the horizon is why.** It was worst-first for
-  twelve steps on the argument that departure order buries the leg that needs somebody. The
-  horizon answered that rather than refuting it: with landed legs gone, every row is a flight
-  somebody still has to catch, and among those the clock is the order the work happens in.
-  Trouble moved to where it is not scanned for — the summary, the row's tone, the alerts card
-  — and severity still breaks ties. Worth keeping generally: **a ranking that fights the clock
-  is usually a list carrying rows that should not be on it**, and removing those is the better
-  fix.
-
-**And a stale *service worker* will lie to you harder, across the whole app.** `public/sw.js`
-served `/_next/static/` **cache-first**, on a comment asserting those names are content-hashed
-and immutable. True of `next build`; false of `next dev`, where Turbopack names chunks from
-their source path (`_0sm9glu._.js`) and reuses the name as the file changes — so cache-first
-pins one build's bytes into the *browser* permanently. The page then loads an hour-old chunk
-against a current render, a moved function throws `is not a function`, hydration fails, and it
-survives a dev restart because nothing on the server can reach the stale copy. **Its blast
-radius is the whole app, not the day-of page**: the worker's scope is `/`, and while it only
-*caches navigations* for `/day-of`, `isBuildAsset` had no such gate — the hydration failure was
-observed on `/` as readily as on `/day-of/[id]`. The worker is now **told** which it is
-(`/sw.js?mode=dev`, from `_register.tsx`) rather than sniffing a hostname; production is
-unchanged, dev is network-first with a cache fallback so the offline path still works and
-nothing is pinned. `CACHE` is bumped to `day-of-v2` so a browser holding a poisoned copy heals
-on the next load. If one is stuck: DevTools → Application → Service Workers → Unregister, or
-Clear site data.
-
-**A stale `next dev` will lie to you about all of this.** `pnpm db:reset` deletes `.pglite`
-out from under a running server, which then serves the pre-reset database from a deleted
-inode — new columns and enum values do not exist in it, and a section gated on a query can
-render as absent with no error anywhere — and once the deleted inode is really gone the
-server starts throwing `ErrnoError { errno: 44 }` and every request hangs for minutes.
-Restart `pnpm dev` after `db:reset` before believing a screen. `db:reset` now prints that
-sentence when it finishes, because knowing the rule did not stop it happening twice.
-
-**The measurement worth keeping: `src/app` contains zero `dark:` variants.** Dark mode used
-to be a twin class on every line that had a colour, so adding a colour meant remembering its
-twin and forgetting was invisible to anybody working in light mode. One token carries both
-themes now. `UI-REWORK.md` §10 and §11 are the long version.
-
-**The five corrections the rework turned up:**
-
-1. **"Verbatim" duplication was not verbatim, twice.** `travel/actions.ts`'s `asFormError`
-   carries an extra branch that renders any `Error` with a message — the booking agent
-   throws bare `Error`s for real explainable conditions — and its `str` trims where the
-   other four do not, which matters because an airport code with a trailing space is a
-   failed search. Folding either in silently would have made four other screens swallow
-   their next genuine bug. Both are kept and named. Read a "verbatim" copy twice before
-   deleting it.
-2. **The date helper had four copies, not the two the plan counted**, and none was tested.
-   `src/lib/datetime` was never the layer with the browser-zone bug; `src/app` was, four
-   times over, in the one place nothing was watching. `toISOString().slice(0, 10)` on a
-   5pm-Pacific due date returns *tomorrow*, so a round trip through the edit form moves the
-   deadline a day — the exact failure the §5a engine exists to prevent, arriving through
-   the form that edits it.
-3. **The §2a defect was one control serving two different acts.** The permission
-   (`mayRespond` = own row *or* an approver) was right and did not change; the framing was
-   wrong. Answering for yourself and recording what a colleague told you are different
-   acts, and a component given only a boolean cannot tell them apart. `RosterEntry.isSelf`
-   plus a separate third-person "Record Tomás's answer" control is the fix.
-4. **That defect had a second half in `src/lib`, and it is now fixed too** (its own step,
-   after the rework — `SCOPE.md` §11.12). `standingFor` branched on `attendeeStatus` alone
-   and never read `responded_at`, so a `confirmed` typed by an admin counted toward booth
-   coverage — the hearsay the ground rule forbids. The write path already obeyed the rule
-   and the team tab already rendered a "not answered by them" badge on those exact rows;
-   only the number ignored both, which is the worse half, because the number is what a lead
-   reads and stops at.
-5. **A media query is not a preference.** Dark mode was `prefers-color-scheme` only, which
-   cannot be overridden by a person, only obeyed — that is *why* there had been no toggle,
-   not an oversight beside it. And the control needs three states: "follow the system" is a
-   real answer that a two-way toggle silently destroys the first time it is pressed, after
-   which the app stops tracking a laptop that switches at sunset with nothing on screen
-   saying so.
-
-**What step 16 added, and where:** `src/lib/assets/` — the chain of custody, split the way
-everything since step 8 has been. `custody.ts` is pure and holds three of the six
-arguments: the seven-state custody chain, `availabilityFor` (three refusals, each with its
-reason — **reserved is not available and available is not serviceable**), and
-`freightCoverage`, which is where assets meet step 14's shipping rows. `conflicts.ts`
-compares **reservation windows rather than show dates**, which is §5e's correction
-inverted, and adds `turnaround` as a `possible` finding because adjacent is not clear.
-`inventory.ts` is the collateral half — on hand minus committed, low stock judged on what
-is *free*, an allocation's three states, and the projection over the ledger. `alerts.ts`
-carries both dedupe-key shapes at once (§5a's date for a reservation, §5b's bucket for a
-quantity) and escalates the two alerts that by construction have no holder. `board.ts`
-orders by what is wrong and counts capital outside the building. `edit.ts` requires a
-condition on return and a written note when it comes back worse. `access.ts` puts sign-out,
-check-in and counting a shelf in **anybody's** hands. `store.ts` is the only file touching
-rows, scoped through the **asset's own org** — a third posture beside shipping's show and
-flights' traveler, and it falls out of the domain rather than being chosen: a booth belongs
-to the company between shows, which is most of its life and all of the time it goes missing.
-
-Schema: `assets.cost_center_id` (§4's rule, which assets had been violating) + timestamps +
-a unique asset tag; `asset_reservations.condition_on_checkout`, `returned_by_id`,
-timestamps, unique on `(asset, show)`; `collateral_items.cost_center_id` + timestamps +
-unique SKU; a new append-only **`collateral_entries`** with signed deltas and a
-`(allocation, kind)` rail; `collateral_allocations.issued_at` / `issued_by_id` /
-`returned_at` / `returned_by_id`. Screens: `/assets` in the nav, and the **Logistics tab
-now renders three models on one page** — the crate, what is inside it, and the collateral —
-with the joins between them visible, which is the whole reason step 16 came after step 14.
-`pnpm assets` / `pnpm assets --sweep` is the engine without a screen. The assistant gained
-`asset_register` and `collateral_stock`, both existing org-scoped store calls, so the §6f
-posture is unchanged. The seed builds all of it **through the real stores** — including a
-booth signed out to last spring's Detroit show and never checked in, which is the sentence
-the schema comment has carried since step 1.
-
-**The six corrections step 16 turned up:**
-
-1. **Reserved is not available, and available is not serviceable.** §5e found that an
-   assigned booth shift is not a covered one. An asset has that gap and one more beyond it:
-   a reservation is a claim on a thing that may already be promised elsewhere, and a thing
-   promised to nobody may still be a touchscreen with a cracked panel. `assets.condition`
-   is a fact recorded on the *last* return, every screen renders it as a label, and nothing
-   joined it to the reservation three weeks out that it invalidates. Same failure shape as
-   `overstated` coverage — a filled slot is the one thing nobody looks at again.
-   `SCOPE.md` §5h.
-2. **The reservation window is not the show window, and §5e inverts.** Comparing show dates
-   *over*-reported a person's double-booking (Monday–Tuesday in Detroit, Thursday–Friday in
-   Chicago is an ordinary week); it **under**-reports an asset's, because the booth is gone
-   for a month around a three-day show. And there is a finding with no counterpart on the
-   people side: **adjacent is not clear.** Back on the 8th and out again on the 10th gives
-   the crate 48 hours to cross the country, be opened, be inspected and be re-crated. That
-   is `possible`, not `certain` — two shows really can share a floor — which is §5e's
-   certainty distinction reached from the opposite direction: there the doubt was about the
-   *data*, here it is about the *world*.
-3. **"In what condition" is only answerable as a delta.** `assets.condition` is mutable, so
-   by the time anybody asks whether Automate cracked the panel the column reads
-   `needs_repair` and cannot say when it started. The reservation snapshots both ends, a
-   return worse than the checkout needs a written note (§5d's rule on `skipped`, from a
-   third direction), and a check-in is the **only** place `assets.condition` moves — a form
-   that could type it would be a second way to set the same fact.
-4. **Signing out and checking in belong to anybody** — §5g's `canConfirmReceipt`, one layer
-   up. The person who wheels the crate onto the truck is whoever is in the warehouse at
-   6am. A `returned_at` only a manager can set is one that stays null, after which every
-   reservation is flagged overdue and the flag stops meaning anything.
-5. **On hand is not available, and an uncounted return is not a zero return.** 640
-   datasheets with 400 promised is 240 available, and a threshold checked against on-hand
-   reads fine until somebody opens the cupboard. Separately, `quantity_returned` is
-   nullable and that nullability is load-bearing: reading null as zero writes off stock we
-   own, reading it as full ships the next show short, so the app refuses to guess and names
-   both guesses. And *promising* stock is not *picking it off the shelf*, so an allocation
-   has three states and only the middle one moves the quantity — which is a projection of
-   the append-only ledger, the credit rule from step 6 applied to things.
-6. **Past a point, "return it" is the wrong sentence.** §5a's tense rule at the end of the
-   chain: a $84,000 booth nobody has seen in six weeks is an insurance and replacement
-   conversation, not a nightly reminder, and the alert stops chasing and says so.
-
-**What step 15 added, and where:** `src/lib/integrations/llm/` — the fourth integration
-behind an interface, and the first one where a vendor SDK exists. `types.ts` performs **one
-exchange and runs no loop**: running a tool means choosing an actor to run it as, and that
-choice must not live inside an adapter. `anthropic/client.ts` is the Messages API through
-`@anthropic-ai/sdk`, so unlike Duffel, AeroAPI and EasyPost there is **no `wire.ts` and no
-fixture file of payloads we invented** — the vendor ships the types, the compiler checks
-the shape, and there is nothing left for a capture script to arbitrate. `scripted/` is the
-zero-key model and it replays **tool plans, never prose** (below). `assistant/provider.ts`
-selects between them with **no fallback**.
-
-`src/lib/assistant/` is the model, split the way everything since step 8 has been.
-**`tools.ts` is the whole step**: fifteen tools, every one an existing org-scoped store
-function called as the asking actor through the same `access.ts` gate a screen goes
-through — no query, no join, no org id from the model. `access.ts` is subtractive, so a
-withheld tool is never described. `prompt.ts` carries **tense and nothing load-bearing**.
-`loop.ts` is a manual loop with three bounds of ours (`MAX_TURNS`, `MAX_TOOL_CALLS`, and a
-`max_tokens` stop that is never presented as an answer). `draft.ts` refuses to file without
-the person's own words, refuses to guess a time zone, and carries a `FlightProvider` whose
-every method rejects. `serialize.ts` sends instants rather than formatted local strings and
-announces truncation. `store.ts` is the only file touching rows and scopes a conversation
-to a **user**.
-
-Schema: `assistant_conversations` (user-scoped, with the provider recorded per
-conversation) and `assistant_messages` (append-only; a `tool` row keeps the validated input
-and the store's actual result, because the prose is the paraphrase). Screens: `/assistant`
-and `/assistant/[id]`, first in the nav, with each tool step rendered *beside* the answer
-and openable. `pnpm assistant` is the loop without a screen; `pnpm assistant --tools`
-prints the surface per role. The seed produces two transcripts by **running the real loop
-against the real tools** — a member and an admin asking questions whose *results* differ
-while nothing about the prompt does.
-
-**The five corrections step 15 turned up:**
-
-1. **A withheld tool must not be described, and naming one must get the same answer as
-   inventing one.** The first half is easy and `access.ts` does it. The second is the one
-   worth arguing about, and a test caught the code contradicting its own comment: "that
-   tool exists but is not available to you" is a *map* — it confirms the capability, names
-   it, and invites another route to it. "That is not a tool" ends it. Generally: **nothing
-   in the system prompt is load-bearing for access.** If a rule would be dangerous to have
-   disobeyed it lives in code, and every such rule here does. The prompt carries tense — an
-   unconfirmed deadline is a date and not an amount, delivered is the carrier's word, an
-   unchecked flight is not on time — because a narrator that flattens those back into "two
-   deadlines at risk, flights on time" undoes four steps of work in the register a person
-   actually reads. `SCOPE.md` §6f.
-2. **A `recorded` provider can replay a payload; it cannot replay prose.** The other three
-   replays obey one rule — describe a *shape*, never assert a fact about this workspace.
-   EasyPost's projects a recorded journey onto the crate's real transit window. Prose has
-   no equivalent move: "MedTech is 62% ready" is not a shape, it is a sentence about a
-   different workspace, and it would land on screen under the app's own byline. So the
-   `scripted` model replays only **which tools to call**; those run for real, and its one
-   canned sentence characterises nothing. The test asserts it contains no digits.
-3. **`submitTravelRequest` inferred human confirmation from the *absence* of raw text, and
-   that inverts for this caller.** No raw text meant "typed into a form, therefore
-   confirmed" — right for the form and the dry-run script, and catastrophic for a parser:
-   the request would be marked human-confirmed and searched with nobody having read the
-   parse. The draft path refuses rather than defaulting. Two more things make it
-   structural: the assistant does not hold `confirmConstraints`, and its `AgentDeps` carry
-   a provider whose every method rejects with a sentence naming the rule (`travel/
-   actions.ts` passes `null as never` there — fine from a form, worth fifteen lines from a
-   language model).
-4. **A follow-up must not be answered from the previous turn's tool result.** The
-   transcript replays prose *without* tool results. A result is a snapshot of rows as they
-   were when it ran, and "has it landed yet?" is exactly a question about the row that has
-   since moved — so feeding it back makes the assistant confidently stale on precisely the
-   questions people ask twice.
-5. **A transcript belongs to the person in it — the only table in this app scoped to a
-   user rather than an org.** Every tool result inside one was retrieved under that
-   person's scope, so a second reader is reading rows a query narrowed for somebody else:
-   the lateral path the whole posture exists to close. There is no admin read, and adding
-   one would be the second way to break the posture after adding an ungated tool. (A
-   related bug, caught by an empty `/assistant` page: this file's own test cleanup deleted
-   *every* conversation rather than its own, wiping the seeded ones — green test run,
-   blank screen.)
-
-**What step 14 added, and where:** `src/lib/integrations/shipping/` — the third integration
-behind an interface, in the shape the first two settled on. `types.ts` is the provider
-contract and it decides nothing; `easypost/` is EasyPost Tracker v2 (wire / normalize /
-client, written to the published schema and **never run against a live key**, which its
-header says in the same words AeroAPI's does); `recorded/` replays EasyPost-shaped payloads
-through the *real* normalizer, projecting a recorded **shape** onto the crate's actual
-transit window and handing back only the scans that have already happened — so a replay
-can never show a crate delivered on the day its label was printed, and `stalled`, whose
-entire content is the *absence* of recent scans, stays distinguishable from `on_time`. Its
-scan locations are roles ("Origin hub", "Destination facility"), not cities, because a
-replay knows the shape of a journey and nothing about the route.
-`shipping/provider.ts` selects between them with **no fallback**.
-
-`src/lib/shipping/` is the model, split the way everything since step 8 has been.
-`status.ts` is pure and holds the argument: the two-edged `windowVerdict` (with `too_early`
-as a real standing), `stallOf`, `freshnessOf` / `effectiveStatus`, and `reconcile`, which
-captures the carrier's promise *once* so `brokenSincePromise` can ever be true.
-`alerts.ts` is pure, mostly decides to say nothing, and carries `planReturnGapAlert` — the
-one planner in the product that fires on an absence. `board.ts` orders by what is wrong
-rather than by what is due, and counts `unreceived` as a live figure. `access.ts` is the
-split worth arguing about: confirming a crate reached the booth is available to **anybody**.
-`edit.ts` refuses a show-site row with no dock-opening time and refuses to guess an advance
-warehouse cutoff. `store.ts` is the only file touching rows: org-scoped through the show
-(the mirror of flights, which scopes through the traveler because its show is nullable),
-the sweep, and the append-only timeline.
-
-Schema: `shipments.consignment`, `receiving_opens_at`, `owner_id`, `received_at` +
-`received_by_id`, `promised_delivery`, `estimate_changed_at`, `tracking_provider`,
-`updated_at`, plus an `unknown` status; `shipment_events.source` + `fingerprint` with a
-unique index on `(shipment_id, fingerprint)`. Screens: `/shipping` in the nav, and the
-show's **Logistics tab is writable** — it was the last read-only one. `_present.tsx` is the
-shipment vocabulary both screens render through, because the moment two screens draw a
-crate they can disagree about what `too_early` looks like and nothing would catch it.
-`pnpm shipping` / `pnpm shipping --sync` is the engine without a screen.
-
-**The seed grew two shows, and that was a finding rather than a convenience.** Every seeded
-show was fifty or more days out, which means no crate on the calendar had plausibly
-shipped — the recorded provider correctly returned pre-transit trackers with no scans, and
-a shipping feature seeded against that calendar would have had an empty timeline on every
-row. What was missing was somewhere for freight to *be*. So there is now a **live** show
-(move-in this morning: a crate delivered to a dock that nobody has confirmed at the booth,
-one that missed show-site receiving outright, and one that has simply gone quiet) and a
-**prior-year** show that moved out seven weeks ago with outbound freight and nothing
-recorded coming back. Both sweeps are real.
-
-**The five corrections step 14 turned up:**
-
-1. **A crate has a window, not a deadline, and early is a failure too.** A flight cannot
-   land too soon; freight can, and the two consignments are two different *rules* wearing
-   the same date. An advance warehouse holds freight for weeks and closes on a published
-   cutoff. Show-site receiving does not open until move-in, and a crate that turns up two
-   days early is refused, held at the carrier's rate, or sent back — which every status
-   column in every payload calls `delivered`. A deadline-only model calls that crate
-   "clear, with fifty hours spare", right up until the dock turns the truck around. Also:
-   an advance-warehouse cutoff must never be prefilled from move-in, because it is one to
-   three weeks earlier and a wrong-by-a-fortnight date that looks right is worse than a
-   blank one. `SCOPE.md` §5g.
-2. **Delivered is not received, and only a person can close that gap.** The carrier signed
-   for a dock. Drayage — a separate contractor, on its own schedule, invisible to this app —
-   moves it from there to the booth. Rendering `delivered` as done is how a booth stands
-   empty on the first morning with every screen in the product showing green. `received_at`
-   is a person's word, the way `show_attendees.responded_at` is, and confirming it is
-   available to **anybody**: the person who finds the crate is whoever is in the booth at
-   7am, and a confirmation only a manager can give never gets given.
-3. **Silence is the failure mode, and nothing in the payload reports it.** A stalled crate
-   is still being promised for Thursday and still reads `in_transit`; there has just been no
-   scan since Tuesday. So the absence of scans is what raises it — with a threshold generous
-   enough for LTL freight, which really does scan once a day, tightening as the deadline
-   closes. This is also why the sweep plans alerts against *every* shipment rather than only
-   the ones that changed: an engine that speaks on transitions is structurally incapable of
-   reporting a stall, which is the failure with no transition in it.
-4. **§5f's rule about the leg home inverts.** A delayed flight home says nothing, because it
-   is somebody's evening. A return crate is the leg that actually goes missing, and it
-   surfaces a quarter later when the booth is not there for the next show and the claim
-   window has closed. So the sharpest alert here has **no shipment row behind it at all**:
-   a show that moved out, had outbound freight, and has nothing recorded coming back.
-5. **A poll returns the whole timeline, not a delta — and one small bug proved the general
-   rule.** Carriers issue no stable event ids, so a fingerprint is derived from the scan
-   (instant, phase, location — deliberately *not* the message, since carriers reword scan
-   text between polls) and a unique index makes the claim true rather than intended. The
-   bug: `expectedArrival` trusted `estimated_delivery` on a shipment with **no tracking
-   number**, so a crate nobody had handed to a carrier was reported as *"will miss the
-   receiving deadline"* — a confident claim about a truck, sourced from nothing, that hid
-   the actual problem, which is that there is no truck.
-
-**What step 13 added, and where:** `src/lib/integrations/flightstatus/` — the second
-integration behind an interface, in the shape the first one settled on. `types.ts` is the
-provider contract, and it decides nothing: it reports what a carrier says about one leg at
-one moment, and `NoRecord` is deliberately not `phase: 'unknown'` ("we have never heard of
-this flight" and "we know it and cannot say where it is" are different things to tell
-somebody). `aeroapi/` is FlightAware AeroAPI v4 — wire / normalize / client, written to the
-published schema and **never run against a live key**, which its header says in the same
-words the Duffel adapter's did before step 12.5. `recorded/` replays AeroAPI-shaped
-payloads through the *real* normalizer; what it records is a **shape** (departed on time,
-landed forty late) projected onto whichever leg it is asked about, so a canned block time
-never reports a transcontinental delay on a shuttle, and a leg that has not departed can
-never come back `landed`. `flights/provider.ts` selects between them with **no fallback**.
-
-`src/lib/flights/` is the model, split the way everything since step 8 has been.
-`status.ts` is pure and holds the argument: `freshnessOf` / `effectiveStatus` (an unchecked
-row is not an on-time row), `bufferVerdict` (the §7 arrival buffer re-run against live
-times, with the required hours read out of the *resolved travel policy* rather than written
-down again), and `reconcile`, which keeps a carrier's re-timing apart from a delay.
-`alerts.ts` is pure and mostly decides to say nothing. `board.ts` orders by what is wrong
-rather than by what leaves next, and counts a costless delay in its own quiet figure.
-`access.ts` splits refreshing (not a privilege — it is the carrier's answer to a public
-question) from correcting a flight record (it moves the times the buffer is judged
-against). `store.ts` is the only file touching rows: org-scoped through the *traveler*
-rather than through the nullable show, the sync sweep, and `materializeFlights`.
-
-Schema: `flights.show_id` nullable, `leg_direction`, `origin_time_zone` /
-`destination_time_zone`, `provider_scheduled_departure` / `_arrival`, `schedule_changed_at`,
-`diverted_to_airport`, `status_provider`, `booking_id` + `segment_index` (unique),
-`updated_at`. `Segment` in `policy/types.ts` gained the two optional zones, which
-`duffel/normalize.ts` had been reading and discarding. Screens: `/flights` in the nav, and
-live standing on the show's Travel tab and on My Itinerary — both through the board's model,
-never a second one. `pnpm flights` / `pnpm flights --sync` is the engine without a screen.
-The seed produces its flight status by **running the real sweep**, pinning which recorded
-payload each seeded leg replays so the board tells one coherent story: a red-eye landing six
-hours before move-in that loses its buffer, a roomy morning flight that is fine, and a
-flight *home* that is late and deliberately silent.
-
-**The five corrections step 13 turned up:**
-
-1. **The booking spine was buying tickets the tracking layer could not see.** Nothing in the
-   app had ever written a `flights` row. The agent recorded an *order* — provider, order id,
-   reference, ticket numbers, cost — which is exactly right for an audit and is not an
-   itinerary, and My Itinerary, the show's Travel tab and the flight board all read
-   `flights`. So every ticket the product's own agent had bought was absent from all three,
-   and a flight-tracking feature would have shipped tracking nothing but hand-typed rows.
-   Ticketing materializes the purchased slices now, idempotent on
-   `(booking_id, segment_index)`. Two things fell out: `flights.show_id` had to become
-   nullable, because `travel_requests.show_id` always was; and the airport zones had to be
-   carried through `Segment`, because Duffel sends them and the normalizer was dropping
-   them. `SCOPE.md` §5f.
-2. **A delay is not news; a delay that costs the arrival buffer is.** §7's buffer rule was
-   evaluated once, against an offer, at purchase, and never again — so a schedule that
-   slipped afterwards silently voided a policy verdict nobody re-read. The engine speaks on
-   `brokenSincePurchase` (cleared the buffer when bought, does not now), not on delay
-   minutes; a flight booked inside the buffer was an approval decision and is not reported
-   as a disruption every night; and a delayed flight *home* says nothing at all.
-3. **A re-timing is a third thing, beside the plan rather than over it.** Written into
-   `estimated_*` it reads as a three-hour delay on a flight running perfectly; written into
-   `scheduled_*` it erases what the policy verdict was computed from. So the carrier's
-   schedule gets its own columns, delay is then measured from *it* rather than from ours,
-   and the alert is written as a change of plan with weeks of room to act — which a day-of
-   delay does not have.
-4. **Not knowing is not on time, and it is the default.** An unchecked row reads
-   `scheduled`, so a board that has not refreshed in eight hours shows a full slate of
-   on-time flights. Staleness is judged against the flight's own timeline, an unchecked
-   flight past its departure is `unknown`, and a lookup that found no record patches
-   *nothing* — not even `last_checked_at`, because stamping a successful check on a failed
-   one is how a board goes stale while claiming to be fresh.
-5. **An alert is keyed to the fact that changed, not to the number.** §5a keys a deadline
-   alert on the deadline *and its date*, which is right because a date moves rarely and
-   deliberately. An arrival estimate moves every time anybody asks, so the same key shape
-   would send "your flight is late" all night. The key carries the **standing** —
-   `inside_buffer`, `after_move_in`, `cancelled` — so it fires once on each crossing and
-   never for jitter.
-
-**Next: step 25, and there is no obvious pick — read this before choosing.** The backlog in
-`SCOPE.md` §10.25 is sponsorship campaigns, a public API + Zapier, impersonation,
-multi-workspace, custom fields, external share links, a room-block optimizer, gamification
-and HubSpot. Three observations that should shape the choice more than the list does:
-
-- **Every remaining integration is blocked on an account, and that is now a pattern rather
-  than a coincidence.** HubSpot needs a developer org, Slack needs a workspace, SSO needs an
-  IdP, and all three need hosting first. Building any of them unverified converts an honest
-  seam into a fourth or fifth adapter written to the docs and hoped — step 24 declined
-  exactly that trade and it should keep being declined. **Hosting is the unlock for all of
-  them**, and it is the one thing on the list that changes what else is buildable.
-- **`pnpm manual:probe` against a real exhibitor manual is still the cheapest open item**,
-  and it is the only unverified thing here that needs no account at all — just a PDF.
-  Everything structural about step 22's extraction is proven and **recall is not**, by
-  construction. That gap is a week of prompt work or a nasty surprise, and there is no way to
-  know which without one real document.
-- **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's
-  backlog has carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with
-  their own deadlines, which composes the §5a engine that already exists rather than adding a
-  ninth thing that alerts.
-
-**And one practice worth stating, because it has now paid off six times.** Steps 17, 19, 22,
-23 and 24 each found a real defect by *reading the CLI's output* — `onConflictDoNothing`
-muting recurrences, `SOURCE_LABEL` mislabelling a whole engine, a deduplicated reading
-counted as unread, a crate count that made freight invisible, and two in one sitting on
-presence. None was caught by a test, because in every case the test had been written to the
-same wrong rule. **Run the CLI and read what it says** before believing a green suite.
+*request*) and **`safety_responses`** (append-only; `recorded_by_id` is the interesting column
+and it inverts §5e). Screens: `/safety` in the nav under Travel, and a **Safety** tab on the show
+— the tenth, shown to **everybody**. The seed runs a real roll call on the live show through the
+real store: Priya answers for herself, Tomás is answered **by Priya**, Ingrid has not answered,
+and Reese has not answered *and* has no phone number — so her silence means nothing and the count
+says so separately.
+
+The five refusals: **unknown is not absent, and §5e inverts** (booth coverage refuses to flag an
+unrecorded travel window because flagging everybody flags nobody; a roll call is the opposite —
+the person nothing can locate is the entire output and sorts **first**, because the cost of the
+two mistakes has swapped places); **a response is a response to a request**, or "checked in safe"
+from a show last March marks somebody accounted for during this morning's evacuation; **a relayed
+answer counts, and §5e inverts a second time** — "I have her on the phone, she is fine" counts and
+is **labelled**; **contactable is not contacted**, and the moment that is useful is **before** an
+incident, which is why it is on the screen when nothing is happening; and **nobody is marked safe
+by the system** — no timeout turning silence into assent, no inference from a badge scan, and **no
+bulk "mark everyone safe"**, the obvious button and the only control that could produce a
+complete headcount without anybody having spoken.
+
+Two corrections, both found by running the CLI rather than by a test:
+
+1. **A travel window that has not started is not "nothing recorded".** Everybody at the live show
+   read `unknown` and sorted to the top — a list telling somebody to go and find four colleagues
+   who were at home, hours from a flight they had not taken.
+2. **An interval that contains now does not age; an observation does.** Staleness was keyed by
+   *kind*, so a travel window covering this moment rendered `(stale)` because it had *started*
+   eighteen hours ago — which says "we have not heard in 18 hours" when the truth is "we never had
+   a signal, only a plan". It is keyed by **basis** now.
+
+**HubSpot was the written pick and was dropped on contact with reality**: the entire argument for
+it was that a free developer tier makes `pnpm hubspot:capture` buildable, and with no account
+available it would have become a *fourth* written-to-the-docs-and-hoped adapter replacing a seam
+that honestly throws. It stays throwing; §11.6's "one well rather than both adequately" is
+unchanged.
+
+### The UI rework — done, all eight tranches
+
+Option B: consolidation *plus* a full visual pass; brief "modern, bright colors, easy to
+navigate". It gated nothing. `UI-REWORK.md` is the long version — **read its §6 before writing any
+CSS.** The plumbing: **`_components/form.ts`** is one `FormState` (`{ error?, ok? }`) plus
+`formErrorFrom`, `optional`, `str`, declared in five files before and drifted into three shapes,
+and dependency-free on purpose because client components import the type — `refresh` is
+deliberately **not** shared, since each tab's revalidation set differs in load-bearing ways.
+**`_components/form-ui.tsx`** is `Input`/`Select`/`Textarea` (two named densities), `Field`,
+`Message`, `Submit`, `QuietSubmit`, `ZonedDateTime`, with `useActionState` left at all 42 call
+sites. `_components/cn.ts` is the `clsx` + `tailwind-merge` pair that was installed and unused.
+`lib/datetime/zoned.ts` gained `zonedDateInput` / `zonedTimeInput` / `zonedDateTimeInput`, with
+tests. `team/forms.tsx` split into the three cards the page renders. `pnpm smoke` fetches all
+routes and checks 200 plus a phrase only present once the page resolved its data.
+
+The visual half: **`globals.css` is the design system** — OKLCH semantic (never chromatic) tokens
+in the two-stage `:root` / `.dark` + **non-inline** `@theme` pattern. **Dark mode is a `.dark`
+class**, applied before first paint by an inline script in `layout.tsx`, with a three-state control
+in the sidebar; absence of the stored key *is* system. `sidebar.tsx` is collapsible with a 64px
+icon rail, grouped Plan / Travel / Settings. `ui.tsx` is a real vocabulary now — `Table`/`Th`/`Td`
+(sticky headers; `numeric` right-aligns *and* sets tabular figures), `PageHeader`, `Stat`, `Card`,
+`Badge`, `Button`, `LinkButton`. **The measurement worth keeping: `src/app` contains zero `dark:`
+variants.**
+
+**Five corrections:** **"verbatim" duplication was not verbatim, twice** — `travel/actions.ts`'s
+`asFormError` renders any `Error` with a message (the booking agent throws bare `Error`s for real
+explainable conditions) and its `str` trims where the other four do not, which matters because an
+airport code with a trailing space is a failed search, so **read a "verbatim" copy twice before
+deleting it**; **the date helper had four copies, not two**, all in `src/app` and none tested, which
+is the one place nothing was watching; **the §2a defect was one control serving two acts** —
+answering for yourself and recording what a colleague told you is what a boolean cannot tell apart,
+so `RosterEntry.isSelf` plus a third-person control is the fix; **its second half lived in
+`src/lib`** (§11.12) — `standingFor` never read `responded_at`, so an admin-typed `confirmed`
+counted toward coverage, and the number ignoring a rule the write path and the badge both obeyed is
+the worse half, because the number is what a lead reads and stops at; and **a media query is not a
+preference** — the control needs three states, because "follow the system" is a real answer a
+two-way toggle destroys on first press.
+
+**§12, a ninth finding reported by a user: the portfolio boards had no calls to action.** Ten
+screens rendered a `PageHeader` with no `action`, and `/shipping`'s one instruction lived in an
+`Empty` state that disappears the moment the board has a row. The cause is structural: every board
+reads across the calendar and every write belongs to one show, so there is no single `href` a button
+could carry. `_components/go-to-show.tsx` is a **chooser rather than a shortcut** — a `<details>`
+Server Component, no client JS, shows ordered by proximity to now — and it **refuses to guess the
+show**. Every CTA carries the gate of the form it points at, while `Capture a lead` and `Open a
+checklist` are ungated for §8c's reason. `/flights` and `/itinerary` get `Request travel` instead,
+because nothing here types a flight in and an "Add a flight" button would be a good-looking lie
+about where flights come from.
+
+**A tenth, same reader: the board could not take a tracking number for a small package** — the CTA
+landed somebody behind a form built for a pallet, which is absurd for the two boxes somebody UPS'd
+to their hotel, and those are most of the tracking numbers a show generates. So
+`shipment_consignment` gained **`direct`**: no dock, therefore no window. The distinction is
+deliberately **the dock, not the size of the box** — contractors bill small packages delivered to
+show site, so a weight-keyed exemption would silently delete a real drayage line, and a FedEx carton
+addressed to show-site receiving is still `show_site` and still drayed. `direct` means no contractor
+touches it, so `drayage/store.ts` **filters those rows out before the estimator sees one**;
+`EstimableShipment.consignment` stays narrow so the compiler enforces it, and adding the value found
+the third caller (`cost/store.ts`) by itself. The carrier's charge still counts — a $180 overnight is
+freight spend and `/cost` adds it up. And `/shipping` got the write it never had, through the same
+`addShipment` call rather than a leaner insert, with the dock window revealed only for show-site
+receiving and direction derived from the consignment. The seed sends two boxes to a hotel front desk
+through the real store and `pnpm drayage` still reports Automate 2026 as **2 crates**, which is the
+proof.
+
+**Two more, and one was a schema defect the UI made visible.** `src/lib/shipping/carrier.ts` reads
+the carrier off the tracking number — UPS owns `1Z`, a USPS IMpb begins 92–95, FedEx Express is
+twelve digits — with three bounds: it **fills a control, never the column** (a wrong
+`shipments.carrier` answers `NoRecord`, which on the board looks exactly like freight that has gone
+missing), it **never rejects a number** (an unmatched pattern means our table is short), and it
+**says what it cannot tell you** — a 22-digit barcode is a real USPS number and also what FedEx
+Ground Economy and UPS Mail Innovations issue, so USPS is who can be *asked* and may not be who we
+shipped with. `certain` is only for a prefix its owner owns; the UPS check digit is verified against
+their published example and FedEx's and USPS's deliberately are not, because a check digit we got
+subtly wrong accuses people of typos they did not make. Separately, **`/flights` shows what is still
+ahead** — cutting at twelve hours past **scheduled** arrival, never estimated, since a cancelled
+flight's estimate is nothing at all and that is exactly the row that must not vanish. What the
+horizon uncovered: `flights.booking_id` was `ON DELETE SET NULL` while the idempotency rail is
+`unique(booking_id, segment_index)`, and **Postgres treats NULLs as distinct in a unique index** —
+so a deleted booking left its legs as rows the constraint no longer applied to, un-reconcilable,
+invisible to the product and rendered on the board as real legs. Fifty-two identical DL 1422 rows,
+thirty per `pnpm test` run, from a `beforeEach` that never considered the cascade. It is `cascade`
+now. **A nullable column in a unique index is an idempotency rail with an off switch.**
+
+**Every remaining list followed, and the exercise produced a rule.** A board's order is its clock;
+the only question is which clock and which direction. **Prospective** lists run soonest-first
+(`/flights`, `/shipping`, `/assets`, `/readiness`); **retrospective** ones run it backwards
+(`/leads`, `/roi`); **`/cost` is neither** — spend is committed before a show opens and invoices
+land after it closes — so it and `/safety` order by *proximity to now in either direction*. Severity
+is the tie-break everywhere, never the key, except that on `/safety` somebody who has **said they
+need help** comes above everything: that is the feature's subject rather than a ranking.
+`src/lib/shows/proximity.ts` holds `distanceToNow` / `byMostRecentlyOpened`, hand-written twice
+before. Three consequences: **`/shipping`'s horizon is deliberately not a clock** — a crate with no
+deadline sorts last rather than first, because reading a missing date as the earliest is
+`Number(null)` in a comparator, and **silence and non-arrival do not expire**, so freight leaves the
+board only when *settled*; **`/alerts` did not move, and that is the boundary of the rule**, because
+a feed's rows are sentences whose only clock is `created_at` — a fact about our sweep schedule, so
+ordering on it puts tonight's `info` above last week's `critical`, and the feed took the horizon
+half instead (`resolveAndForget` drops alerts resolved over a week ago and never drops an
+unacknowledged or still-true one); and **a comparator in a page is one two views can disagree on**,
+which `/safety` and `pnpm rollcall` did until `rollCallShowOrder` moved into `rollcall.ts`. The
+flight board is soonest-first now where it was worst-first for twelve steps: with landed legs gone
+every row is a flight somebody still has to catch, so **a ranking that fights the clock is usually
+a list carrying rows that should not be on it**, and removing those is the better fix.
+
+### Next: step 25, and there is no obvious pick — read this before choosing
+
+The backlog in `SCOPE.md` §10.25 is sponsorship campaigns, a public API + Zapier, impersonation,
+multi-workspace, custom fields, external share links, a room-block optimizer, gamification and
+HubSpot. Three observations that should shape the choice more than the list does:
+
+- **Every remaining integration is blocked on an account, and that is now a pattern rather than a
+  coincidence.** HubSpot needs a developer org, Slack needs a workspace, SSO needs an IdP, and all
+  three need hosting first. Building any of them unverified converts an honest seam into a fourth or
+  fifth adapter written to the docs and hoped — step 24 declined exactly that trade and it should
+  keep being declined. **Hosting is the unlock for all of them**, and it is the one thing on the
+  list that changes what else is buildable.
+- **`pnpm manual:probe` against a real exhibitor manual is still the cheapest open item**, and the
+  only unverified thing here that needs no account at all — just a PDF. Everything structural about
+  step 22's extraction is proven and **recall is not**, by construction. That gap is a week of
+  prompt work or a nasty surprise, and there is no way to know which without one real document.
+- **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's backlog has
+  carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with their own deadlines,
+  which composes the §5a engine that already exists rather than adding a ninth thing that alerts.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
-`SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on
-**localhost only**, and hosting needs a cloud account that §9's ground rule forbids wiring
-unasked. Do not pick any of them up speculatively.
+`SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on **localhost
+only**, and hosting needs a cloud account that §9's ground rule forbids wiring unasked. Do not pick
+any of them up speculatively.
 
-- **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified,
-  like AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`.
-  The default transport is `console`, which composes the real message and delivers it to
-  nobody. **Do not add a `recorded` Slack provider** — the whole argument for `console`
-  existing is that a replayed *delivery* is a claim somebody's phone buzzed.
-- **The SSO rollout is a TODO gated on hosting, not on itself.** This project runs on
-  localhost, and enterprise SSO is **downstream of a public origin**: a SAML IdP posts its
-  assertion to an ACS URL it has to be able to reach, and an enterprise OIDC connection
-  wants a redirect URI on a real domain — neither can reach `localhost:3000`. So hosting
-  and SSO are one gate, in that order, and there is no useful SSO work to do before it.
-  When it does land, the domain-to-org mapping is a **change to a ground rule** rather than
-  a feature: today a verified session matching no `users` row gets no access *and no row
-  created for it*, and domain-to-org provisioning is precisely a way to create one. Decide
-  that deliberately, with a live connection in front of you, not in passing.
-- **Hosting** is therefore the one that unblocks the other, and is where §11.10 (data
-  residency) stops being deferrable and where the day-of service worker meets a real origin
-  and a real TLS certificate for the first time.
+- **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified, like
+  AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`. The default
+  transport is `console`, which composes the real message and delivers it to nobody. **Do not add a
+  `recorded` Slack provider** — the whole argument for `console` existing is that a replayed
+  *delivery* is a claim somebody's phone buzzed.
+- **The SSO rollout is a TODO gated on hosting, not on itself.** A SAML IdP posts its assertion to an
+  ACS URL it has to be able to reach, and an enterprise OIDC connection wants a redirect URI on a
+  real domain — neither can reach `localhost:3000`. So hosting and SSO are one gate, in that order.
+  When it does land, the domain-to-org mapping is a **change to a ground rule** rather than a
+  feature: today a verified session matching no `users` row gets no access *and no row created for
+  it*, and domain-to-org provisioning is precisely a way to create one. Decide that deliberately,
+  with a live connection in front of you.
+- **Hosting** is therefore the one that unblocks the other, and is where §11.10 (data residency)
+  stops being deferrable and where the day-of service worker meets a real origin and a real TLS
+  certificate for the first time.
 
-§11.5 (scale) is **resolved as of 2026-09-01, and it resolved into a prohibition rather than
-a number**: roughly five shows a year for the anchor customer, offered as a guideline rather
-than a limit, for a product aimed at enterprise. So **nothing may be simplified on the
-strength of that size** — the old offer that "under ~50 travelers some of the policy
-machinery can be simpler" is withdrawn, because a simplification bought against five shows is
-invisible while the seed has eight and fails at the first customer with forty. What the
-number buys is permission to *defer*, which is visible, and step 21 left one concrete
-deferral: `POST /api/cron/nightly` is a `for` loop over every org inside one HTTP request
-with `maxDuration = 300`. It degrades the wrong way — a slow org starves the ones after it
-and the response still says 200 for those that ran — so read that route before choosing a
-host, since a platform with a job queue makes the fix a fan-out.
+§11.5 (scale) is **resolved as of 2026-09-01, and it resolved into a prohibition rather than a
+number**: roughly five shows a year for the anchor customer, offered as a guideline rather than a
+limit, for a product aimed at enterprise. So **nothing may be simplified on the strength of that
+size** — the old offer that "under ~50 travelers some of the policy machinery can be simpler" is
+withdrawn, because a simplification bought against five shows is invisible while the seed has eight
+and fails at the first customer with forty. What the number buys is permission to *defer*, which is
+visible, and step 21 left one concrete deferral: `POST /api/cron/nightly` is a `for` loop over every
+org inside one HTTP request with `maxDuration = 300`. It degrades the wrong way — a slow org starves
+the ones after it and the response still says 200 for those that ran — so read that route before
+choosing a host, since a platform with a job queue makes the fix a fan-out.
 
-**Extraction from the manual PDF is built as of step 22**, and the sentence this file
-carried for twenty-one steps — that the columns exist and the rule is enforced but nothing
-writes them — is retired. What replaces it is narrower: the extractor has met a live key and
-works, and what is **unverified is recall against a layout nobody in this repo has seen**,
-because the only corpus here is synthetic and was written by whoever wrote the prompt.
-`pnpm manual:probe <file.pdf>` is what measures that, and it is the only capture script in
-this project whose output is meant to be *read* rather than asserted on: most lines on its
-unclaimed list are not deadlines, and the one that is, is a miss.
+### Deliberately not built, and visible as such
 
-**Deliberately not built, and visible as such:** the free-text request box §6a describes
-is **built** as of step 15 — the assistant parses "Vegas by Tuesday noon, back Thursday
-night" into constraints and files them — but it deliberately stops there: the request is
-filed unconfirmed, and reading the parse and confirming it happens on `/travel/[id]`, by
-the person whose trip it is. The assistant does not stream (a server action returns the
-whole answer, which keeps every tool call inside the request as the actor `getActor()`
-resolved), and it books no hotels, because §5 keeps hotel booking out of v1. The readiness tab, its deadline register, the team tab, lodging and
-logistics are all writable as of steps 10–14, and Logistics grew chain of custody and
-collateral at step 16, Cost arrived at step 17 as the seventh tab, Leads at step 18 as the
-eighth and ROI at step 19 as the ninth — **there is no read-only tab and no dead control
-left.** **Booth presence has no seed rows**: every seeded show is in the
-future and `shift_presence` is a record of what happened, so the check-in control appears on
-a shift once it has run rather than inviting somebody to pre-record their own attendance.
-**A lead reaches a CRM only if it may, and as of step 19 that is enforced by the code path
-rather than only by the screen:** every lead row carries `outbound` — `marketabilityOf`'s
-answer to "may this row leave the building", with the reason and the fix — and `roi/store.ts`
-*reads that same verdict* rather than re-deriving one. Matching by email transmits personal
-data and is gated on it; matching on an id the CRM itself gave us is not, because it sends
-nothing about the person. Every seeded scanner lead fails the check, because a badge
-vendor's export carries no consent column, and those leads are consequently absent from
-every pipeline figure — named on `/roi` as **withheld by us**, deliberately apart from the
-leads the CRM did not know. The verdict is still computed on the row rather than at the
-point of export, for the original reason: the moment somebody can fix it is the moment they
-are looking at the lead, and by the time a sync asks, the person who stood at the booth has
-gone home. **Nothing has been written into a real CRM**, because the Salesforce adapter has
-never met a live org and the `recorded` provider refuses to report a write it did not make. **`retention_overdue` is now enforced by the nightly job**, which is the promise §5j said
-was worse than none while nothing kept it: stage 2 of `runNightly` really erases, and what
-it erased goes into the run's summary, because an irreversible act performed by nobody has
-to leave a record made by something. Two callers skip it and both have the same reason — the
-test suite and the seed would each destroy the demo they exist to build.
-`pnpm leads --retention` is still the deliberate, typed version. **Nothing runs the nightly
-job on this machine**: without `CRON_SECRET` the endpoint refuses, and until a scheduler is
-pointed at a real origin the only things that run it are `pnpm nightly` and a button on
-`/settings/notifications` — which is why `manual_only` is a standing of its own. **Alerts now have a transport and a scheduler, and by default neither reaches anybody — and
-that is the settled state for as long as this runs on localhost.** There is no Slack
-workspace for this project (2026-09-01), so the adapter stays written-and-unverified and the
-app keeps reaching nobody unless somebody sets a token. SSO is a TODO on the same footing and
-for a sharper reason: an IdP cannot post an assertion to `localhost`, so it is gated on
-hosting — see §11.2.
-With no `SLACK_BOT_TOKEN` the transport is `console`, which composes every message from the
-real alerts and delivers it **to nobody** — recorded as `rendered`, never `sent`, so a
-workspace that has told nobody anything can never read as one that has. With no
-`CRON_SECRET` the nightly endpoint **refuses**, so the sweeps still run only when somebody
-presses *Re-check everything* — which is why `unchecked` is still a standing and a figure on
-the page, and why `/alerts` now also says whether anything has run the engines at all.
-`pnpm nightly --dry` prints the messages verbatim, which is the only way to read what a
-colleague would receive before installing a Slack app. **The transport is still unverified
-against a live workspace**, like AeroAPI, EasyPost and Salesforce, and says so in its
-header. **Nothing rebooks a cancelled flight**, and the alert says so
-rather than implying otherwise: the agent buys against a travel request and the ticket is
-already bought, so rebooking is a call to the airline — the same shape as §6d's cancel. The row is the durable record that the notification was owed; a transport added
-later cannot erase it. **Extraction from the manual PDF is built** as of step 22, and the rule
-it had to obey — nothing extracted is quoted in dollars until a human confirms it — is
-enforced by the step 11 engine exactly as written, with no change to it: an extracted row
-arrives unconfirmed and is chased as a *date*. **Checklist templates are code, not rows**: the library in
-`src/lib/readiness/templates.ts` is versioned in git and an org-editable template builder
-is deliberately deferred until the standard list has been used and argued with, which the
-templates card says on the page. The nav still grows one entry per screen
-that exists.
+The free-text request box §6a describes is **built** as of step 15 — the assistant parses "Vegas by
+Tuesday noon, back Thursday night" into constraints and files them — but it deliberately stops
+there: the request is filed unconfirmed, and reading the parse and confirming it happens on
+`/travel/[id]`, by the person whose trip it is. The assistant does not stream (a server action
+returns the whole answer, which keeps every tool call inside the request as the actor `getActor()`
+resolved), and it books no hotels, because §5 keeps hotel booking out of v1.
 
-**The day-of screen queues, and nothing drains it in the background.** There is no Background
-Sync registration and no push: the outbox goes up when the tab is open and the network comes
-back, which is the ordinary case on a floor and is not every case. A phone put in a pocket at
-4pm with three captures on it still has three captures on it at 9pm — which is exactly why the
-count says "on this device" rather than "pending", and why the queue is on the screen rather
-than behind a spinner. It also **only captures leads and meetings offline**: confirming a
-crate at the booth, answering a shift invitation and every other write in the product are
-still server actions that need a connection, because each of them has a store function with
-rules the device does not carry. And a target-account alert is a line on the capture form,
-not a notification — nothing here asks for notification permission.
+**There is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every
+seeded show is in the future and `shift_presence` is a record of what happened, so the check-in
+control appears on a shift once it has run rather than inviting somebody to pre-record their own
+attendance.
 
-**Four adapters have never met a live key**, and each says so in its own header: AeroAPI
-(step 13), EasyPost (step 14), Salesforce (step 19) and Slack (step 21). All three are written to published
-schemas and tested against fixtures we wrote ourselves — the closed loop step 12.5 named,
-which proves internal consistency and structurally cannot catch a wrong field name.
+**A lead reaches a CRM only if it may, and as of step 19 that is enforced by the code path rather
+than only by the screen:** every lead row carries `outbound` — `marketabilityOf`'s answer to "may
+this row leave the building", with the reason and the fix — and `roi/store.ts` *reads that same
+verdict* rather than re-deriving one. Every seeded scanner lead fails the check, because a badge
+vendor's export carries no consent column, and those leads are consequently absent from every
+pipeline figure — named on `/roi` as **withheld by us**, deliberately apart from the leads the CRM
+did not know. The verdict is computed on the row rather than at the point of export, because the
+moment somebody can fix it is the moment they are looking at the lead.
 
-**Salesforce has the capture script; AeroAPI, EasyPost and Slack still do not.** Slack's
-case is the mildest of the four and worth stating so nobody over-corrects: its one
-docs-catchable defect — the `{"ok": false}` envelope on an HTTP 200 — is covered by unit
-tests against a mock transport, and what remains unverified is whether the three scopes are
-the right three and whether `conversations.open` behaves as documented for a bot posting its
-first DM. A wrong answer there fails loudly on the first send, which is the opposite of
-Salesforce's failure mode. **And there is no workspace to capture against** — that is the
-standing decision as of 2026-09-01, not an oversight, so this adapter keeps its header until
-somebody has a real one.
-`pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts` are `pnpm duffel:capture`'s
-shape reused: they record a real org's answers into `fixtures/live-salesforce/` and check our
-wire types and the *unmodified* normalizer against them, skipping cleanly when there are no
-captures so a clean clone still needs zero keys. It was built first here rather than in step
-order because **this is the adapter where a wrong field name would look like the truth**. A
-wrong field on a tracking payload gives a crate with no scans and looks broken within a
-minute; a wrong field here gives a dashboard where *nothing is ever attributed* — every show
-carrying a real cost and no pipeline — which is indistinguishable from the honest finding
-§8c says is normal at most companies. Nobody would go looking. The four questions are
-labelled Q1–Q4 in the script and asserted by name in the suite:
+**`retention_overdue` is now enforced by the nightly job**, which is the promise §5j said was worse
+than none while nothing kept it: stage 2 of `runNightly` really erases, and what it erased goes into
+the run's summary, because an irreversible act performed by nobody has to leave a record made by
+something. Two callers skip it and both have the same reason — the test suite and the seed would each
+destroy the demo they exist to build. `pnpm leads --retention` is the deliberate, typed version.
 
-- **Q1 — the join.** An Opportunity has **no** `ContactId`; the join is
-  `OpportunityContactRole`. Reading the former compiles, returns `undefined` forever, and
-  attributes nothing. This is the one whose wrong answer is invisible, so it is asked first.
-- **Q2 — won versus open.** Stage *names* are per-org free text ("Closed Won", "6 -
-  Closed/Won", and plenty not in English), so classification reads `IsWon` / `IsClosed` and
-  never a name. The suite prints the org's own stage vocabulary as the evidence.
-- **Q3 — money and dates.** `Amount` arrives as a JSON *number* where every other provider
-  here sends a decimal string, so it is stringified through `money/decimal.ts` rather than
-  multiplied by 100; `CloseDate` is a bare date anchored at midday, because `new Date()` on
-  it lands at UTC midnight and therefore in the *previous* quarter in every American zone.
-- **Q4 — currencies.** `CurrencyIsoCode` exists only in a multi-currency org and selecting a
-  field an org lacks is a hard `INVALID_FIELD`, so the query is probed once and falls back to
-  `Organization.DefaultCurrencyIsoCode` — read, never defaulted to `USD`, because a currency
-  label is part of a money figure.
+**Nothing runs the nightly job on this machine**: without `CRON_SECRET` the endpoint refuses, and
+until a scheduler is pointed at a real origin the only things that run it are `pnpm nightly` and a
+button on `/settings/notifications` — which is why `manual_only` is a standing of its own, and why
+`unchecked` is still a standing and a figure on the page. With no `SLACK_BOT_TOKEN` the transport is
+`console`, which composes every message from the real alerts and delivers it **to nobody** —
+recorded as `rendered`, never `sent`, so a workspace that has told nobody anything can never read as
+one that has. `pnpm nightly --dry` prints the messages verbatim, which is the only way to read what
+a colleague would receive before installing a Slack app.
 
-Captures are gitignored and the script redacts emails, names and phone numbers before
-writing; the suite asserts it did. §5j is about a stranger's details not travelling somewhere
-they were never collected for, and a git history is the least reversible such place.
+**Nothing rebooks a cancelled flight**, and the alert says so: the agent buys against a travel
+request and the ticket is already bought, so rebooking is a call to the airline — the same shape as
+§6d's cancel.
 
-**The Anthropic adapter (step 15) has never met a live key either, and is in a different
-category.** It uses the vendor's own SDK, so there is no hand-written wire schema to be
-wrong about and no capture script that would tell us anything — the compiler already
-checks the shape. What is unverified there is *behavioural*: whether the model chooses
-tools well, keeps the tenses `prompt.ts` asks for, and stops at drafting. None of that is
-load-bearing for access, which is the point of putting the access model in `tools.ts`.
+**Extraction from the manual PDF is built** as of step 22, and the rule it had to obey — nothing
+extracted is quoted in dollars until a human confirms it — is enforced by the step 11 engine exactly
+as written, with no change to it. What is **unverified is recall against a layout nobody in this
+repo has seen**, because the only corpus here is synthetic and was written by whoever wrote the
+prompt. `pnpm manual:probe <file.pdf>` is what measures that, and it is the only capture script here
+whose output is meant to be *read* rather than asserted on: most lines on its unclaimed list are not
+deadlines, and the one that is, is a miss.
 
-**Outstanding — and step 12.5 built the tools to close it.** The Duffel adapter is still
-verified only against fixtures and mocked HTTP written to the published v2 schema.
-Nothing has ever been bought. What is new is that the loop can now be opened:
-`pnpm duffel:capture` records real responses into `fixtures/live/` and
-`tests/duffel-conformance.test.ts` checks our wire types and the unmodified normalizer
-against them, skipping cleanly when there are no captures so a clean clone still needs
-zero keys.
+**Checklist templates are code, not rows**: the library in `src/lib/readiness/templates.ts` is
+versioned in git, and an org-editable template builder is deliberately deferred until the standard
+list has been used and argued with, which the templates card says on the page.
 
-**Why that matters more than it sounds:** `duffel/fixtures.ts` is the single source for
-the unit tests, the `recorded` provider, *and* the seed's travel requests. So `pnpm test`,
-`pnpm booking:dry-run` and every seeded booking all validate against payloads we invented.
-That is a closed loop — it proves internal consistency and structurally cannot catch a
-wrong field name.
+**The day-of screen queues, and nothing drains it in the background.** There is no Background Sync
+registration and no push: the outbox goes up when the tab is open and the network comes back, which
+is the ordinary case on a floor and is not every case. A phone put in a pocket at 4pm with three
+captures on it still has three captures on it at 9pm — which is exactly why the count says "on this
+device" rather than "pending". It also **only captures leads and meetings offline**: every other
+write is a server action that needs a connection, because each has a store function with rules the
+device does not carry. And a target-account alert is a line on the capture form, not a notification —
+nothing here asks for notification permission.
 
-**The credit path is where that bites, and doc research says it is probably already
-broken.** `wire.ts` declares two credit fields and hedges between them:
-`available_airline_credit_ids` (string ids — real, three independent doc reads agree, and
-`normalize.ts` reads it) and `available_airline_credits` (objects carrying values — absent
-from the published Offer schema). `client.ts:resolveCredits` reads **only** the second and
-throws when it is empty, so if it is fictional then **every credit-first purchase has
-always escalated to a human and §5b has never once fired.** It fails loudly, which is
-exactly why nothing caught it. The docs describe credit values living on the credit
-resource (`GET /air/airline_credits/:id`) and credits applying through the order's
-`payments` array as `{type: "airline_credit", airline_credit_id, …}` rather than the
-top-level `airline_credits: [{id}]` we send at `client.ts:440`. A third suspect: the
-adapter *computes* `creditAppliedCents` instead of reading back what the carrier applied,
-which the ground rule below forbids.
+### What has never met a live key
 
-None of that is confirmed. Doc sources contradicted each other once during research, so
-**the live key is the arbiter** — capture first, change code second. The three questions
-are labelled Q1/Q2/Q3 in `scripts/duffel-capture.ts` and asserted in the conformance
-suite, each failure naming the file, the line, and the fix.
+**Four adapters have never met a live key**, and each says so in its own header: AeroAPI (13),
+EasyPost (14), Salesforce (19) and Slack (21). All are written to published schemas and tested
+against fixtures we wrote ourselves — the closed loop step 12.5 named, which proves internal
+consistency and structurally cannot catch a wrong field name. The Duffel adapter is in the same
+position and nothing has ever been bought. **The Anthropic assistant adapter (15) is a different
+category**: it uses the vendor's SDK, so there is no hand-written wire schema to be wrong about and
+no capture script would tell us anything — what is unverified is *behavioural* (tool choice, the
+tenses `prompt.ts` asks for, stopping at drafting), and none of that is load-bearing for access,
+which is the point of putting the access model in `tools.ts`. The step 22 extractor **has** met a
+live key.
 
-Clerk is in the same position, and `pnpm clerk:verify` is its equivalent: it reads the
-Backend API and prints what really comes back next to what the code assumes. Four claims,
-none yet confirmed — that `externalAccounts[].provider` and `enterpriseAccounts[].provider`
-carry slugs `normalizeProvider()`'s `oauth_|saml_|oidc_|custom_` strip recognises (if not,
-the strip silently no-ops and an org permitting Okta refuses the person using Okta); that
-those identity arrays are always arrays and never `undefined` (`credentialsHeld` iterates
-them directly, so `undefined` is a 500 rather than the promised fail-closed refusal); that
-an impersonation session surfaces `actor.sub` where `clerk.ts` reads it — **a path with
-zero test coverage today, since every test passes `actor: null`**; and that `auth()`
-resolves under `proxy.ts` in Next 16, whose Clerk branch is also untested. Enterprise SSO
-may need a paid plan; if it is unreachable that half stays unverified and this file will
-say so rather than implying otherwise.
+**Only Duffel, Salesforce and Clerk have capture scripts.** Each records a real account's answers
+into gitignored fixtures and checks our wire types and the *unmodified* normalizer against them,
+skipping cleanly when there are no captures so a clean clone still needs zero keys. Slack's case is
+the mildest of the four and worth stating so nobody over-corrects: its one docs-catchable defect —
+the `{"ok": false}` envelope on an HTTP 200 — is covered by unit tests against a mock transport, and
+what remains unverified is whether the three scopes are the right three and whether
+`conversations.open` behaves as documented for a bot posting its first DM. A wrong answer there
+fails loudly on the first send, which is the opposite of Salesforce's failure mode. **And there is
+no workspace to capture against** — a standing decision as of 2026-09-01, not an oversight.
 
-One Clerk bug *was* confirmed and fixed without any key: `authMode()` returned `'dev'`
-when exactly one of the two keys was set, so a deployment with the publishable key
-injected and the secret key forgotten served `DEV_ACTOR_EMAIL`'s seeded user to everyone,
-silently. One key is now `AuthConfigError`.
+**Salesforce got its script first, out of step order, because this is the adapter where a wrong
+field name would look like the truth.** A wrong field on a tracking payload gives a crate with no
+scans and looks broken within a minute; a wrong field here gives a dashboard where *nothing is ever
+attributed* — every show carrying a real cost and no pipeline — which is indistinguishable from the
+honest finding §8c says is normal at most companies. Nobody would go looking.
+`pnpm salesforce:capture` + `tests/salesforce-conformance.test.ts` label the four questions Q1–Q4
+and assert them by name:
 
+- **Q1 — the join.** An Opportunity has **no** `ContactId`; the join is `OpportunityContactRole`.
+  Reading the former compiles, returns `undefined` forever, and attributes nothing. This is the one
+  whose wrong answer is invisible, so it is asked first.
+- **Q2 — won versus open.** Stage *names* are per-org free text ("Closed Won", "6 - Closed/Won", and
+  plenty not in English), so classification reads `IsWon` / `IsClosed` and never a name. The suite
+  prints the org's own stage vocabulary as the evidence.
+- **Q3 — money and dates.** `Amount` arrives as a JSON *number* where every other provider here
+  sends a decimal string, so it is stringified through `money/decimal.ts` rather than multiplied by
+  100; `CloseDate` is a bare date anchored at midday, because `new Date()` on it lands at UTC
+  midnight and therefore in the *previous* quarter in every American zone.
+- **Q4 — currencies.** `CurrencyIsoCode` exists only in a multi-currency org and selecting a field
+  an org lacks is a hard `INVALID_FIELD`, so the query is probed once and falls back to
+  `Organization.DefaultCurrencyIsoCode` — read, never defaulted to `USD`, because a currency label
+  is part of a money figure.
+
+Captures are gitignored and the script redacts emails, names and phone numbers before writing; the
+suite asserts it did. §5j is about a stranger's details not travelling somewhere they were never
+collected for, and a git history is the least reversible such place.
+
+**Duffel's credit path is where the closed loop bites, and doc research says it is probably already
+broken.** `duffel/fixtures.ts` is the single source for the unit tests, the `recorded` provider
+*and* the seed's travel requests, so `pnpm test`, `pnpm booking:dry-run` and every seeded booking
+validate against payloads we invented. `wire.ts` declares two credit fields and hedges between
+them: `available_airline_credit_ids` (string ids — real, three independent doc reads agree, and
+`normalize.ts` reads it) and `available_airline_credits` (objects carrying values — absent from the
+published Offer schema). `client.ts:resolveCredits` reads **only** the second and throws when it is
+empty, so if it is fictional then **every credit-first purchase has always escalated to a human and
+§5b has never once fired.** It fails loudly, which is exactly why nothing caught it. The docs
+describe credit values living on the credit resource (`GET /air/airline_credits/:id`) and credits
+applying through the order's `payments` array as
+`{type: "airline_credit", airline_credit_id, …}` rather than the top-level
+`airline_credits: [{id}]` we send at `client.ts:440`. A third suspect: the adapter *computes*
+`creditAppliedCents` instead of reading back what the carrier applied, which the ground rules
+forbid. None of it is confirmed — doc sources contradicted each other once during research, so
+**the live key is the arbiter**: capture first, change code second. Q1/Q2/Q3 in
+`scripts/duffel-capture.ts` are asserted in the conformance suite, each failure naming the file,
+the line and the fix.
+
+**`pnpm clerk:verify` is Clerk's equivalent**: it reads the Backend API and prints what really
+comes back next to what the code assumes. Four claims, none yet confirmed — that
+`externalAccounts[].provider` and `enterpriseAccounts[].provider` carry slugs
+`normalizeProvider()`'s `oauth_|saml_|oidc_|custom_` strip recognises (if not, the strip silently
+no-ops and an org permitting Okta refuses the person using Okta); that those identity arrays are
+always arrays and never `undefined` (`credentialsHeld` iterates them directly, so `undefined` is a
+500 rather than the promised fail-closed refusal); that an impersonation session surfaces
+`actor.sub` where `clerk.ts` reads it — **a path with zero test coverage today, since every test
+passes `actor: null`**; and that `auth()` resolves under `proxy.ts` in Next 16, whose Clerk branch
+is also untested. Enterprise SSO may need a paid plan; if it is unreachable that half stays
+unverified and this file will say so rather than implying otherwise.
 ## Ground rules that are easy to violate
 
 - **No fake data behind a real integration.** Missing key → an error naming the env var,
@@ -2506,194 +1749,117 @@ Set both Clerk keys (see `.env.example`) and the seam switches to real sessions.
 ## Layout
 
 ```
-src/db/schema.ts              ~38 tables, the domain model
-src/app/(app)/               the app shell and its screens; never prerendered
-src/app/(app)/travel/        the request list, the form, the audit trail as a page,
+src/db/schema.ts              ~40 tables, the domain model
+src/app/(app)/                the app shell and its screens; never prerendered
+  travel/                     the request list, the form, the audit trail as a page,
                               and the approvals queue
-src/app/(app)/alerts/        the feed: seven engines' output, grouped, with the standing
-                              of each — and no way for a person to resolve one
-src/app/(app)/cost/          the true-cost portfolio, and `_present.tsx` — the vocabulary
-                              it and the show's Cost tab both render through
-src/app/(app)/roi/           cost against pipeline, ranked by cost rather than by multiple,
-                              and `_present.tsx` — where `Figure` is the only way a per-unit
-                              number reaches a page, so a withheld one cannot be printed
-                              anyway by the other screen
-src/app/(app)/shows/[id]/roi/    the ninth tab: both halves of §8 side by side, with every
-                              opportunity behind the figure openable
-src/app/(app)/settings/crm/  the connection, the attribution model, and every sync run with
-                              what it refused
-src/app/(app)/leads/         capture across the calendar, worst first, and `_present.tsx` —
-                              the one sentence in front of every count, shared with the tab
-src/app/api/intake/leads/    POST from a badge scanner: the only route that authenticates
-                              without getActor(), and a retry answered as a success
-src/app/(app)/settings/intake/  issuing and revoking intake keys; admin, because a key is
-                              a credential rather than data
-src/app/(app)/day-of/        the offline screen: a picker, and `[id]/_client.tsx` — the only
+  alerts/                     the feed: seven engines' output, grouped, with each standing —
+                              and no way for a person to resolve one
+  cost/                       the true-cost portfolio + `_present.tsx`, the vocabulary it and
+                              the show's Cost tab both render through
+  roi/                        cost against pipeline, ranked by cost rather than by multiple;
+                              `_present.tsx`'s `Figure` is the only way a per-unit number
+                              reaches a page, so a withheld one cannot be printed
+  leads/                      capture across the calendar + `_present.tsx`, the one sentence
+                              in front of every count, shared with the tab
+  readiness/ flights/         the portfolio rollups; `shipping/_present.tsx` and
+  shipping/ assets/           `assets/_present.tsx` are shared with the Logistics tab
+  safety/                     duty of care: who to call, in the order to call them
+  drayage figures             live on the Logistics and Cost tabs, not on a board
+  assistant/                  the concierge and one conversation, with each tool step
+                              rendered beside the answer rather than behind it
+  day-of/                     the offline screen: a picker, and `[id]/_client.tsx` — the only
                               page here that is not a Server Component, whose server half
                               deliberately fetches nothing; `_device.ts` is IndexedDB and
                               `_register.tsx` installs the worker
-src/app/api/day-of/          snapshot (GET: the whole screen as data) and sync (POST: a
-                              device's queue, every item answered)
-public/sw.js                  hand-written, caches the day-of pages and nothing else
-src/app/manifest.ts           the installable manifest; start_url is /day-of
-src/app/(app)/readiness/     the portfolio rollup, ranked on pace rather than on score
-src/app/(app)/flights/       the flight board, ordered by what is wrong with a leg
-src/app/(app)/shipping/      the shipping board, and `_present.tsx` — the shipment
-                              vocabulary both it and the Logistics tab render through
-src/app/(app)/assets/        the asset register and the collateral shelf, plus the forms
-                              and `_present.tsx` the Logistics tab renders through too
-src/app/(app)/assistant/     the concierge and one conversation, with each tool step
-                              rendered beside the answer rather than behind it
-src/app/(app)/shows/[id]/team/     the writable roster, booth coverage, side events
-src/app/(app)/shows/[id]/lodging/  hotels, room blocks, and the derived deadline
-src/app/(app)/shows/[id]/leads/    the eighth tab: capture, the CSV import with its whole
-                              arithmetic on the page, meetings, and erasure
-src/app/(app)/shows/[id]/cost/     the show's true cost, not rendered at all for a Member
-src/app/(app)/shows/[id]/logistics/  three models on one page: writable freight and its
-                              timeline, the assets it carries with their custody chain,
-                              and the collateral allocated to the show
-src/app/(app)/_components/   the shared vocabulary: ui.tsx (Card, Badge, formatting),
+  shows/[id]/                 ten tabs: overview · readiness (+ the deadline register and
+                              `manual-forms.tsx`) · travel · team · lodging · logistics
+                              (freight + its timeline, the assets it carries with their
+                              custody chain, the collateral, the drayage card) · cost (not
+                              rendered for a Member) · leads · roi (ditto) · safety
+  settings/                   security · crm · intake (admin) · notifications (the only
+                              entry that is not admin-only)
+  _components/                the shared vocabulary: ui.tsx (Card, Badge, Table, formatting),
                               form.ts (one FormState + FormData helpers, dependency-free),
-                              form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts
-src/app/(app)/shows/[id]/team/  roster-forms · shift-forms · side-event-forms, one per card
-src/lib/alerts/               the feed — feed.ts (pure: the five standings, ordering,
-                              grouping a sentence rather than a fact, where each source
-                              links), access.ts (no org-wide read), store.ts (the one
-                              writer every engine shares; records a plan and closes what
-                              it no longer contains), sweep.ts (all seven, and the ones that
-                              could not run)
-src/lib/cost/                 true cost — rollup.ts (pure: the lines, the six refusals, and
-                              coverage as a shape rather than a percentage), store.ts (every
-                              show's inputs in a fixed number of queries), access.ts
-src/lib/roi/                  the third north-star job — attribution.ts (pure: five
-                              refusals, and first touch decided across the whole calendar
-                              rather than within a show), rollup.ts (pure: §5k — two floors
-                              do not cancel, a replayed pipeline withholds its ratios,
-                              maturity enforced rather than printed), alerts.ts (the seventh
-                              engine; never alerts on a low multiple), access.ts (inherits
-                              the cost gate), provider.ts (env → CRM, no fallback), store.ts
-                              (matching gated on `marketabilityOf`; withheld kept apart from
-                              unmatched)
-src/lib/integrations/crm/     provider interface with exactly one write method + a Salesforce
-                              adapter + a HubSpot seam that throws + a `recorded` replay of a
-                              conversion shape rather than of a pipeline
-src/lib/notify/               the transport — plan.ts (pure: the five refusals, and the
-                              grouping borrowed from the feed rather than rebuilt), store.ts
-                              (the only caller of a transport; the delivery log and its
-                              rail), access.ts (a destination is the subject's own),
-                              provider.ts (env → transport; unset is `console`, a wrong name
-                              still throws)
-src/lib/integrations/notify/  transport interface + a Slack Web API adapter that reads `ok`
-                              rather than the HTTP status + a `console` transport that
-                              composes the real message and delivers it to nobody
-src/lib/schedule/             the job — nightly.ts (sweep → erase → carry, and whether it
-                              ever ran), principal.ts (the second principal that is not an
-                              Actor, and the first that erases)
+                              form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts,
+                              sidebar.tsx, go-to-show.tsx (a chooser, not a shortcut)
+src/app/api/intake/leads/     POST from a badge scanner: the only route that authenticates
+                              without getActor(), and a retry answered as a success
+src/app/api/day-of/           snapshot (GET: the whole screen as data) and sync (POST: a
+                              device's queue, every item answered)
 src/app/api/cron/nightly/     POST from a scheduler: no org parameter, no GET, and a refusal
                               when no secret is set
-src/app/(app)/settings/notifications/  where your alerts go, what ran the engines, and the
-                              delivery log — the only Settings entry that is not admin-only
-src/lib/dayof/                the day-of model — targets.ts and outbox.ts (pure, and the
-                              first two modules in this product shipped to the *browser*:
-                              an exact-after-normalisation match, and a queue that loses
-                              nothing), snapshot.ts (one instant, and what stops being
-                              claimable when it ages), access.ts (the screen is anybody's,
-                              the target list is not), store.ts (one object in a fixed
-                              number of queries; the queue drained through `captureLead`)
-src/lib/leads/                capture — coverage.ts (pure: the count that says what it is
-                              missing, and the withheld per-lead figure), consent.ts (pure:
-                              a basis never defaulted, and erasure that keeps the count),
-                              parse.ts (CSV + an import planner that loses no row),
-                              dedupe.ts (identity within a show, never across),
-                              alerts.ts (the sixth engine; its sharpest alert has no lead
-                              row behind it), intake.ts (a principal that is not an Actor),
-                              edit.ts, access.ts, store.ts
-src/lib/shows/                the planning core — pure clone planner, pure intake,
-                              the visibility rule, and the org-scoped store
-src/lib/readiness/            scoring (a breakdown, and `null` for unplanned), the
-                              built-in templates + idempotent apply planner, the edit
-                              rules, who may edit vs. report, the pace model, the store
-src/lib/safety/               §5o — presence.ts (pure: evidence into a standing, with what
-                              it rests on and how old that is; staleness keyed by *basis*,
-                              because an interval containing now does not age), rollcall.ts
-                              (pure: presence never answers for safety, and five refusals),
-                              access.ts (the loosest gate in the codebase), store.ts (every
-                              person's evidence in a fixed number of queries, because this
-                              screen is read while something is going wrong)
-src/lib/drayage/              §5n — estimate.ts (pure: hundredweight, and six refusals of
-                              which per-shipment rounding is the one that is silently 25%
-                              light), edit.ts (a card, validated; `basis` has no default
-                              because either guess is a 100% error), access.ts (rates are
-                              money, packing is a fact only the packer holds), store.ts
-src/lib/manual/               §5a's other half — pdf.ts (the only file here that touches a
-                              PDF; numbered pages, and why the model never gets the
-                              document), anchor.ts (a citation is checked against text we
-                              hold, or the deadline never exists), candidates.ts (six
-                              refusals, and every candidate accounted for), coverage.ts
-                              (the arbiter: a deliberately stupid date sweep that cannot be
-                              tuned into agreeing with us), access.ts, provider.ts (env →
-                              extractor, no fallback and no zero-key mode), store.ts,
-                              fixtures.ts (a synthetic manual, and a PDF writer, both
-                              proving only that our halves agree)
-src/lib/integrations/extract/ extractor interface with no tools at all + an Anthropic
-                              adapter using structured output — and deliberately **no
-                              `recorded` provider**, because a replayed extraction is an
-                              assertion about a document nothing has read
-src/app/(app)/shows/[id]/readiness/manual-forms.tsx  reading a manual, and the list of dates
-                              in it that nothing claimed
-src/lib/deadlines/            the §5a engine — alerts.ts (pure: thresholds, audience,
-                              tense, dedupe-by-date, the one exposure model), edit.ts
-                              (local time of day, the written reason), access.ts, store.ts
-                              (org-scoped rows + the sweep)
-src/lib/team/                 the roster — coverage.ts (pure: assigned vs. able to be
-                              there, `overstated`, personal clashes), conflicts.ts
-                              (cross-show, on travel windows, certain vs. possible),
-                              edit.ts, access.ts, store.ts
-src/lib/lodging/              hotels, room assignments, and the cutoff that derives a
-                              deadline register row rather than a second clock
-src/lib/flights/              tracking — status.ts (pure: freshness, the §7 arrival buffer
-                              re-run against live times, a re-timing kept apart from a
-                              delay), alerts.ts (pure: what is worth saying, keyed to the
-                              standing not the estimate), board.ts, access.ts, provider.ts
-                              (env → status provider, no fallback), store.ts (rows, the
-                              sweep, and materializing a booking into an itinerary)
-src/lib/assets/               capital and collateral — custody.ts (pure: the custody
-                              chain, the three-refusal availability verdict, and where a
-                              reservation window meets the freight), conflicts.ts (windows
-                              not show dates; certain vs. possible), inventory.ts (on hand
-                              vs. free, the three allocation states, the ledger
-                              projection), alerts.ts (both dedupe-key shapes at once),
-                              board.ts, access.ts, edit.ts, store.ts (rows, scoped through
-                              the asset's own org, and the sweep)
-src/lib/shipping/             freight — status.ts (pure: the two-edged receiving window,
-                              the stall model, delivered-vs-received, the reconciler),
-                              alerts.ts (pure, and the one alert with no row behind it),
-                              board.ts, access.ts, edit.ts, provider.ts (env → tracking
-                              provider, no fallback), store.ts (rows, the sweep, the
-                              append-only timeline)
-src/lib/integrations/flightstatus/  provider interface + AeroAPI adapter + `recorded` replay
-src/lib/integrations/shipping/      provider interface + EasyPost adapter + `recorded` replay
-src/lib/integrations/llm/     provider interface + Anthropic adapter (the first with no
-                              hand-written wire schema) + a `scripted` model that replays
-                              tool *plans* and never prose
-src/lib/assistant/            the concierge — tools.ts (the access model: every tool is an
-                              existing org-scoped store call as the asking actor),
-                              access.ts (subtractive — a withheld tool is not described),
-                              prompt.ts (tense, never access), loop.ts (a manual loop with
-                              our own bounds), draft.ts (files unconfirmed, guesses no
-                              zone, holds a provider that cannot fly), serialize.ts,
-                              provider.ts (env → model, no fallback), store.ts (rows,
-                              scoped to a *user*)
-src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
-src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method
-                              control (pure gate + versioned policy store)
+public/sw.js                  hand-written, caches the day-of pages and nothing else
+src/app/manifest.ts           the installable manifest; start_url is /day-of
 src/lib/policy/               the decision layer — pure, deterministic, 47 tests
-src/lib/integrations/flights/ provider interface + Duffel adapter + `recorded` replay
-src/lib/travel/               the spine — state machine, policy store, booking agent,
-                              kill switch, passenger identity, credit ledger, audit
-                              trail, notifications; plus step 9's read/present layer:
-                              review.ts (pure — what approving does, who may act),
-                              provider.ts (env → provider, no fallback), queue.ts
-src/lib/money/ src/lib/datetime/  correctness primitives; see ground rules
+src/lib/travel/               the spine — state machine, policy store, booking agent, kill
+                              switch, passenger identity, credit ledger, audit trail,
+                              notifications; review.ts (pure: what approving does, who may
+                              act), provider.ts (env → provider, no fallback), queue.ts
+src/lib/shows/                the planning core — pure clone planner, pure intake, the
+                              visibility rule, proximity.ts, the org-scoped store
+src/lib/readiness/            scoring (a breakdown, `null` for unplanned), the built-in
+                              templates + idempotent apply planner, edit rules, the pace
+                              model, the store
+src/lib/deadlines/            the §5a engine — alerts.ts (pure: thresholds, audience, tense,
+                              dedupe-by-date, the one exposure model), edit.ts, access.ts,
+                              store.ts (org-scoped rows + the sweep)
+src/lib/manual/               §5a's other half — pdf.ts (the only file that touches a PDF),
+                              anchor.ts (a citation checked against text we hold, or the
+                              deadline never exists), candidates.ts (six refusals, every
+                              candidate accounted for), coverage.ts (the deliberately stupid
+                              arbiter), provider.ts (no fallback, no zero-key mode), store.ts,
+                              fixtures.ts
+src/lib/team/                 coverage.ts (assigned vs. able to be there, `overstated`,
+                              personal clashes), conflicts.ts (travel windows; certain vs.
+                              possible), edit.ts, access.ts, store.ts
+src/lib/lodging/              hotels, room assignments, and the cutoff that derives a register
+                              row rather than a second clock
+src/lib/flights/              status.ts (freshness, the §7 buffer re-run live, a re-timing
+                              kept apart from a delay), alerts.ts, board.ts, provider.ts,
+                              store.ts (rows, the sweep, materializing a booking)
+src/lib/shipping/             status.ts (the two-edged receiving window, the stall model,
+                              delivered-vs-received, the reconciler), alerts.ts (the one alert
+                              with no row behind it), carrier.ts (pure inference from a
+                              tracking number), board.ts, edit.ts, provider.ts, store.ts
+src/lib/drayage/              §5n — estimate.ts (hundredweight + six refusals), edit.ts
+                              (`basis` has no default), access.ts, store.ts
+src/lib/assets/               custody.ts (the chain, three-refusal availability,
+                              freightCoverage), conflicts.ts (windows, not show dates),
+                              inventory.ts (on hand vs. free, the ledger projection),
+                              alerts.ts, board.ts, edit.ts, store.ts (scoped through the
+                              asset's own org)
+src/lib/leads/                coverage.ts (the count that says what it is missing, and the
+                              withheld per-lead figure), consent.ts, parse.ts, dedupe.ts,
+                              alerts.ts, intake.ts (a principal that is not an Actor),
+                              edit.ts, access.ts, store.ts
+src/lib/roi/                  attribution.ts (first touch across the whole calendar),
+                              rollup.ts (§5k), alerts.ts (never on a low multiple),
+                              access.ts, provider.ts, store.ts
+src/lib/safety/               §5o — presence.ts (evidence → a standing, staleness keyed by
+                              *basis*), rollcall.ts (presence never answers for safety),
+                              access.ts (the loosest gate here), store.ts
+src/lib/dayof/                targets.ts and outbox.ts (pure, and the first two modules here
+                              shipped to the *browser*), snapshot.ts, access.ts, store.ts
+src/lib/alerts/               feed.ts (the five standings, ordering, grouping a sentence
+                              rather than a fact), access.ts (no org-wide read), store.ts
+                              (the one writer every engine shares), sweep.ts
+src/lib/cost/                 rollup.ts (the lines, the six refusals, coverage as a shape),
+                              store.ts, access.ts
+src/lib/notify/               plan.ts (the five refusals), store.ts (the only caller of a
+                              transport), access.ts, provider.ts
+src/lib/schedule/             nightly.ts (sweep → erase → carry), principal.ts
+src/lib/assistant/            tools.ts (the access model), access.ts (subtractive),
+                              prompt.ts (tense, never access), loop.ts, draft.ts,
+                              serialize.ts, provider.ts, store.ts (scoped to a *user*)
+src/lib/integrations/         flights/ (Duffel) · flightstatus/ (AeroAPI) · shipping/
+                              (EasyPost) · llm/ (Anthropic + a `scripted` model that replays
+                              tool plans, never prose) · crm/ (Salesforce + a HubSpot seam
+                              that throws) · notify/ (Slack + a `console` transport that
+                              reaches nobody) · extract/ (Anthropic structured output, and
+                              deliberately no `recorded` provider)
+src/lib/auth/                 the seam — getActor(), the Clerk adapter, login-method control
+src/proxy.ts                  Next 16's Middleware: Clerk's context, or a pass-through
+src/lib/money/ datetime/      correctness primitives; see ground rules
 scripts/seed.ts               the only place seed data lives
 ```
