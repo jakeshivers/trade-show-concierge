@@ -5,6 +5,21 @@ import { canStartRollCall } from '@/lib/safety/access';
 import { rollCallShowOrder } from '@/lib/safety/rollcall';
 import { Badge, Card, Empty, PageHeader } from '../_components/ui';
 import { GoToShow } from '../_components/go-to-show';
+import { BASIS_LABEL } from '@/lib/safety/presence';
+import type { PersonStanding, RollCall } from '@/lib/safety/rollcall';
+import { BoardAnswer } from './forms';
+
+/**
+ * Who is still to be heard from, in the order `rollcall.ts` already sorted them
+ * into — the people this page exists for. Derived rather than stored, and read
+ * off `people` rather than recomputed, so the list under a badge can never
+ * disagree with the count on it.
+ */
+function outstanding(c: RollCall & { showId: string }): PersonStanding[] {
+  return c.people.filter(
+    (p) => p.response === null && p.presence.kind !== 'not_travelling',
+  );
+}
 
 /**
  * Duty of care across the calendar.
@@ -81,6 +96,60 @@ export default async function SafetyPortfolio() {
                   )}
                 </div>
                 <p className="mt-1 text-xs text-text-muted">{c.summary}</p>
+
+                {/*
+                  The list to work down, on the board rather than one click away.
+                  This screen is read while something is going wrong, and until now
+                  it was a summary that linked out: to record that somebody is safe
+                  you opened the show, found the Safety tab, then found the name.
+                  Three navigations, during an evacuation, on a phone.
+                  `/shows/[id]/safety` is still where a roll call is started and
+                  closed — those belong to the show, and starting one from a list of
+                  shows is exactly the guess `GoToShow` refuses to make. What moves
+                  here is the only act that is time-critical and unambiguous: this
+                  person, this roll call, heard from.
+
+                  It shows the **outstanding** people only. The accounted-for are
+                  not work, and a board that redrew the whole roster would bury the
+                  four names that matter under the twenty that do not — the same
+                  reason the show tab leads with who has not answered.
+                */}
+                {c.request && outstanding(c).length > 0 && (
+                  <ul className="mt-3 space-y-2 border-t border-border pt-3">
+                    {outstanding(c).map((p) => (
+                      <li key={p.presence.userId} className="space-y-1">
+                        <div className="flex flex-wrap items-baseline gap-x-2">
+                          <span className="text-sm font-medium">{p.presence.fullName}</span>
+                          <span className="text-xs text-text-muted">
+                            {BASIS_LABEL[p.presence.basis]}
+                            {p.presence.stale && ' (stale)'}
+                          </span>
+                          {/*
+                            A phone number is the actual next action, so it is a
+                            tel: link rather than text to copy. Somebody with none
+                            is called out rather than left looking merely quiet:
+                            their silence means nothing, and that is refusal 3.
+                          */}
+                          {p.phone ? (
+                            <a href={`tel:${p.phone}`} className="text-xs underline">
+                              {p.phone}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-bad">no phone number</span>
+                          )}
+                        </div>
+                        <BoardAnswer
+                          showId={c.showId}
+                          checkId={c.request!.id}
+                          userId={p.presence.userId}
+                          isSelf={p.presence.userId === actor.userId}
+                          name={p.presence.fullName}
+                          standing={p.response?.standing ?? null}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

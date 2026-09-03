@@ -2,9 +2,17 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import { Field, Input, Message, Select, Submit, ZonedDateTime } from '../_components/form-ui';
+import {
+  Field,
+  Input,
+  Message,
+  QuietSubmit,
+  Select,
+  Submit,
+  ZonedDateTime,
+} from '../_components/form-ui';
 import { CarrierAndTracking } from './_carrier-field';
-import { trackPackage } from './actions';
+import { confirmArrival, trackPackage, withdrawArrival } from './actions';
 
 /**
  * Track a package, from the board.
@@ -169,6 +177,51 @@ export function TrackPackageForm({
         </Link>
         <Message state={state} />
       </div>
+    </form>
+  );
+}
+
+/**
+ * The crate is actually here.
+ *
+ * Rendered on the board row that says `not confirmed at the booth`, which until
+ * now was a sentence with nowhere to go. `delivered` is the carrier's word about
+ * a **dock**; drayage moves it from there to the booth on its own schedule and
+ * this app cannot see that, so the gap between the two is exactly what somebody
+ * standing in the booth closes — and they are the person least likely to be able
+ * to navigate three levels deep to do it.
+ *
+ * Available to anybody, and that is `access.ts`'s argument rather than this
+ * screen's: the person who finds the crate is whoever is in the booth at 7am,
+ * and a confirmation only a manager can give is one that never gets given.
+ */
+export function BoardReceiptForm({
+  showId,
+  shipmentId,
+  receivedAt,
+}: {
+  showId: string;
+  shipmentId: string;
+  receivedAt: Date | string | null;
+}) {
+  const [state, action, pending] = useActionState(
+    receivedAt ? withdrawArrival : confirmArrival,
+    {},
+  );
+  return (
+    <form action={action}>
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="shipmentId" value={shipmentId} />
+      {receivedAt ? (
+        <QuietSubmit pending={pending} busy="…">
+          Withdraw
+        </QuietSubmit>
+      ) : (
+        <QuietSubmit pending={pending} busy="Confirming…">
+          Confirm at the booth
+        </QuietSubmit>
+      )}
+      <Message state={state} />
     </form>
   );
 }

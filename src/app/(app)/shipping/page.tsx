@@ -18,7 +18,8 @@ import {
   Td,
   Th,
 } from '../_components/ui';
-import { TrackPackageForm, type PickableShow } from './forms';
+import { RefreshButton } from '../alerts/forms';
+import { BoardReceiptForm, TrackPackageForm, type PickableShow } from './forms';
 import {
   CONSIGNMENT_LABEL,
   ScanCell,
@@ -113,6 +114,14 @@ export default async function ShippingBoardPage() {
             receiving window it has to land in, and on a show floor that window has two edges,
             because freight that arrives before the dock opens is refused rather than early.
           </>
+        }
+        action={
+          // The board had a write (track a package) and no way to re-ask a
+          // carrier, while rendering a `last scan` age on every row. Same fix as
+          // /flights and the same button, because the sweep behind it asks both
+          // providers at once and reports either being unconfigured in its own
+          // words.
+          <RefreshButton />
         }
       />
 
@@ -279,8 +288,20 @@ function Crate({ row, asOf }: { row: ShipmentRow; asOf: Date }) {
       <Td>
         <Badge tone={STATUS_TONE[row.status]}>{row.status.replace(/_/g, ' ')}</Badge>
         {/* The distinction this screen exists to make visible. */}
+        {/*
+          The sentence, and now the control that answers it. Rendered whenever
+          the crate has reached a dock and nobody has said it reached the booth —
+          and once somebody has, the row keeps a quiet Withdraw, because a
+          confirmation pressed by mistake is otherwise permanent.
+        */}
         {c.deliveredAt && !c.receivedAt && (
-          <span className="block text-xs text-warn">not confirmed at the booth</span>
+          <>
+            <span className="block text-xs text-warn">not confirmed at the booth</span>
+            <BoardReceiptForm showId={row.showId} shipmentId={c.id} receivedAt={null} />
+          </>
+        )}
+        {c.receivedAt && (
+          <BoardReceiptForm showId={row.showId} shipmentId={c.id} receivedAt={c.receivedAt} />
         )}
       </Td>
       <Td>

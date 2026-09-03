@@ -1,3 +1,4 @@
+import { RefreshButton } from '../alerts/forms';
 import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { BOARD_HORIZON_HOURS, getFlightBoard } from '@/lib/flights/store';
@@ -63,7 +64,20 @@ export default async function FlightBoardPage() {
             not just once when it was booked.
           </>
         }
-        action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
+        action={
+          // Two acts, and the board needed both. "Request travel" is where a leg
+          // comes from — nothing here types a flight in. "Re-check" is the one
+          // this page was missing: it renders `unchecked` on any row nobody has
+          // asked a carrier about recently, and until now the only button that
+          // could clear that lived on /alerts. A screen that reports staleness
+          // and cannot clear it teaches people to stop believing the freshness.
+          <div className="flex flex-wrap items-center gap-2">
+            <RefreshButton />
+            <LinkButton href="/travel/new" variant="primary">
+              Request travel
+            </LinkButton>
+          </div>
+        }
       />
 
       {!('choice' in status) && (
