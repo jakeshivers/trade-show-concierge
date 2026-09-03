@@ -101,6 +101,7 @@ async function routes(): Promise<Check[]> {
     // Not admin-only, unlike everything else under Settings: where your own
     // alerts go is yours to set.
     { path: '/settings/profile', expect: 'Traveler details' },
+    { path: '/settings/travel-policy', expect: 'Travel policy' },
     { path: '/settings/cost-centers', expect: 'Cost centers' },
     { path: '/settings/notifications', expect: 'Where your alerts go' },
     // Approver-only, like /cost and /roi: a sync reads a customer's pipeline

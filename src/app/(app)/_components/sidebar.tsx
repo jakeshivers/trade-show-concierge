@@ -24,6 +24,7 @@ import {
   KeyRound,
   Share2,
   UserPlus,
+  Scale,
   UserRound,
   Wallet,
 } from 'lucide-react';
@@ -125,6 +126,7 @@ const GROUPS: Group[] = [
       // the subject's own facts, and nobody else may type them.
       { href: '/settings/profile', label: 'Your details', Icon: UserRound },
       { href: '/settings/notifications', label: 'Notifications', Icon: BellRing },
+      { href: '/settings/travel-policy', label: 'Travel policy', Icon: Scale, adminOnly: true },
       { href: '/settings/cost-centers', label: 'Cost centers', Icon: Wallet, adminOnly: true },
       { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
       { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
