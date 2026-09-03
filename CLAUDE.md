@@ -115,8 +115,7 @@ both directions. The datetime primitives gained `instantToZoned`,
 `shiftDaysPreservingLocalTime` and `calendarDaysBetween`. Screens: `/shows`, `/shows/new`,
 `/shows/[id]` with tab routes, `/shows/[id]/clone`, `/itinerary`.
 
-Two corrections, both ground rules below: **"see own shows" scopes travel, not the calendar**, and
-**a clone that copies too much manufactures facts**.
+Its corrections are all restated as ground rules below.
 
 ### The travel UI (step 9)
 
@@ -129,11 +128,7 @@ expired), `STATUS` says what each machine status means to a person waiting on on
 `/travel/new`, `/travel/[id]` (which is `pnpm booking:audit` as a page, reusing
 `getAuditTrail`) and `/travel/approvals`.
 
-Three corrections, all ground rules below: **an approval screen that shows a fare beside an Approve
-button lies about half the time**, so the offer's standing is on the queue row and the predicate
-moved out of `agent.ts` into `review.ts`; **cancel does not tell the airline**, and only a button
-made that visible; and **the config layer is where "no fake data behind a real integration" is
-easiest to break**, so `selectProvider` has no fallback.
+Its corrections are all restated as ground rules below.
 
 ### Readiness (step 10)
 
@@ -145,11 +140,7 @@ written-reason rule; `access.ts` is the permission split; `portfolio.ts` is the 
 the ranking. Screens: `/shows/[id]/readiness` writable, `/readiness` as the portfolio rollup.
 The seed builds MedTech's checklist by **running `applyTemplate` and `setTaskStatus` for real**.
 
-Four corrections, all ground rules below: `readinessScore([]) === 100` **said an unplanned show was
-a finished one**, which on a ranked portfolio sorts the untouched show above every show somebody is
-working on; **a single percentage hides the shape of what is left**; **skipping is a change to the
-plan wearing the costume of a status**; and **a portfolio ranked by readiness buries the
-emergency** — 40% eight months out is on schedule and 70% in nine days is not.
+Its corrections are all restated as ground rules below.
 
 ### The deadline engine (step 11)
 
@@ -185,11 +176,7 @@ somebody does *not* cancel. `lodging/edit.ts` refuses a cutoff inside the stay;
 through the real stores and grew a fifth show (Sensors Converge, overlapping Automate) so both
 conflict cases are live.
 
-Four corrections, all ground rules below: a roster count lies about the future the way a presence
-count reports the past (assigned ≠ able to be there, and `overstated` names the shifts the naive
-count would have reassured you about); the confirmation has to come from the person, because
-coverage counts confirmations; a double-booking is between travel windows, and a missing window
-makes the finding `possible`; and the room block cutoff must not get a second clock.
+Its corrections are all restated as ground rules below.
 
 ### Flight tracking (step 13)
 
@@ -210,11 +197,7 @@ org-scopes through the *traveler* rather than through the nullable show, and car
 sweep**, pinning which payload each leg replays: a red-eye that loses its buffer, a roomy
 morning flight that is fine, and a flight *home* that is late and deliberately silent.
 
-Five corrections, all ground rules below: **the booking spine was buying tickets the tracking layer
-could not see** — nothing had ever written a `flights` row, so every ticket the agent bought was
-invisible on My Itinerary, the Travel tab and the board; a delay that costs the buffer is the news;
-a re-timing is a third thing, beside the plan; not knowing is not on time, and it is the default;
-and an alert is keyed to the standing, not the number.
+Its corrections are all restated as ground rules below.
 
 ### Shipping (step 14)
 
@@ -278,15 +261,7 @@ the store's actual result, because the prose is the paraphrase). Screens: `/assi
 produces two transcripts by **running the real loop against the real tools** — a member and an
 admin asking questions whose *results* differ while nothing about the prompt does.
 
-Five corrections: **a withheld tool must not be described, and naming one must get the same answer
-as inventing one** — "that tool exists but is not available to you" is a *map*; **a `recorded`
-provider can replay a payload, not prose**, so the scripted model's one canned sentence
-characterises nothing and the test asserts it contains no digits; **`submitTravelRequest` inferred
-human confirmation from the *absence* of raw text**, which is right for a form and catastrophic for
-a parser; **a follow-up must not be answered from the previous turn's tool result**, because a
-result is a snapshot of rows that have since moved; and **a transcript belongs to the person in
-it** — the only table here scoped to a user. (A related bug, caught by an empty `/assistant` page:
-this file's own test cleanup deleted *every* conversation rather than its own.)
+Its corrections are all restated as ground rules below.
 
 ### Assets & collateral (step 16)
 
@@ -312,12 +287,7 @@ inside it, and the collateral — which is why step 16 came after step 14. The s
 through the real stores, including a booth signed out to last spring's Detroit show and never
 checked in, which is the sentence the schema comment has carried since step 1.
 
-Six corrections, all ground rules below: reserved ≠ available ≠ serviceable; the reservation window
-is not the show window and **§5e inverts** (show dates *under*-report an asset's clash, and
-adjacent is not clear); "in what condition" is only answerable as a delta; signing out and checking
-in belong to **anybody**; on hand is not available, and an uncounted return is not a zero return;
-and past a point "return it" is the wrong sentence — a $84,000 booth nobody has seen in six weeks
-is an insurance conversation.
+Its corrections are all restated as ground rules below.
 
 ### The alerts feed and the true-cost rollup (step 17)
 
@@ -337,14 +307,7 @@ Member, and one line on the overview above everything else. The seed completes o
 re-runs the sweep so a genuinely **resolved** row exists, and acknowledges one alert *as the
 person it was addressed to*.
 
-Five corrections, all ground rules below: **`onConflictDoNothing` muted every recurrence, and only a
-feed made it reachable** — a condition that ended and came back reused the row somebody
-acknowledged weeks ago, arriving pre-dismissed; only an engine may resolve an alert, and it can only
-do so because it plans over everything; an engine dedupes a fact, a feed has to dedupe a sentence;
-**a dry run is not spend, and the seeded workspace is made entirely of dry runs** (same shape three
-more times — a credit is not a discount, stock consumed is not stock bought, committed is not
-paid); and a cost figure that does not say what it is missing is §5a's fabricated bill at the scale
-of a show.
+Its corrections are all restated as ground rules below.
 
 ### Leads & meetings (step 18)
 
@@ -377,13 +340,7 @@ including the retry a scanner makes on bad wifi, imports a CSV through the **rea
 row with no name, one duplicate — both rejected by the planner rather than by hand), and runs
 the sweep **before and after** the import so a genuinely resolved lead alert exists.
 
-Six corrections, all ground rules below: a lead count that does not say who did not capture is
-§8a's fabricated bill on the return side, and cost per lead is **withheld** rather than caveated
-because the error runs *high*, which reads as a bad show; duplicates inflate in the flattering
-direction, which is the direction nobody audits; an import that skips a row reports a smaller number
-with the same confidence; a lawful basis is never manufactured out of an absent column; erasure must
-not erase the count; and the intake endpoint must not be an `Actor` — and **a retry is a success**,
-because a 409 teaches an integration to treat a recorded lead as a failure.
+Its corrections are all restated as ground rules below.
 
 ### ROI (step 19)
 
@@ -468,19 +425,7 @@ and caches only the day-of pages; `src/app/manifest.ts` starts at `/day-of`. The
 target accounts through the real store: one met, one met under a different spelling, one
 must-meet that is unmet *and* unowned, and one watch.
 
-Eight corrections, most of them ground rules below: a cached screen is §5f's unchecked flight with
-every row at once, and worse, because it is drawn and nothing about a phone with no bars says the
-crate reading is from Tuesday; a fact and a verdict age differently, and blanking both is not the
-cautious option; the server half of the page must fetch nothing; a queued capture is not a captured
-lead and the counts never merge — the word is *device* rather than *pending*, because what a person
-needs to understand is a location; a rejected item is kept, since deleting it destroys the only copy
-of a real conversation and retrying forever leaves a badge that is always on; our own re-send and
-somebody else's duplicate must stay different answers; a cache outlives the session that was allowed
-to read it, so the snapshot carries its actor and a mismatch **wipes** IndexedDB and the worker's
-caches; and **`pnpm smoke` cannot check this page, and that is the first time** — the phrase in the
-HTML is the *shell*. The check is kept because it still catches a broken import, and the gap is
-named: this page was verified by driving a headless browser against a running dev server, which is
-not in `pnpm test` and should not be.
+Its corrections are all restated as ground rules below.
 
 ### Notifications and the nightly job (step 21, `[~]`)
 
@@ -519,13 +464,7 @@ is not admin-only**, and one line on `/alerts` the feed could never say about it
 connects two people through the real store, runs the delivery pass **twice** (the second carries
 nothing — the rail holds), and records one `manual` run.
 
-Five corrections, all ground rules below: **a `recorded` transport is the one replay this codebase
-cannot have**, because what a transport produces is an event in the world and there is no shape of
-that which is not a claim; **Slack answers failures with HTTP 200**, so the correct client for every
-other provider here is the wrong one and that failure has no symptom; idempotency had to be
-inherited rather than invented; turning a transport on must not replay a year of alerts at somebody;
-and the order the refusals run in changes what a number means — the floor comes first, so
-`unreachable` counts alerts worth carrying.
+Its corrections are all restated as ground rules below.
 
 **The repair:** `pnpm alerts --sweep`, `pnpm flights` and `pnpm shipping` ran without `dotenv`
 while `next dev` loads `.env.local`, so the CLI and the app disagreed about the environment:
@@ -759,71 +698,145 @@ preference** — the control needs three states, because "follow the system" is 
 two-way toggle destroys on first press.
 
 **§12, a ninth finding reported by a user: the portfolio boards had no calls to action.** Ten
-screens rendered a `PageHeader` with no `action`, and `/shipping`'s one instruction lived in an
-`Empty` state that disappears the moment the board has a row. The cause is structural: every board
-reads across the calendar and every write belongs to one show, so there is no single `href` a button
-could carry. `_components/go-to-show.tsx` is a **chooser rather than a shortcut** — a `<details>`
-Server Component, no client JS, shows ordered by proximity to now — and it **refuses to guess the
-show**. Every CTA carries the gate of the form it points at, while `Capture a lead` and `Open a
-checklist` are ungated for §8c's reason. `/flights` and `/itinerary` get `Request travel` instead,
-because nothing here types a flight in and an "Add a flight" button would be a good-looking lie
-about where flights come from.
+screens rendered a `PageHeader` with no `action`, and the cause is structural — every board
+reads across the calendar while every write belongs to one show, so there is no single `href` a
+button could carry. `_components/go-to-show.tsx` is a **chooser rather than a shortcut** (a
+`<details>` Server Component, no client JS, shows by proximity to now) and it **refuses to guess
+the show**. Every CTA carries the gate of the form it points at; `Capture a lead` and `Open a
+checklist` are ungated for §8c's reason; `/flights` and `/itinerary` get `Request travel`
+instead, because nothing here types a flight in and an "Add a flight" button would be a
+good-looking lie about where flights come from. **See the UX pass below for the half §12
+missed** — a chooser is the wrong answer for a write whose row already knows its target.
 
-**A tenth, same reader: the board could not take a tracking number for a small package** — the CTA
-landed somebody behind a form built for a pallet, which is absurd for the two boxes somebody UPS'd
-to their hotel, and those are most of the tracking numbers a show generates. So
-`shipment_consignment` gained **`direct`**: no dock, therefore no window. The distinction is
-deliberately **the dock, not the size of the box** — contractors bill small packages delivered to
-show site, so a weight-keyed exemption would silently delete a real drayage line, and a FedEx carton
-addressed to show-site receiving is still `show_site` and still drayed. `direct` means no contractor
+**A tenth, same reader: the board could not take a tracking number for a small package.** The
+CTA landed somebody behind a form built for a pallet, which is absurd for two boxes UPS'd to a
+hotel — and those are most of the tracking numbers a show generates. So `shipment_consignment`
+gained **`direct`**: no dock, therefore no window. The distinction is deliberately **the dock,
+not the size of the box** — contractors bill small packages delivered to show site, so a
+weight-keyed exemption would silently delete a real drayage line, and a FedEx carton addressed
+to show-site receiving is still `show_site` and still drayed. `direct` means no contractor
 touches it, so `drayage/store.ts` **filters those rows out before the estimator sees one**;
-`EstimableShipment.consignment` stays narrow so the compiler enforces it, and adding the value found
-the third caller (`cost/store.ts`) by itself. The carrier's charge still counts — a $180 overnight is
-freight spend and `/cost` adds it up. And `/shipping` got the write it never had, through the same
-`addShipment` call rather than a leaner insert, with the dock window revealed only for show-site
-receiving and direction derived from the consignment. The seed sends two boxes to a hotel front desk
-through the real store and `pnpm drayage` still reports Automate 2026 as **2 crates**, which is the
-proof.
+`EstimableShipment.consignment` stays narrow so the compiler enforces it, and adding the value
+found the third caller (`cost/store.ts`) by itself. The carrier's charge still counts — a $180
+overnight is freight spend and `/cost` adds it up. And `/shipping` got the write it never had,
+through the same `addShipment` call rather than a leaner insert, with the dock window revealed
+only for show-site receiving. `pnpm drayage` still reports Automate 2026 as **2 crates**, which
+is the proof.
 
-**Two more, and one was a schema defect the UI made visible.** `src/lib/shipping/carrier.ts` reads
-the carrier off the tracking number — UPS owns `1Z`, a USPS IMpb begins 92–95, FedEx Express is
-twelve digits — with three bounds: it **fills a control, never the column** (a wrong
-`shipments.carrier` answers `NoRecord`, which on the board looks exactly like freight that has gone
-missing), it **never rejects a number** (an unmatched pattern means our table is short), and it
-**says what it cannot tell you** — a 22-digit barcode is a real USPS number and also what FedEx
-Ground Economy and UPS Mail Innovations issue, so USPS is who can be *asked* and may not be who we
-shipped with. `certain` is only for a prefix its owner owns; the UPS check digit is verified against
-their published example and FedEx's and USPS's deliberately are not, because a check digit we got
-subtly wrong accuses people of typos they did not make. Separately, **`/flights` shows what is still
-ahead** — cutting at twelve hours past **scheduled** arrival, never estimated, since a cancelled
-flight's estimate is nothing at all and that is exactly the row that must not vanish. What the
-horizon uncovered: `flights.booking_id` was `ON DELETE SET NULL` while the idempotency rail is
-`unique(booking_id, segment_index)`, and **Postgres treats NULLs as distinct in a unique index** —
-so a deleted booking left its legs as rows the constraint no longer applied to, un-reconcilable,
-invisible to the product and rendered on the board as real legs. Fifty-two identical DL 1422 rows,
-thirty per `pnpm test` run, from a `beforeEach` that never considered the cascade. It is `cascade`
-now. **A nullable column in a unique index is an idempotency rail with an off switch.**
+**Two more, and one was a schema defect the UI made visible.**
+`src/lib/shipping/carrier.ts` reads the carrier off the tracking number (UPS `1Z`, USPS IMpb
+92–95, FedEx Express twelve digits) with three bounds: it **fills a control, never the column**
+(a wrong `shipments.carrier` answers `NoRecord`, which looks exactly like missing freight), it
+**never rejects a number** (an unmatched pattern means our table is short), and it **says what
+it cannot tell you** — a 22-digit barcode is a real USPS number and also what FedEx Ground
+Economy issues, so USPS is who can be *asked*. The UPS check digit is verified against their
+published example; FedEx's and USPS's deliberately are not, because one we got subtly wrong
+accuses people of typos they did not make. Separately, **`/flights` shows what is still ahead**,
+cutting at twelve hours past **scheduled** arrival (never estimated — a cancelled flight's is
+nothing at all, and that is the row that must not vanish). What the horizon uncovered:
+`flights.booking_id` was `ON DELETE SET NULL` while the rail is
+`unique(booking_id, segment_index)`, and **Postgres treats NULLs as distinct in a unique
+index** — so a deleted booking left un-reconcilable legs rendering as real ones. Fifty-two
+identical DL 1422 rows. It is `cascade` now. **A nullable column in a unique index is an
+idempotency rail with an off switch.**
 
-**Every remaining list followed, and the exercise produced a rule.** A board's order is its clock;
-the only question is which clock and which direction. **Prospective** lists run soonest-first
+**Every list followed, and the exercise produced a rule.** A board's order is its clock; the
+question is which clock and which direction. **Prospective** lists run soonest-first
 (`/flights`, `/shipping`, `/assets`, `/readiness`); **retrospective** ones run it backwards
-(`/leads`, `/roi`); **`/cost` is neither** — spend is committed before a show opens and invoices
-land after it closes — so it and `/safety` order by *proximity to now in either direction*. Severity
-is the tie-break everywhere, never the key, except that on `/safety` somebody who has **said they
-need help** comes above everything: that is the feature's subject rather than a ranking.
-`src/lib/shows/proximity.ts` holds `distanceToNow` / `byMostRecentlyOpened`, hand-written twice
-before. Three consequences: **`/shipping`'s horizon is deliberately not a clock** — a crate with no
-deadline sorts last rather than first, because reading a missing date as the earliest is
-`Number(null)` in a comparator, and **silence and non-arrival do not expire**, so freight leaves the
-board only when *settled*; **`/alerts` did not move, and that is the boundary of the rule**, because
-a feed's rows are sentences whose only clock is `created_at` — a fact about our sweep schedule, so
-ordering on it puts tonight's `info` above last week's `critical`, and the feed took the horizon
-half instead (`resolveAndForget` drops alerts resolved over a week ago and never drops an
-unacknowledged or still-true one); and **a comparator in a page is one two views can disagree on**,
-which `/safety` and `pnpm rollcall` did until `rollCallShowOrder` moved into `rollcall.ts`. The
-flight board is soonest-first now where it was worst-first for twelve steps: with landed legs gone
-every row is a flight somebody still has to catch, so **a ranking that fights the clock is usually
-a list carrying rows that should not be on it**, and removing those is the better fix.
+(`/leads`, `/roi`); **`/cost` and `/safety` are neither** and order by *proximity to now in
+either direction*. Severity is the tie-break, never the key — except that on `/safety` somebody
+who has **said they need help** comes above everything. `shows/proximity.ts` holds
+`distanceToNow` / `byMostRecentlyOpened`. Three consequences: `/shipping`'s horizon is
+deliberately **not** a clock (a crate with no deadline sorts last, not first, because reading a
+missing date as the earliest is `Number(null)` in a comparator, and **silence and non-arrival do
+not expire**); **`/alerts` did not move**, because a feed's rows are sentences whose only clock
+is `created_at` — a fact about our sweep schedule, so ordering on it puts tonight's `info` above
+last week's `critical`, and it took the horizon half instead (`resolveAndForget`); and **a
+comparator in a page is one two views can disagree on**, which `/safety` and `pnpm rollcall` did
+until `rollCallShowOrder` moved into `rollcall.ts`. The flight board is soonest-first now where
+it was worst-first for twelve steps: with landed legs gone every row is a flight somebody still
+has to catch, so **a ranking that fights the clock is usually a list carrying rows that should
+not be on it**.
+
+### The UX pass (2026-09-03) — five gaps where a rule outlived the screen that feeds it
+
+Prompted by a user reading a shipping row: *"not confirmed at the booth" — how does a user
+confirm at booth?* The answer was "navigate to the show, then Logistics, then find the crate",
+which is the wrong answer on a board whose purpose is to tell you which crates need somebody.
+Walking every screen from there turned up a pattern with two halves.
+
+**Half one: a board reports a condition and offers no control.** UI-REWORK §12 found that the
+boards had no calls to action and answered with `go-to-show.tsx`, a chooser that refuses to
+guess the show. That was right for *add freight*, which has no single target, and it quietly
+became the answer for writes that do have one. **Where the row already knows its target,
+sending somebody through a chooser is not caution, it is three clicks.** So `/shipping` carries
+the receipt control on the row that says the crate is unconfirmed; `/safety` lists the
+outstanding people with `tel:` links and the answer control beside each, because it is the
+screen read while something is going wrong and recording that somebody is safe took three
+navigations during an evacuation; and `/flights` and `/shipping` both carry `Re-check
+everything`, since both render staleness and the only button that could clear it was on
+`/alerts`. Each board action calls the same store function the show tab calls — a second
+*action* is fine, a second *write path* is not.
+
+**Half two, and it is the bigger one: four tables the app reads and only the seed writes.**
+Found by asking the question systematically rather than screen by screen (the check is worth
+re-running: for each `pgTable`, does anything outside `scripts/seed.ts` insert or update it).
+Three were shipped as fixes and each was a rule correctly enforced on top of a table nothing
+could write:
+
+- **`users` traveler details → `/settings/profile`.** `travel/passengers.ts` refuses to build a
+  passenger without a name, a **date of birth**, an email and a **phone number** — correctly,
+  since a plausible placeholder buys a real ticket that fails at the gate. Nothing could write
+  `phone` or `born_on`; the only `users` update in the codebase is Clerk provisioning. So the
+  agent this product is built around threw `MissingTravelerDetailsError` at every real user and
+  named fields they had no way to supply. §5o's duty of care had the same hole from the other
+  end: it names people with no phone number and argues the moment to fix one is a quiet
+  Tuesday, which was true for everybody except the person reading it. Writes **your own row
+  only**, for the reason `responded_at` and notification channels already give.
+- **`expenses` → the show's Cost tab.** `/cost` has read this table since step 17 and only the
+  seed wrote it, so every real workspace read *"at least $X, most costs missing"* permanently,
+  while the page correctly explained that booth space is the one to check first and offered no
+  way to check it.
+- **`cost_centers` → `/settings/cost-centers`.** §4 requires one on every financial row at
+  creation and it is enforced everywhere, so **a real organization could not file money at
+  all** — expenses, hotels, side events, crates, assets, print runs — with no error saying why,
+  because the select was simply empty.
+- **`travel_policies` → `/settings/travel-policy`.** The headline. An admin could not define
+  the constraints in `SCOPE.md`'s first sentence; with no policy the agent raises `NoPolicyError`
+  and refuses to search. Base layer only — overrides resolve and are listed read-only, because
+  on an override a blank means "this layer says nothing" rather than "no limit".
+
+**`show_outcomes` is the fourth and is deliberately left open.** `source` anticipates `manual`
+— "a number somebody typed" — and nothing can type one. Unlike the other three that is a
+**design decision rather than a mechanical gap**: §5k withholds every ratio built on a replayed
+pipeline, and whether a figure a company types about *itself* earns more trust than a replayed
+one is a real argument with two sides. Decide it deliberately.
+
+**Three bugs the pass turned up, and the second is in the booking spine:**
+
+1. **A route may not import a module out of another route's folder when the path contains a
+   dynamic segment.** The first `/safety` fix did `import { AnswerFor } from
+   '../shows/[id]/safety/forms'`. It type-checks, it builds, the page renders — and **every tab
+   under `/shows/[id]` 404s**. No test covers routing, so `pnpm smoke` is the only thing in this
+   repo that catches it, which is exactly what §20.8 kept it for.
+2. **`resolvePolicy` checks that a required key is *present*, never that it is non-null, under a
+   type that promises non-null.** `TravelPolicy` declares `preferredAirlines: string[]` and
+   `rules.ts` asks `.length === 0` to mean "no preference", but a policy row leaving it blank
+   resolves to `null` and the first read throws. Hidden for twenty-four steps because the seed
+   sets `['DL', 'AA']` and because the only other reader — `validatePolicy`, carrying a comment
+   since step 3 saying it is for the admin policy editor — **was called by nothing**. Building
+   the editor made a blank reachable from a screen and it crashed on the first save. Fixed at
+   the source: the base layer resolves lists to `[]`, an override still yields `undefined`.
+   **A key-presence check under a non-nullable type is a type that lies**, and every other
+   `REQUIRED_FIELD` is a scalar where the same hole is a silent wrong answer rather than a crash.
+3. **`pnpm dev` and `pnpm test` against one `.pglite` leave it damaged**, after which every
+   DB-touching test fails with `RuntimeError: Aborted()` naming nothing. `pnpm db:reset` fixes
+   it. This file documented the reverse hazard (reset under a running server) and not this one.
+
+**The practice that found all of it: read the screen as somebody who has to act on it.** Every
+one of these is a sentence the product says confidently with no way to respond to it. The CLI
+habit finds wrong *numbers*; this finds rules that outlived the screen that feeds them, and it
+is a different sweep worth running per feature.
 
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
@@ -1671,6 +1684,27 @@ unverified and this file will say so rather than implying otherwise.
   `dark:` variant anywhere in `src/app` — one semantic token in `globals.css` carries both
   themes. A `dark:` twin per coloured line is a thing to forget, and forgetting it is
   invisible to anybody working in light mode.
+- **A rule enforced on a table nothing can write is a feature that does not exist.** Four
+  tables were read by screens and written only by `scripts/seed.ts`, so the seeded workspace
+  worked and a real one silently could not: no traveler could be ticketed (`users.born_on`,
+  `users.phone`), no invoice could be filed (`expenses`), no financial row of any kind could be
+  saved (`cost_centers`, which §4 requires on all of them), and the booking agent refused to
+  search at all (`travel_policies`). **Re-run the check when adding a feature**: for each
+  `pgTable`, does anything outside the seed insert or update it?
+- **Where a board row already knows its target, the write belongs on the row.** `go-to-show.tsx`
+  is right for a write with no single target and wrong for one with an obvious one — confirming
+  *this* crate, answering for *this* person. A second *action* that revalidates different paths
+  is fine; a second *write path* that skips the store's rules is not.
+- **A route may not import a module out of another route's folder when the path contains a
+  dynamic segment.** `import … from '../shows/[id]/safety/forms'` type-checks, builds, renders,
+  and 404s every tab under `/shows/[id]`. Nothing but `pnpm smoke` catches it.
+- **A required-field check that tests for key presence under a non-nullable type is a type that
+  lies.** `resolvePolicy` asked `f in merged`, so a policy leaving `preferredAirlines` blank
+  resolved to `null` under a `string[]` and `rules.ts` threw on `.length`. Lists resolve to `[]`
+  on the base layer; an override still yields `undefined` so it can decline to speak.
+- **Never run `pnpm dev` and `pnpm test` against the same `.pglite`.** Concurrent access leaves
+  it damaged and every DB-touching test then fails with `RuntimeError: Aborted()`, naming
+  nothing. `pnpm db:reset` fixes it.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.
@@ -1735,7 +1769,9 @@ pnpm salesforce:capture        # the same loop for Salesforce (needs a Developer
 pnpm salesforce:capture --read-only   # probe everything; write nothing into their CRM
 pnpm clerk:verify     # what a real Clerk instance returns, vs. what our code assumes
 pnpm dev          # the app: shows, itinerary, security; no Clerk keys needed
-pnpm smoke        # fetch all 36 routes against a running `pnpm dev`; 200 + expected text
+                  # /settings/travel-policy · /settings/cost-centers · /settings/profile are
+                  # the three screens that make a *non-seeded* org usable at all
+pnpm smoke        # fetch all 39 routes against a running `pnpm dev`; 200 + expected text
                   # (/day-of/[id] is the one page whose *content* it cannot check)
 pnpm test         # vitest; no keys, no network, no browser
 pnpm typecheck

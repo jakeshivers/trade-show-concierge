@@ -2728,9 +2728,30 @@ invert phases A and C.
       that a free developer tier makes a capture script buildable, and with no account it
       would have become a fourth written-to-the-docs-and-hoped adapter replacing an honest
       seam that throws. It stays throwing.
+- [x] **24a.** **The UX pass** (2026-09-03), prompted by a user asking how you confirm a crate
+      at the booth. Two findings. A board that reports a condition must carry the control where
+      the row already knows its target — `go-to-show.tsx` is right for a write with no single
+      target and became the answer for writes that have one. And, the larger half, **four
+      tables were read by screens and written only by the seed**, so a seeded workspace worked
+      and a real one silently could not: `/settings/profile` (no traveler could be ticketed —
+      `passengers.ts` requires a date of birth and a phone number that nothing could write),
+      the Cost tab's invoice form (`expenses`), `/settings/cost-centers` (§4 requires one on
+      every financial row, so a real org could file no money at all), and
+      `/settings/travel-policy` (with no policy the agent raises `NoPolicyError` and refuses to
+      search — the constraint in this document's first sentence, undefinable). Three bugs fell
+      out; the sharpest is that `resolvePolicy` checked key *presence* under a non-nullable
+      type, so a blank airline list resolved to `null` and `rules.ts` threw — unreachable for
+      twenty-four steps because the seed fills it and because `validatePolicy`, carrying a
+      comment since step 3 saying it was for the admin policy editor, was called by nothing.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
-      gamification · HubSpot (needs an account)
+      gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`
+      anticipates a number somebody typed and nothing can type one, which unlike the four above
+      is a decision rather than a gap: §5k withholds every ratio built on a replayed pipeline,
+      and whether a figure a company types about *itself* earns more trust is a real argument.
+      · **overrides in the policy editor** — a blank on an override means "this layer says
+      nothing" rather than "no limit", and the form has to make that visible before it can be
+      typed into one.
 
 ### A correction to §2 and §3
 
