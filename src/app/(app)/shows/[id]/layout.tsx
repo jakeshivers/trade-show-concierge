@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { canApprove } from '@/lib/auth/actor';
 import { canCloneShow, canDecideShow } from '@/lib/shows/visibility';
+import { ProposalNote } from './_proposal-note';
 import { Tabs } from '../../_components/tabs';
 import { loadShow } from './detail';
 import {
@@ -87,12 +88,7 @@ export default async function ShowLayout({
           {days > 0 && show.status !== 'cancelled' && ` · in ${plural(days, 'day', 'days')}`}
         </p>
         {show.status === 'prospect' && (
-          <p className="text-sm text-info">
-            This is a proposal.{' '}
-            {canDecideShow(actor)
-              ? 'Commit or decline it on the Overview tab.'
-              : 'An admin decides whether it goes on the calendar.'}
-          </p>
+          <ProposalNote showId={show.id} canDecide={canDecideShow(actor)} />
         )}
       </header>
 

@@ -24,6 +24,7 @@ import {
   KeyRound,
   Share2,
   UserPlus,
+  UserRound,
 } from 'lucide-react';
 import { cn } from './cn';
 import { setPref, usePref } from './pref';
@@ -119,6 +120,9 @@ const GROUPS: Group[] = [
       // own alerts go is yours to set — see `notify/access.ts` — and hiding it
       // from a Member would mean the one person the app is meant to be almost
       // invisible to is the one it can never reach.
+      // Not admin-only, like Notifications and for the same reason: these are
+      // the subject's own facts, and nobody else may type them.
+      { href: '/settings/profile', label: 'Your details', Icon: UserRound },
       { href: '/settings/notifications', label: 'Notifications', Icon: BellRing },
       { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
       { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
