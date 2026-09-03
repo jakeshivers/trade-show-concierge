@@ -25,6 +25,7 @@ import {
   Share2,
   UserPlus,
   UserRound,
+  Wallet,
 } from 'lucide-react';
 import { cn } from './cn';
 import { setPref, usePref } from './pref';
@@ -124,6 +125,7 @@ const GROUPS: Group[] = [
       // the subject's own facts, and nobody else may type them.
       { href: '/settings/profile', label: 'Your details', Icon: UserRound },
       { href: '/settings/notifications', label: 'Notifications', Icon: BellRing },
+      { href: '/settings/cost-centers', label: 'Cost centers', Icon: Wallet, adminOnly: true },
       { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
       { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
       { href: '/settings/crm', label: 'CRM', Icon: Share2, approverOnly: true },
