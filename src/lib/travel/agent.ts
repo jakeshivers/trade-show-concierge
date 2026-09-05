@@ -24,7 +24,10 @@ import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
 import { offerStanding } from './review';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
-import { loyaltyAccountsForTraveler } from '@/lib/profile/store';
+import {
+  loyaltyAccountsForTraveler,
+  preferredAirlinesForTraveler,
+} from '@/lib/profile/store';
 import { passengerForUser, searchPassengerForUser, type Passenger } from './passengers';
 import { notifyTicketed, notifyUnreachableCredit } from './notify';
 import { materializeFlights } from '@/lib/flights/store';
@@ -400,6 +403,12 @@ async function buildContext(
       now: deps.now(),
       moveInAt: show?.moveInAt ?? undefined,
       showTravelSpentCents: await showTravelSpent(deps, request.showId),
+      // The **traveler's** carriers, never the requester's, and on the context
+      // rather than on the policy: it is a fact about a person, and putting it
+      // on `TravelPolicy` would put it within reach of `evaluate()`, where the
+      // first reasonable-looking change turns a preference into a constraint.
+      // `rank.ts` is its only reader; no rule sees it.
+      travelerPreferredAirlines: await preferredAirlinesForTraveler(request.travelerId, deps.db),
     },
     resolution,
     // The ledger decides what is spendable; this file only sequences it.
@@ -567,16 +576,30 @@ async function searchAndEvaluate(
     summary:
       `${deps.provider.name} returned ${plural(result.offers.length, 'offer', 'offers')}; ` +
       (best
-        ? `best is ${best.offer.id} at ${usd(best.offer.totalCents)} → ${best.verdict.decision}`
+        ? `best is ${best.offer.id} at ${usd(best.offer.totalCents)} → ${best.verdict.decision}` +
+          // Only when it *changed* the answer. Saying "the preference applied"
+          // on every search is noise; saying it on the one search where a
+          // cheaper offer lost is the sentence somebody needs.
+          (best.preferenceCreditCents > 0 && cheapestBookable(scored) !== best
+            ? ` (chosen over ${usd(cheapestBookable(scored)!.offer.totalCents)} within the ` +
+              `${usd(best.preferenceCreditCents)} carrier preference allowance)`
+            : '')
         : 'none were bookable'),
     detail: {
       searchId: result.searchId,
       policyLayers: resolution.layers,
+      travelerPreferredAirlines: base.travelerPreferredAirlines ?? [],
       offers: scored.map((r) => ({
         id: r.offer.id,
         totalCents: r.offer.totalCents,
         decision: r.verdict.decision,
         score: r.score,
+        // Recorded per offer so "why the $412 United over the $408 Delta" has an
+        // answer six months later. Offers vanish from the provider within the
+        // hour; a score with no explanation beside it is a number nobody can
+        // argue with, which is the shape of audit trail this file exists to
+        // avoid.
+        preferenceCreditCents: r.preferenceCreditCents,
         blockers: r.verdict.blockers.map((b) => b.ruleId),
       })),
     },
@@ -674,6 +697,20 @@ export async function runAgent(
   });
 
   return { request, status: 'pending_approval', ranked, selected, policy: resolution };
+}
+
+/**
+ * The cheapest offer the agent could have taken, ignoring preference entirely.
+ *
+ * Only ever used to *describe* a choice, never to make one — it exists so the
+ * audit line can name the fare that lost. Same decision tier as `selectBest`, by
+ * construction: a preference cannot cross a tier, so the runner-up it beat is
+ * always one `selectBest` would also have accepted.
+ */
+function cheapestBookable(ranked: RankedOffer[]): RankedOffer | null {
+  const bookable = ranked.filter((r) => r.verdict.decision !== 'deny');
+  if (bookable.length === 0) return null;
+  return bookable.reduce((a, b) => (b.offer.totalCents < a.offer.totalCents ? b : a));
 }
 
 /** What to tell the user to relax, drawn from what actually blocked. */

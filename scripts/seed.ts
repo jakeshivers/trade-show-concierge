@@ -146,6 +146,10 @@ async function main() {
       maxAcceptableRefundPenaltyCents: 15_000,
       preferredAirlines: ['DL', 'AA'],
       blockedAirlines: [],
+      // Priced, so the feature is demonstrable — a workspace where it is null
+      // shows a tie-break that never fires. $60 is deliberately small: it is
+      // the only number in this policy that lets the agent spend *more*.
+      personalCarrierAllowanceCents: 6_000,
       maxHotelNightlyRateCents: 30_000,
       perShowTravelBudgetCents: 1_200_000,
       requireCreditFirst: true,
@@ -186,6 +190,12 @@ async function main() {
         costCenterId: mkt.id,
         seatPreference: 'aisle',
         homeAirport: 'ORD',
+        // The default `DEV_ACTOR_EMAIL`, so a clean clone opens
+        // `/settings/profile` on somebody who has a preference — a feature that
+        // renders as absent for whoever actually opens the app is one nobody
+        // finds. DL is on the org's list and UA is not, which is the point:
+        // neither fact changes whether a fare is allowed.
+        preferredAirlines: ['DL', 'UA'],
         phone: '+14155550101',
         bornOn: '1981-04-17',
         gender: 'f',
@@ -200,6 +210,10 @@ async function main() {
         costCenterId: mkt.id,
         seatPreference: 'aisle',
         homeAirport: 'ORD',
+        // Marcus prefers the two carriers he holds status with. Not derived
+        // from the loyalty rows below — holding an account and preferring an
+        // airline are different facts, and a person can hold five and fly one.
+        preferredAirlines: ['DL', 'AA'],
         phone: '+14155550102',
         bornOn: '1988-11-02',
         gender: 'm',
@@ -218,6 +232,11 @@ async function main() {
         // and a home airport that matches everybody else's would let a bug that
         // reads the *requester's* default instead of the traveler's pass unseen.
         homeAirport: 'SFO',
+        // Priya prefers United, which the *org* does not prefer — the org's
+        // list is DL/AA. Deliberate: it is the case where the two lists
+        // disagree, and the whole point is that hers ranks while the org's is
+        // advisory, so neither one can refuse a fare.
+        preferredAirlines: ['UA'],
         phone: '+14155550103',
         bornOn: '1990-06-25',
         gender: 'f',

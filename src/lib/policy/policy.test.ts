@@ -527,3 +527,125 @@ describe('validatePolicy', () => {
     expect(isPolicyBookable(policy({ minConnectionMinutes: 15 }))).toBe(true);
   });
 });
+
+/* ------------------- a traveler's own carrier preference ------------------- */
+
+/**
+ * The rule this section exists to hold: **a personal preference ranks and never
+ * rules.**
+ *
+ * The org's `preferredAirlines` is a policy input and produces an advisory that
+ * `types.ts` says is "recorded and ignored". A *person's* preference is a
+ * different thing and it deliberately never becomes a rule at all — no entry in
+ * `ALL_RULES` reads it, so it cannot deny a fare, escalate one, or remove one
+ * from the list. What it does is move an offer among the ones already allowed,
+ * by an amount an admin priced, clamped so it can never cross a decision tier.
+ *
+ * The bad version of this feature is easy to write and hard to see: a rule that
+ * fails an off-preference fare turns "I prefer United" into an agent that
+ * quietly stops finding flights, and the person who typed the preference is the
+ * last one able to diagnose it.
+ */
+describe("a traveler's own carrier preference", () => {
+  const ua = (totalCents: number) =>
+    offer({
+      id: 'off_ua',
+      totalCents,
+      slices: [{ segments: [segment({ airlineCode: 'UA' })] }],
+    });
+  const dl = (totalCents: number) => offer({ id: 'off_dl', totalCents });
+
+  const priced = (cents: number | null) => policy({ personalCarrierAllowanceCents: cents });
+
+  it('never appears as a rule, so it cannot deny or escalate anything', () => {
+    const v = evaluate(
+      ctx({
+        offer: ua(38_000),
+        policy: priced(50_000),
+        travelerPreferredAirlines: ['DL'],
+      }),
+    );
+    // Flying the carrier they did *not* ask for changes nothing about the verdict.
+    expect(v.decision).toBe('auto_approve');
+    expect(v.blockers).toHaveLength(0);
+    expect(v.results.some((r) => JSON.stringify(r).includes('travelerPreferred'))).toBe(false);
+  });
+
+  it('wins a near-tie inside the allowance', () => {
+    // Both fares sit under the fixture's $400 non-refundable limit on purpose:
+    // a preference must be compared between offers in the *same* decision tier,
+    // and the first draft of this test picked two that were not.
+    const ranked = rankOffers([dl(30_000), ua(30_400)], {
+      ...ctx(),
+      policy: priced(6_000),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked[0].offer.id).toBe('off_ua');
+    expect(ranked[0].preferenceCreditCents).toBe(6_000);
+  });
+
+  it('loses to a fare cheaper than the allowance is worth', () => {
+    // $100 apart, $60 allowance. The company keeps the difference; this is the
+    // case that makes the feature safe to hand somebody.
+    const ranked = rankOffers([dl(30_000), ua(40_000)], {
+      ...ctx(),
+      policy: priced(6_000),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked[0].offer.id).toBe('off_dl');
+  });
+
+  it('is a tie-break and nothing more when nobody has priced it', () => {
+    // Null is the app declining to spend money nobody authorized, not a guess.
+    const ranked = rankOffers([dl(30_000), ua(30_400)], {
+      ...ctx(),
+      policy: priced(null),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked[0].offer.id).toBe('off_dl');
+    expect(ranked[0].preferenceCreditCents).toBe(0);
+  });
+
+  it('is all-or-nothing across the carriers actually flown', () => {
+    // A two-leg itinerary that is half preferred is not half a preference: the
+    // traveler is on somebody else's aircraft for the other leg.
+    const mixed = connectingOffer(75, { id: 'off_mixed', totalCents: 30_400 });
+    mixed.slices[0].segments[0].airlineCode = 'UA';
+    mixed.slices[0].segments[1].airlineCode = 'AS';
+    const ranked = rankOffers([dl(30_000), mixed], {
+      ...ctx(),
+      policy: priced(6_000),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked.find((r) => r.offer.id === 'off_mixed')!.preferenceCreditCents).toBe(0);
+  });
+
+  it('cannot promote an offer across a decision tier, whatever the allowance', () => {
+    // The safety property, and asserted against an absurd allowance on purpose:
+    // the clamp is what makes this true, not the size of the number. Without it
+    // a mistyped $10,000 would walk a needs-approval fare past an auto-approved
+    // one and buy it without asking anybody.
+    const cheapCompliant = dl(30_000);
+    const dearPreferred = ua(90_000); // over the $600 auto-approve band
+    const ranked = rankOffers([cheapCompliant, dearPreferred], {
+      ...ctx(),
+      policy: priced(10_000_000),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked[0].offer.id).toBe('off_dl');
+    expect(selectBest(ranked)!.verdict.decision).toBe('auto_approve');
+  });
+
+  it('cannot rescue a carrier the org blocks', () => {
+    // Two independent reasons, and both must hold: blocked is a `deny`, which
+    // `selectBest` skips, and the tier clamp keeps the score inside the deny
+    // band regardless.
+    const ranked = rankOffers([ua(30_000)], {
+      ...ctx(),
+      policy: policy({ blockedAirlines: ['UA'], personalCarrierAllowanceCents: 50_000 }),
+      travelerPreferredAirlines: ['UA'],
+    });
+    expect(ranked[0].verdict.decision).toBe('deny');
+    expect(selectBest(ranked)).toBeNull();
+  });
+});

@@ -42,6 +42,7 @@ const form = (over: Partial<PolicyFormInput> = {}): PolicyFormInput => ({
   maxAcceptableRefundPenalty: '150.00',
   preferredAirlines: 'AA UA',
   blockedAirlines: null,
+  personalCarrierAllowance: null,
   maxHotelNightlyRate: '350.00',
   perShowTravelBudget: '12000.00',
   requireCreditFirst: true,

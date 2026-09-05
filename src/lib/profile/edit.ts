@@ -59,6 +59,7 @@ export type ProfileEdit = {
   knownTravelerNumber: string | null;
   seatPreference: string | null;
   homeAirport: string | null;
+  preferredAirlines: string[];
 };
 
 /** What a carrier will accept. Deliberately not a taxonomy of our own. */
@@ -95,6 +96,7 @@ export function validateProfile(
     knownTravelerNumber: string | null;
     seatPreference: string | null;
     homeAirport: string | null;
+    preferredAirlines: string | null;
   },
   now: Date = new Date(),
 ): ProfileEdit {
@@ -154,7 +156,58 @@ export function validateProfile(
     knownTravelerNumber: input.knownTravelerNumber?.trim() || null,
     seatPreference: pick(input.seatPreference, SEAT_PREFERENCES, 'seat preference'),
     homeAirport: airportCode(input.homeAirport),
+    preferredAirlines: preferredAirlines(input.preferredAirlines),
   };
+}
+
+/* --------------------------- carrier preference --------------------------- */
+
+/** Two characters and alphanumeric, exactly as `travel/policy-edit.ts` reads them. */
+const IATA_AIRLINE_LIST = /^[A-Z0-9]{2}$/;
+
+/**
+ * The carriers you would rather fly — and the narrowest thing on this screen.
+ *
+ * It **ranks and never rules.** There is no rule in `policy/rules.ts` that reads
+ * it: it moves an offer among the ones already allowed, by an amount an admin
+ * prices, and it can never deny a fare, escalate one, or promote one across a
+ * decision tier. That restraint is the feature. A per-person *constraint* is how
+ * "I prefer United" turns into an agent that quietly stops finding flights, and
+ * the person who typed the preference is the last one who could diagnose it.
+ *
+ * Codes are uppercased and deduplicated and **never checked against a list of
+ * real airlines**, for `policy-edit.ts`'s reason: we do not hold one, and a
+ * made-up allowlist refuses a carrier that exists.
+ *
+ * Unordered on purpose. A ranked list invites "first choice beats second
+ * choice", which is a second preference model to keep consistent with the first,
+ * and no ordering anybody types survives a $200 gap.
+ */
+function preferredAirlines(value: string | null): string[] {
+  const raw = value?.trim();
+  if (!raw) return [];
+  const codes = [
+    ...new Set(
+      raw
+        .split(/[,\s]+/)
+        .map((c) => c.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+  for (const c of codes) {
+    if (!IATA_AIRLINE_LIST.test(c)) {
+      throw new ProfileError(
+        `"${c}" is not a two-character IATA airline code. Use "UA DL", not "United".`,
+      );
+    }
+  }
+  if (codes.length > 6) {
+    throw new ProfileError(
+      'Six carriers is already more preference than the agent can act on — past that it ' +
+        'is not a preference, it is every airline.',
+    );
+  }
+  return codes;
 }
 
 /* ------------------------------ home airport ------------------------------ */

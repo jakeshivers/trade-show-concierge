@@ -736,4 +736,38 @@ describe('loyalty accounts reach the carrier', () => {
     // do for eleven steps — it re-implemented `split(' ')` for the search only.
     expect(spy.seen[0].familyName).toBe('Raghunathan');
   });
+
+  /**
+   * The same rule for the carrier *preference*, and the same trap.
+   *
+   * The behaviour lives in `policy/rank.ts` and is covered there against the
+   * pure engine. What this asserts is the **wiring** — that the list reaching
+   * ranking is the traveler's and not the requester's. Priya prefers UA; Marcus
+   * prefers DL and AA. A `deps.actor`-shaped mistake reads correctly, compiles,
+   * and books somebody else's favourite airline on their colleague's ticket.
+   */
+  it('ranks against the traveler’s carrier preference, not the requester’s', async () => {
+    const clock = new Clock(new Date('2026-03-01T12:00:00Z'));
+    const deps = depsFor(clock);
+    const request = await submitTravelRequest(
+      {
+        travelerId: priya.userId,
+        showId: automate.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(automate.moveInAt!.getTime() - DAY),
+        latestArrival: automate.moveInAt!,
+        idempotencyKey: 'preference-is-the-travelers',
+      },
+      marcus,
+      deps,
+    );
+    await runAgent(request.id, deps, marcus);
+
+    const run = await db.query.agentRuns.findFirst({
+      where: and(eq(s.agentRuns.travelRequestId, request.id), eq(s.agentRuns.step, 'search')),
+    });
+    const detail = run!.detail as { travelerPreferredAirlines: string[] };
+    expect(detail.travelerPreferredAirlines).toEqual(['UA']);
+  });
 });

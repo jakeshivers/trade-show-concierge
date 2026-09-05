@@ -21,6 +21,7 @@ type Live = {
   nonRefundableAllowedUnderCents: number | null;
   maxAcceptableRefundPenaltyCents: number | null;
   preferredAirlines: string[] | null;
+  personalCarrierAllowanceCents: number | null;
   blockedAirlines: string[] | null;
   maxHotelNightlyRateCents: number | null;
   perShowTravelBudgetCents: number | null;
@@ -157,6 +158,20 @@ export function PolicyForm({ live }: { live: Live }) {
               defaultValue={(live?.blockedAirlines ?? []).join(' ')} />
           </Field>
         </div>
+        {/*
+          The only field on this page that lets the agent spend *more*. Every
+          other number here is a ceiling, so a typo makes the policy looser and
+          something else catches it; a slipped decimal here buys a dearer fare
+          because somebody likes an airline. `policy-edit.ts` caps it at $500 and
+          says so, and blank is a real answer rather than a missing one.
+        */}
+        <Field
+          label="Personal carrier allowance"
+          hint="How much extra the agent may pay to put somebody on an airline they listed on their own profile. Blank makes a personal preference a tie-break and nothing more. It can never deny a fare, send one for approval, or beat a cheaper fare by more than this."
+        >
+          <Input name="personalCarrierAllowance" density="comfortable"
+            defaultValue={dollars(live?.personalCarrierAllowanceCents)} placeholder="blank — tie-break only" />
+        </Field>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="requireCreditFirst" defaultChecked={live?.requireCreditFirst ?? false}
             className="rounded border-border" />

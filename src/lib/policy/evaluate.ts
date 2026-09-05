@@ -60,6 +60,7 @@ const REQUIRED_FIELDS: (keyof TravelPolicy)[] = [
   'maxAcceptableRefundPenaltyCents',
   'preferredAirlines',
   'blockedAirlines',
+  'personalCarrierAllowanceCents',
   'maxHotelNightlyRateCents',
   'perShowTravelBudgetCents',
   'requireCreditFirst',

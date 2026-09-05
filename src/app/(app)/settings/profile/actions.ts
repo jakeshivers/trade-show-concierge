@@ -25,6 +25,7 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
       knownTravelerNumber: optional(form, 'knownTravelerNumber'),
       seatPreference: optional(form, 'seatPreference'),
       homeAirport: optional(form, 'homeAirport'),
+      preferredAirlines: optional(form, 'preferredAirlines'),
     });
   } catch (err) {
     return asFormError(err);

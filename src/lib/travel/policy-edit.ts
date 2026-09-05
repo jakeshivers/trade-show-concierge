@@ -67,6 +67,7 @@ export type PolicyFormInput = {
   maxAcceptableRefundPenalty: string | null;
   preferredAirlines: string | null;
   blockedAirlines: string | null;
+  personalCarrierAllowance: string | null;
   maxHotelNightlyRate: string | null;
   perShowTravelBudget: string | null;
   requireCreditFirst: boolean;
@@ -89,6 +90,7 @@ export type PolicyRowValues = {
   maxAcceptableRefundPenaltyCents: number | null;
   preferredAirlines: string[] | null;
   blockedAirlines: string[] | null;
+  personalCarrierAllowanceCents: number | null;
   maxHotelNightlyRateCents: number | null;
   perShowTravelBudgetCents: number | null;
   requireCreditFirst: boolean | null;
@@ -112,6 +114,37 @@ function whole(value: string | null, field: string, max: number): number | null 
   if (n > max) throw new PolicyEditError(`${field} of ${n} is not a rule, it is a typo.`);
   return n;
 }
+
+/**
+ * What a traveler's own carrier preference may cost the company.
+ *
+ * Bounded low on purpose, and the bound is the argument. Every other money field
+ * here is a *limit* — a ceiling the agent must stay under — so a typo makes the
+ * policy looser and something else catches it. This one is the opposite: it is
+ * the only field in the policy that authorizes the agent to pay **more** than it
+ * otherwise would, so a slipped decimal does not loosen a rule, it quietly buys
+ * a $2,500 fare instead of a $500 one because somebody likes United. Ranking
+ * clamps it to the decision tier either way, so the damage is bounded — but a
+ * refusal at the point of typing is a better place to find it than an audit.
+ */
+function allowance(value: string | null): number | null {
+  const cents = money(value, 'The personal carrier allowance');
+  if (cents !== null && cents > MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS) {
+    throw new PolicyEditError(
+      `A personal carrier allowance of ${usd(cents)} is a fare, not a preference. This is ` +
+        `how much extra the agent may pay to put somebody on the airline they asked for; ` +
+        `the cap is ${usd(MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS)}. Leave it blank to make a ` +
+        'personal preference a tie-break and nothing more.',
+    );
+  }
+  return cents;
+}
+
+/** $500. High enough for a real long-haul preference, low enough to notice. */
+export const MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS = 50_000;
+
+/** Local, like the copies in `agent.ts` and `rules.ts` — for one error message. */
+const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
 function cabin(value: string | null, field: string): string | null {
   const raw = value?.trim();
@@ -184,6 +217,7 @@ export function toPolicyRow(input: PolicyFormInput): PolicyRowValues {
     ),
     preferredAirlines: airlines(input.preferredAirlines),
     blockedAirlines: airlines(input.blockedAirlines),
+    personalCarrierAllowanceCents: allowance(input.personalCarrierAllowance),
     maxHotelNightlyRateCents: money(input.maxHotelNightlyRate, 'The hotel nightly cap'),
     perShowTravelBudgetCents: money(input.perShowTravelBudget, 'The per-show travel budget'),
     requireCreditFirst: input.requireCreditFirst,

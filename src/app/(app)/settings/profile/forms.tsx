@@ -24,6 +24,7 @@ export function ProfileForm({
     knownTravelerNumber: string | null;
     seatPreference: string | null;
     homeAirport: string | null;
+    preferredAirlines: string[] | null;
   };
 }) {
   const [state, action, pending] = useActionState(saveProfile, {});
@@ -120,6 +121,19 @@ export function ProfileForm({
           />
         </Field>
       </div>
+
+      <Field
+        label="Preferred airlines"
+        hint="Two-letter codes, separated by spaces — “UA DL”. A preference, never a rule: it moves an offer among the ones policy already allows and can never deny a fare or send one for approval."
+      >
+        <Input
+          name="preferredAirlines"
+          defaultValue={(profile.preferredAirlines ?? []).join(' ')}
+          density="comfortable"
+          placeholder="UA DL"
+          className="uppercase"
+        />
+      </Field>
 
       <Submit pending={pending} busy="Saving…">Save</Submit>
       <Message state={state} />

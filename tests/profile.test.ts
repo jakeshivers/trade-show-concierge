@@ -14,6 +14,7 @@ import {
   getMyLoyaltyAccounts,
   getMyProfile,
   loyaltyAccountsForTraveler,
+  preferredAirlinesForTraveler,
   removeMyLoyaltyAccount,
   updateMyProfile,
 } from '@/lib/profile/store';
@@ -61,6 +62,7 @@ afterAll(async () => {
       knownTravelerNumber: original.knownTravelerNumber,
       seatPreference: original.seatPreference,
       homeAirport: original.homeAirport,
+      preferredAirlines: original.preferredAirlines,
     })
     .where(eq(s.users.id, original.id));
 
@@ -84,6 +86,7 @@ describe('validating your own details', () => {
     knownTravelerNumber: null,
     seatPreference: null,
     homeAirport: null,
+    preferredAirlines: null,
   };
 
   it('keeps a phone number exactly as typed, punctuation and country code included', () => {
@@ -149,6 +152,7 @@ describe('against the real row', () => {
       knownTravelerNumber: 'KTN123456',
       seatPreference: 'aisle',
       homeAirport: 'sfo',
+      preferredAirlines: null,
     });
 
     const me = await getMyProfile(actor);
@@ -174,6 +178,7 @@ describe('against the real row', () => {
       honorific: null,
       gender: null,
       homeAirport: null,
+      preferredAirlines: null,
       knownTravelerNumber: null,
       seatPreference: null,
     });
@@ -203,6 +208,7 @@ describe('home airport', () => {
     gender: null,
     knownTravelerNumber: null,
     seatPreference: null,
+    preferredAirlines: null,
   };
 
   it('refuses an ICAO code, which is the mistake somebody who knows aviation makes', () => {
@@ -311,5 +317,45 @@ describe('loyalty accounts', () => {
     // afterwards is a delete that runs whenever somebody forgets the check.
     expect(still).toBeTruthy();
     await db.delete(s.userLoyaltyAccounts).where(eq(s.userLoyaltyAccounts.id, theirs.id));
+  });
+});
+
+describe('your own carrier preference', () => {
+  const base = {
+    fullName: 'Ada Lovelace',
+    phone: '+1 415 555 0199',
+    bornOn: '1990-04-02',
+    honorific: null,
+    gender: null,
+    knownTravelerNumber: null,
+    seatPreference: null,
+    homeAirport: null,
+  };
+
+  it('uppercases and deduplicates, and reads codes rather than names', () => {
+    expect(validateProfile({ ...base, preferredAirlines: 'ua dl UA' }).preferredAirlines).toEqual([
+      'UA',
+      'DL',
+    ]);
+    expect(() => validateProfile({ ...base, preferredAirlines: 'United' })).toThrow(ProfileError);
+  });
+
+  it('refuses a list long enough to mean nothing', () => {
+    expect(() =>
+      validateProfile({ ...base, preferredAirlines: 'UA DL AA AS B6 WN NK' }),
+    ).toThrow(ProfileError);
+  });
+
+  it('is an empty list rather than null when blank', () => {
+    // `rank.ts` asks `.length === 0` to mean "no preference", the same shape the
+    // resolved policy's own list uses — and the same hole `resolvePolicy` had,
+    // where a blank list under a non-nullable type resolved to null and threw.
+    expect(validateProfile({ ...base, preferredAirlines: null }).preferredAirlines).toEqual([]);
+    expect(validateProfile({ ...base, preferredAirlines: '  ' }).preferredAirlines).toEqual([]);
+  });
+
+  it('round-trips to the row the agent reads', async () => {
+    await updateMyProfile(actor, { ...base, preferredAirlines: 'ua' });
+    expect(await preferredAirlinesForTraveler(actor.userId)).toEqual(['UA']);
   });
 });

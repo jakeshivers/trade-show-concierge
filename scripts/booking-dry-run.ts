@@ -12,11 +12,12 @@
  * This script is the step-4 deliverable: proof that the spine works before a
  * single screen exists to look at it.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import { getActor, type Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
+import { nonstopOffer, unitedNearTieOffer } from '../src/lib/integrations/flights/duffel/fixtures';
 import {
   submitTravelRequest,
   runAgent,
@@ -401,8 +402,84 @@ async function scenarioCreditExpiry() {
   console.log('\n    (the whole ledger: pnpm credits · one credit: pnpm credits <id>)');
 }
 
+/**
+ * The traveler's own carrier preference, and what it is and is not allowed to do.
+ *
+ * Priya prefers UA; the org prefers DL and AA and has priced a personal carrier
+ * preference at $60. So the UA fare wins by $22 — and the same run, read with
+ * the allowance removed, picks the cheaper Delta. Both halves are printed,
+ * because the interesting claim is not that a preference works, it is that it is
+ * **bounded**: the second half is what somebody signing off on the feature needs
+ * to see.
+ */
+async function scenarioCarrierPreference() {
+  console.log('\n━━ 8. A traveler’s own carrier preference — bounded, and it never rules ━━\n');
+  const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
+  if (!show?.moveInAt) throw new Error('Seed is missing Automate 2026 move-in time');
+  const day = 86_400_000;
+
+  const run = async (key: string, allowanceCents: number | null) => {
+    // The allowance is an org policy value, so this moves the *policy* rather
+    // than the person — which is the honest way round: a traveler cannot change
+    // what their preference is worth.
+    await db
+      .update(s.travelPolicies)
+      .set({ personalCarrierAllowanceCents: allowanceCents })
+      .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
+
+    const clock = new Clock(new Date());
+    const d: AgentDeps = {
+      db,
+      provider: new RecordedFlightProvider({
+        now: clock.now,
+        payloads: [nonstopOffer, unitedNearTieOffer],
+      }),
+      now: clock.now,
+      live: false,
+    };
+    const priya = await actorFor('priya@northwindrobotics.test');
+    const request = await submitTravelRequest(
+      {
+        showId: show.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(show.moveInAt!.getTime() - day),
+        latestArrival: show.moveInAt!,
+        idempotencyKey: key,
+      },
+      priya,
+      d,
+    );
+    await runAgent(request.id, d, priya);
+    return request.id;
+  };
+
+  console.log('    Priya prefers UA. The org prefers DL/AA and pays up to $60 for a preference.\n');
+  const withAllowance = await run('demo-carrier-preference', 6_000);
+  await offerTable(withAllowance);
+  console.log();
+  await trace(withAllowance);
+
+  console.log('\n    The same two fares with the allowance withdrawn — nobody has priced it:\n');
+  const withoutAllowance = await run('demo-carrier-preference-unpriced', null);
+  await offerTable(withoutAllowance);
+  console.log();
+  await trace(withoutAllowance);
+
+  // Leave the seeded policy as the seed wrote it.
+  await db
+    .update(s.travelPolicies)
+    .set({ personalCarrierAllowanceCents: 6_000 })
+    .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
+
+  console.log(
+    '\n    It never denies, never escalates, and cannot cross a decision tier — `rank.ts`\n' +
+      '    clamps the discounted score to the tier floor rather than trusting the number.',
+  );
+}
+
 async function scenarioAuditTrail() {
-  console.log('\n━━ 8. The audit trail, as a person reads it ━━');
+  console.log('\n━━ 9. The audit trail, as a person reads it ━━');
   const request = await db.query.travelRequests.findFirst({
     where: eq(s.travelRequests.idempotencyKey, 'demo-approval'),
   });
@@ -433,6 +510,7 @@ async function main() {
   await scenarioKillSwitch();
   await scenarioCreditFirst();
   await scenarioCreditExpiry();
+  await scenarioCarrierPreference();
   await scenarioAuditTrail();
 
   const bookings = await db.select().from(s.bookings);

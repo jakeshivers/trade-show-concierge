@@ -82,6 +82,10 @@ function toLayer(row: PolicyRow): PolicyLayer {
     // broader layer survive the merge.
     preferredAirlines: isBase ? (row.preferredAirlines ?? []) : keep(row.preferredAirlines),
     blockedAirlines: isBase ? (row.blockedAirlines ?? []) : keep(row.blockedAirlines),
+    // A scalar, so `keep`'s ordinary rule applies and the base layer may leave
+    // it null: null is a real answer here — "a personal carrier preference is
+    // worth nothing but a tie-break" — rather than a hole.
+    personalCarrierAllowanceCents: keep(row.personalCarrierAllowanceCents),
 
     maxHotelNightlyRateCents: keep(row.maxHotelNightlyRateCents),
     perShowTravelBudgetCents: keep(row.perShowTravelBudgetCents),

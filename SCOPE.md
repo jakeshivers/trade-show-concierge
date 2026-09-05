@@ -2767,6 +2767,28 @@ invert phases A and C.
       field the adapter already maps".** And the honest ceiling: nothing in a search or an order
       response says whether the carrier *accepted* a number, so the screen says we passed it on
       rather than implying miles are accruing, and `duffel-capture.ts` asks it as Q4.
+- [x] **24c.** **The personal airline preference** (2026-09-05) — the half 24b deliberately
+      declined, decided rather than dropped. The answer is **rank, never rule**, and `rank.ts`'s
+      own docblock is where it came from: *policy says what is allowed, ranking says what is best
+      among the allowed, and conflating them is how a booking agent ends up justifying an
+      expensive choice.* So `users.preferred_airlines` is read by **no rule** — it is on
+      `EvaluationContext`, not on `TravelPolicy`, so `evaluate()` cannot reach it — and it moves
+      an offer only among the ones already permitted. Four properties hold it: it is priced by an
+      admin in `travel_policies.personal_carrier_allowance_cents` (**absolute cents, never a
+      percentage**, because a percentage scales up exactly on the expensive international fares
+      nobody audits, and capped at $500 at the point of typing because this is the one policy
+      field that lets the agent spend *more* rather than less); null is a **tie-break only**,
+      which is the app declining to spend money nobody authorized rather than a guessed default;
+      the credit is **all-or-nothing across the carriers actually flown**, since a half-preferred
+      itinerary puts the traveler on somebody else's aircraft for the other leg; and it
+      **structurally cannot cross a decision tier** — `scoreOffer` clamps the discounted score to
+      the tier's own floor, so no allowance anybody can type, including one with an extra zero,
+      promotes a `needs_approval` fare past an `auto_approve` one or rescues a blocked carrier.
+      The audit records `preferenceCreditCents` per offer and the search line **names the fare
+      that lost**, because "we bought the $452 United over the $430 Delta" reads as a bug
+      otherwise. `/settings/profile` says which of your carriers the org blocks and whether the
+      allowance is priced at all — both are silent failures otherwise. `booking:dry-run` scenario
+      8 runs the same two fares twice, with the allowance and without.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
       gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`

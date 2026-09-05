@@ -42,7 +42,7 @@ Phase A (**the vertical slice through the booking spine**) is done; Phase B is d
 has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
 in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
 cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
-one unasked. 1,091 tests, no keys required.
+one unasked. 1,103 tests, no keys required.
 
 Read `git log` for the long version of any step: each commit documents what was learned
 building it, and this file keeps only what a fresh session needs before touching code. The
@@ -91,7 +91,8 @@ login-method control and a first app shell.
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the reasons
 worth relaxing, the request expiry sweep, the kill switch, credit-first escalation, the credit
-expiry sweep, and the audit trail as a person reads it. **Read that output before reading the
+expiry sweep, a traveler's carrier preference run twice (with the allowance and without), and
+the audit trail as a person reads it. **Read that output before reading the
 code**; it is the fastest way to understand the spine.
 
 Step 7's correction, still standing: a login-method restriction is enforced at sign-in and we
@@ -885,6 +886,58 @@ asks it as **Q4** and `duffel-conformance.test.ts` reports it. One small fix rod
 `agent.ts` had re-implemented `splitName` inline for the search since step 5, so a traveler's
 legal name could be split one way when quoting and another when buying;
 `searchPassengerForUser` is now the one builder.
+
+### The personal airline preference (2026-09-05) — rank, never rule
+
+The half the previous section declined, decided rather than dropped. The answer came out of
+`rank.ts`'s own docblock: **policy says what is allowed, ranking says what is best among the
+allowed, and conflating them is how a booking agent ends up justifying an expensive choice.**
+
+So `users.preferred_airlines` is read by **no rule**. It lives on `EvaluationContext` rather
+than on `TravelPolicy` precisely so `evaluate()` cannot reach it — put it on the policy and the
+first reasonable-looking change is a rule that escalates an off-preference fare, at which point
+"I prefer United" is an agent that quietly stops finding flights and the person who typed the
+preference is the last one able to diagnose it. `rank.ts` is its only consumer.
+
+Four properties hold the feature safe, and they are the design:
+
+- **An admin prices it**, in `travel_policies.personal_carrier_allowance_cents` — the ceiling on
+  how much more the agent may pay to honour it. **Absolute cents, never a percentage**: 3% of a
+  $6,000 international fare is $180 of somebody's convenience on the fare nobody audits.
+  `policy-edit.ts` caps it at $500 *at the point of typing*, because this is the only field in
+  the whole policy that authorizes spending **more** — every other number there is a ceiling, so
+  a typo loosens a rule and something downstream catches it; a slipped decimal here just buys a
+  dearer fare.
+- **Null is a tie-break only**, and that is the app declining to spend money nobody authorized
+  rather than a default we guessed. The feature is inert until somebody prices it.
+- **All-or-nothing across the carriers actually flown.** A half-preferred itinerary is not half
+  a preference — the traveler is on somebody else's aircraft for the other leg. Mirrors how
+  `airlineRules` reads the org's list.
+- **It cannot cross a decision tier**, enforced rather than assumed: `scoreOffer` clamps the
+  discounted score to `DECISION_WEIGHT[decision]`, so no allowance anybody can type — including
+  one with an extra zero — promotes a `needs_approval` fare past an `auto_approve` one or
+  rescues a carrier the org blocks. The test asserts it against a deliberately absurd $100,000.
+
+**Legibility is part of it.** `RankedOffer.preferenceCreditCents` is recorded per offer in the
+`search` step's audit detail, and the summary names the fare that lost — *"chosen over $430.55
+within the $60.00 carrier preference allowance"* — because offers vanish from the provider
+within the hour and "we bought the $452 United over the $430 Delta" reads as a bug otherwise.
+`/settings/profile` says which of your listed carriers the org **blocks** (they will never win,
+and nothing else would ever tell you) and whether the allowance is priced at all (unpriced means
+your whole list is a tie-break, which is legitimate and invisible). `pnpm booking:dry-run`
+scenario 8 runs the same two fares twice, with the allowance and without, because the claim
+worth demonstrating is that it is *bounded* rather than that it works.
+
+One fixture note: `duffel/fixtures.ts` gained `unitedNearTieOffer` and it is deliberately **not**
+in `allOffers`. A near-tie between two carriers is a constructed situation; adding a fifth offer
+to the default set would change the offer count in every existing scenario, and a default search
+that happens to produce a near-tie is a fixture arranged to flatter the feature.
+
+**Context worth carrying: the org's `preferredAirlines` still does nothing to the outcome.** It
+produces an `advisory` rule result, and `types.ts` has said since step 3 that advisory is
+"recorded and ignored" — `scoreOffer` never reads it. That is documented intent rather than a
+defect, but it means the org list and the personal list now do genuinely different jobs, and the
+two must not be quietly merged: one is a statement an auditor reads, the other moves money.
 
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
@@ -1739,6 +1792,19 @@ unverified and this file will say so rather than implying otherwise.
   saved (`cost_centers`, which §4 requires on all of them), and the booking agent refused to
   search at all (`travel_policies`). **Re-run the check when adding a feature**: for each
   `pgTable`, does anything outside the seed insert or update it?
+- **A personal preference ranks; it never rules.** `users.preferred_airlines` is read by no
+  rule and sits on `EvaluationContext` rather than on `TravelPolicy`, so `evaluate()` cannot
+  reach it. A per-person *constraint* is how a preference becomes an agent that stops finding
+  fares, diagnosable by nobody. It is priced by an admin in absolute cents (never a percentage —
+  that scales up on the expensive international fares nobody audits), null means tie-break only,
+  it is all-or-nothing across the carriers actually flown, and `scoreOffer` **clamps** the
+  discounted score to the decision tier's floor so no number anybody can type crosses a tier or
+  rescues a blocked carrier. `src/lib/policy/rank.ts`.
+- **A choice the price alone does not explain has to say why, in the audit.** Offers vanish from
+  the provider within the hour, so "we bought the $452 United over the $430 Delta" is
+  unanswerable a day later unless the run recorded it. `preferenceCreditCents` is on every offer
+  in the `search` step's detail and the summary names the fare that lost — and only when the
+  preference actually changed the pick, because saying it every time is noise.
 - **A default is a prefill at the point of entry, never a fact re-derived at read time.**
   `users.home_airport` fills "From" on a new request and `travel_requests.origin_airport` stays
   `notNull`, because that origin is a constraint the policy engine ruled against and the offers

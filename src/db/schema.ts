@@ -383,6 +383,23 @@ export const users = pgTable(
      */
     homeAirport: text('home_airport'),
     /**
+     * Carriers this person prefers — theirs, and deliberately not the org's.
+     *
+     * It **ranks and never rules**. `travel_policies.preferred_airlines` is an
+     * input to the policy engine; this is not, and there is no rule that reads
+     * it. It moves an offer's position among the ones already allowed, by an
+     * amount an admin prices in `personal_carrier_allowance_cents`, and it can
+     * never promote an offer across a decision tier — `rank.ts` clamps that
+     * structurally rather than relying on the number being small.
+     *
+     * An unordered set. A ranked list would invite "first choice beats second
+     * choice", which is a second preference model to keep consistent with this
+     * one, and nobody's answer to "which do you prefer" survives a $200 gap
+     * anyway. Holding a loyalty account is deliberately not the same fact — a
+     * person can hold five and fly one.
+     */
+    preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
+    /**
      * Passenger identity, required by the airline to issue a ticket — not by us.
      * Nullable because most of the app never needs it, and because a missing
      * date of birth must fail a live purchase loudly rather than be invented.
@@ -1337,6 +1354,22 @@ export const travelPolicies = pgTable(
     maxAcceptableRefundPenaltyCents: integer('max_acceptable_refund_penalty_cents'),
     preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
     blockedAirlines: jsonb('blocked_airlines').$type<string[]>(),
+    /**
+     * What a traveler's own carrier preference is worth, in cents of the
+     * company's money — the ceiling on how much more the agent may pay to put
+     * somebody on the airline they asked for.
+     *
+     * **Absolute cents and never a percentage.** A percentage scales up exactly
+     * where the exposure is worst: 3% of a $6,000 international fare is $180 of
+     * somebody's personal preference, spent on the fare nobody audits.
+     *
+     * Null means the preference is a **tie-break only** — it is not a default we
+     * guessed, it is the app declining to spend money nobody has authorized. The
+     * feature is inert until an admin says what it is worth, which is the right
+     * way round: this is the one field here that converts a person's convenience
+     * directly into spend.
+     */
+    personalCarrierAllowanceCents: integer('personal_carrier_allowance_cents'),
 
     maxHotelNightlyRateCents: integer('max_hotel_nightly_rate_cents'),
     perShowTravelBudgetCents: integer('per_show_travel_budget_cents'),

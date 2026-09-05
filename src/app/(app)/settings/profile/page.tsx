@@ -1,6 +1,7 @@
 import { getActor } from '@/lib/auth/actor';
 import { missingForTicket } from '@/lib/profile/edit';
 import { getMyLoyaltyAccounts, getMyProfile } from '@/lib/profile/store';
+import { NoPolicyError, resolveTravelPolicy } from '@/lib/travel/policy-store';
 import { Card, PageHeader } from '../../_components/ui';
 import { LoyaltyAccounts, ProfileForm } from './forms';
 
@@ -25,6 +26,7 @@ export default async function ProfilePage() {
   const actor = await getActor();
   const [me, loyalty] = await Promise.all([getMyProfile(actor), getMyLoyaltyAccounts(actor)]);
   const missing = missingForTicket(me);
+  const carrier = await carrierPreferenceStanding(actor, me.preferredAirlines ?? []);
 
   return (
     <div className="space-y-6">
@@ -55,6 +57,18 @@ export default async function ProfilePage() {
       <Card title="Traveler details">
         <ProfileForm profile={me} />
       </Card>
+
+      {/*
+        Said on the screen where the preference is typed, because both of these
+        are silent otherwise. A carrier the org blocks will simply never win and
+        look like the feature is broken; an unpriced allowance means the whole
+        list is a tie-break, which is a legitimate state and an invisible one.
+        The alternative — letting somebody type UA and wonder for a year — is
+        the failure this codebase keeps naming.
+      */}
+      {carrier && (
+        <p className="rounded-md bg-surface-muted px-3 py-2 text-sm text-text-muted">{carrier}</p>
+      )}
 
       <Card
         title="Frequent flyer accounts"
@@ -99,4 +113,47 @@ export default async function ProfilePage() {
       </Card>
     </div>
   );
+}
+
+/**
+ * What the org's policy actually does with the carriers you listed.
+ *
+ * Reads the *resolved* policy for this person rather than the org's base layer,
+ * because an override on their cost center is what would really apply — the same
+ * resolution the agent runs. Returns null when there is nothing worth saying, and
+ * swallows `NoPolicyError`: a workspace with no policy has a bigger problem, it
+ * is already reported on `/settings/travel-policy`, and a profile page is not the
+ * screen to raise it on.
+ */
+async function carrierPreferenceStanding(
+  actor: Awaited<ReturnType<typeof getActor>>,
+  preferred: string[],
+): Promise<string | null> {
+  if (preferred.length === 0) return null;
+  let policy;
+  try {
+    ({ policy } = await resolveTravelPolicy(actor.orgId, { costCenterId: actor.costCenterId }));
+  } catch (err) {
+    if (err instanceof NoPolicyError) return null;
+    throw err;
+  }
+
+  const blocked = preferred.filter((c) => policy.blockedAirlines.includes(c));
+  const allowance = policy.personalCarrierAllowanceCents;
+
+  const parts: string[] = [];
+  if (blocked.length) {
+    parts.push(
+      `Your organization blocks ${blocked.join(', ')}, so ${blocked.length === 1 ? 'it' : 'they'} ` +
+        'will never be chosen no matter what you list here.',
+    );
+  }
+  parts.push(
+    allowance && allowance > 0
+      ? `Your organization will pay up to $${(allowance / 100).toFixed(2)} more to put you on ` +
+        'one of these. Beyond that, the cheaper fare wins.'
+      : 'Your organization has not priced a carrier preference, so this only breaks a tie ' +
+        'between two fares that cost the same. An admin sets that on the travel policy.',
+  );
+  return parts.join(' ');
 }

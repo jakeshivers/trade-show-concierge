@@ -49,6 +49,7 @@ export async function updateMyProfile(
       knownTravelerNumber: clean.knownTravelerNumber,
       seatPreference: clean.seatPreference,
       homeAirport: clean.homeAirport,
+      preferredAirlines: clean.preferredAirlines,
     })
     .where(eq(s.users.id, actor.userId));
   return clean;
@@ -117,6 +118,14 @@ export async function removeMyLoyaltyAccount(actor: Actor, id: string, db: Db = 
  * here would imply a second, weaker check exists. It returns what goes on a
  * ticket, not something a person is shown.
  */
+export async function preferredAirlinesForTraveler(
+  userId: string,
+  db: Db = getDb(),
+): Promise<string[]> {
+  const row = await db.query.users.findFirst({ where: eq(s.users.id, userId) });
+  return row?.preferredAirlines ?? [];
+}
+
 export async function loyaltyAccountsForTraveler(userId: string, db: Db = getDb()) {
   const rows = await db
     .select({
