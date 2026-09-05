@@ -298,7 +298,14 @@ export const TOOLS: AssistantTool[] = [
         .optional()
         .describe('Defaults to the asking person. Only a travel manager may name another.'),
       showId: z.string().optional().describe('The show this trip is for, if there is one.'),
-      originAirport: z.string().describe('IATA code, e.g. SFO.'),
+      originAirport: z
+        .string()
+        .optional()
+        .describe(
+          'IATA code, e.g. SFO. Omit it when the person did not say where they are ' +
+            'leaving from — it falls back to the home airport on their profile. Never ' +
+            'infer one from a city they mentioned.',
+        ),
       destinationAirport: z.string().describe('IATA code, e.g. LAS.'),
       earliestDepartureLocal: z.string().describe('Local at the origin: 2026-09-14T08:00'),
       latestArrivalLocal: z.string().describe('Local at the destination: 2026-09-14T12:00'),

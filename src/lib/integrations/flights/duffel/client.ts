@@ -254,6 +254,17 @@ export class DuffelProvider implements FlightProvider {
             born_on: p.bornOn,
             gender: p.gender,
             title: p.title,
+            // Where the miles actually credit. Duffel accepts the same shape it
+            // takes on an offer request, and — like every other field in this
+            // adapter — this is written to the published schema and has never met
+            // a live key. A wrong field name here fails *silently*: the order is
+            // created, the ticket is real, and nothing ever earns. That is why
+            // `/settings/profile` says this app cannot confirm the carrier took
+            // it, and why `duffel-capture.ts` asks it as Q4.
+            loyalty_programme_accounts: p.loyaltyAccounts?.map((a) => ({
+              airline_iata_code: a.airlineCode,
+              account_number: a.accountNumber,
+            })),
           })),
         },
       },

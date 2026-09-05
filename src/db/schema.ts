@@ -370,6 +370,19 @@ export const users = pgTable(
     knownTravelerNumber: text('known_traveler_number'),
     seatPreference: text('seat_preference'),
     /**
+     * The airport this person departs from unless they say otherwise — an IATA
+     * code, uppercase.
+     *
+     * It is a **default at the point of entry and never a fact about a request**.
+     * `travel_requests.origin_airport` stays `notNull` and records what was
+     * actually asked for, because that origin is a constraint the policy engine
+     * ruled against and the offers were priced from: re-deriving it later from
+     * whatever this column happens to say would silently re-write the question a
+     * booked ticket answered. Changing this moves the *next* form, not an open
+     * request.
+     */
+    homeAirport: text('home_airport'),
+    /**
      * Passenger identity, required by the airline to issue a ticket — not by us.
      * Nullable because most of the app never needs it, and because a missing
      * date of birth must fail a live purchase loudly rather than be invented.
@@ -385,6 +398,42 @@ export const users = pgTable(
     index('users_org_idx').on(t.orgId),
     uniqueIndex('users_org_email_idx').on(t.orgId, t.email),
   ],
+);
+
+/**
+ * A person's frequent-flyer numbers, one per carrier.
+ *
+ * This is a **preference the carrier is told about, not a fact this app can
+ * verify.** We pass the number through at search (where it can surface a member
+ * fare) and again on order create (where the miles actually credit); the airline
+ * either recognises it or silently ignores it, and there is no response field
+ * that tells us which. So nothing in this product may ever say miles *were*
+ * credited — the profile screen says so on the page, because the failure mode of
+ * a mistyped number is a year of trips that quietly earned nothing.
+ *
+ * One row per `(user, airline)` on purpose. Two numbers for the same carrier
+ * would make something downstream choose between them, and the only honest
+ * choice is "ask the person" — which is what the unique index does at the point
+ * they type it, rather than at the point a ticket is issued.
+ *
+ * Deliberately a table rather than a JSONB column on `users`: the ticketing path
+ * reads it per traveler through a relation, and the unique rail above is not
+ * expressible in JSON.
+ */
+export const userLoyaltyAccounts = pgTable(
+  'user_loyalty_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** IATA airline designator — two characters, and alphanumeric: `B6`, `9W`. */
+    airlineCode: text('airline_code').notNull(),
+    /** Kept exactly as typed. Carriers vary wildly and we never reformat one. */
+    accountNumber: text('account_number').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('user_loyalty_user_airline_idx').on(t.userId, t.airlineCode)],
 );
 
 /* ------------------------------ login methods ------------------------------ */
@@ -2822,6 +2871,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   flights: many(flights),
   shiftAssignments: many(shiftAssignments),
   ticketCredits: many(ticketCredits),
+  loyaltyAccounts: many(userLoyaltyAccounts),
+}));
+
+export const userLoyaltyAccountsRelations = relations(userLoyaltyAccounts, ({ one }) => ({
+  user: one(users, { fields: [userLoyaltyAccounts.userId], references: [users.id] }),
 }));
 
 export const orgLoginPoliciesRelations = relations(orgLoginPolicies, ({ one }) => ({

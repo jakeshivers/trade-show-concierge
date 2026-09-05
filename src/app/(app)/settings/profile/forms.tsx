@@ -1,9 +1,9 @@
 'use client';
 
 import { useActionState } from 'react';
-import { Field, Input, Message, Select, Submit } from '../../_components/form-ui';
+import { Field, Input, Message, QuietSubmit, Select, Submit } from '../../_components/form-ui';
 import { GENDERS, GENDER_LABEL, HONORIFICS, SEAT_PREFERENCES } from '@/lib/profile/edit';
-import { saveProfile } from './actions';
+import { deleteLoyaltyAccount, saveLoyaltyAccount, saveProfile } from './actions';
 
 const HONORIFIC_LABEL: Record<string, string> = {
   mr: 'Mr', ms: 'Ms', mrs: 'Mrs', miss: 'Miss', dr: 'Dr',
@@ -23,6 +23,7 @@ export function ProfileForm({
     gender: string | null;
     knownTravelerNumber: string | null;
     seatPreference: string | null;
+    homeAirport: string | null;
   };
 }) {
   const [state, action, pending] = useActionState(saveProfile, {});
@@ -94,19 +95,103 @@ export function ProfileForm({
         </Field>
       </div>
 
-      <Field
-        label="Known Traveler Number"
-        hint="TSA PreCheck or Global Entry. Optional, and passed to the carrier when present."
-      >
-        <Input
-          name="knownTravelerNumber"
-          defaultValue={profile.knownTravelerNumber ?? ''}
-          density="comfortable"
-        />
-      </Field>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field
+          label="Known Traveler Number"
+          hint="TSA PreCheck or Global Entry. Optional, and passed to the carrier when present."
+        >
+          <Input
+            name="knownTravelerNumber"
+            defaultValue={profile.knownTravelerNumber ?? ''}
+            density="comfortable"
+          />
+        </Field>
+        <Field
+          label="Home airport"
+          hint="The three-letter IATA code you usually fly out of. It fills in “From” on a new travel request; you can type over it any time."
+        >
+          <Input
+            name="homeAirport"
+            defaultValue={profile.homeAirport ?? ''}
+            density="comfortable"
+            maxLength={3}
+            placeholder="ORD"
+            className="uppercase"
+          />
+        </Field>
+      </div>
 
       <Submit pending={pending} busy="Saving…">Save</Submit>
       <Message state={state} />
     </form>
+  );
+}
+
+
+/**
+ * Frequent-flyer numbers.
+ *
+ * A separate form from the details above, and not because the page ran out of
+ * room: adding a number and correcting a date of birth are different acts with
+ * different consequences, and a single Save that did both would make one of them
+ * invisible. It is also a list, and a list of rows does not round-trip through a
+ * single `useActionState` without inventing an encoding for it.
+ *
+ * The sentence on the card is the load-bearing part. This app hands the number
+ * to the carrier and gets nothing back that says whether it was recognised, so a
+ * saved row is a claim we passed it on and never a claim it worked.
+ */
+export function LoyaltyAccounts({
+  accounts,
+}: {
+  accounts: { id: string; airlineCode: string; accountNumber: string }[];
+}) {
+  const [state, action, pending] = useActionState(saveLoyaltyAccount, {});
+  const [removeState, removeAction] = useActionState(deleteLoyaltyAccount, {});
+
+  return (
+    <div className="space-y-4">
+      {accounts.length === 0 ? (
+        <p className="text-sm text-text-muted">
+          No accounts on file. Any flight booked for you earns nothing until one is.
+        </p>
+      ) : (
+        <ul className="divide-y divide-border rounded-md border border-border">
+          {accounts.map((a) => (
+            <li key={a.id} className="flex items-center justify-between gap-4 px-3 py-2">
+              <span className="text-sm">
+                <span className="font-medium">{a.airlineCode}</span>
+                <span className="ml-3 font-mono text-text-muted">{a.accountNumber}</span>
+              </span>
+              <form action={removeAction}>
+                <input type="hidden" name="id" value={a.id} />
+                <QuietSubmit>Remove</QuietSubmit>
+              </form>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Message state={removeState} />
+
+      <form action={action} className="flex flex-wrap items-end gap-3">
+        <Field label="Airline">
+          <Input
+            name="airlineCode"
+            required
+            maxLength={2}
+            placeholder="DL"
+            density="comfortable"
+            className="w-20 uppercase"
+          />
+        </Field>
+        <Field label="Membership number">
+          <Input name="accountNumber" required density="comfortable" placeholder="1234567890" />
+        </Field>
+        <Submit pending={pending} busy="Saving…">
+          Add
+        </Submit>
+      </form>
+      <Message state={state} />
+    </div>
   );
 }

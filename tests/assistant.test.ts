@@ -256,6 +256,68 @@ describe('drafting is drafting', () => {
     expect(turn.draftTravelRequestId).toBeNull();
   });
 
+  it('falls back to the home airport when no origin was given', async () => {
+    // Deliberately *not* the refusal `resolveZone` makes one line above it in
+    // `draft.ts`. A guessed time zone is an inference from nothing; a home
+    // airport is a fact the traveler typed and saved, so reading it is reading a
+    // preference. The request is still filed unconfirmed either way.
+    const { turn } = await ask({
+      actor: priya,
+      model: planner([
+        [
+          call('draft_travel_request', {
+            showId,
+            destinationAirport: 'las',
+            earliestDepartureLocal: '2026-04-11T08:00',
+            latestArrivalLocal: '2026-04-11T12:00',
+          }),
+        ],
+      ]),
+      question: 'get me to Vegas on the 11th of April, morning',
+      now: NOW,
+      db,
+    });
+    expect(turn.steps[0].error).toBeNull();
+
+    const row = await db.query.travelRequests.findFirst({
+      where: eq(s.travelRequests.id, turn.draftTravelRequestId!),
+    });
+    // Priya's seeded home airport, and deliberately not the ORD everybody else
+    // has: a bug reading the *requester's* default would pass against a shared one.
+    expect(row?.originAirport).toBe('SFO');
+    expect(row?.constraintsConfirmedAt).toBeNull();
+    // Said out loud in the result, because the person confirming the parse is
+    // the only check on a default that is silently right nine times in ten.
+    const result = turn.steps[0].result as { summary: Record<string, unknown> };
+    expect(result.summary.originFromHomeAirport).toBe(true);
+  });
+
+  it('an origin the person actually gave is not marked as a default', async () => {
+    const { turn } = await ask({
+      actor: priya,
+      model: planner([
+        [
+          call('draft_travel_request', {
+            showId,
+            originAirport: 'oak',
+            destinationAirport: 'las',
+            earliestDepartureLocal: '2026-04-12T08:00',
+            latestArrivalLocal: '2026-04-12T12:00',
+          }),
+        ],
+      ]),
+      question: 'Vegas on the 12th, I am flying out of Oakland this time',
+      now: NOW,
+      db,
+    });
+    const row = await db.query.travelRequests.findFirst({
+      where: eq(s.travelRequests.id, turn.draftTravelRequestId!),
+    });
+    expect(row?.originAirport).toBe('OAK');
+    const result = turn.steps[0].result as { summary: Record<string, unknown> };
+    expect(result.summary.originFromHomeAirport).toBe(false);
+  });
+
   it('refuses a lodging draft from a Member, and the refusal is the answer', async () => {
     const { turn } = await ask({
       actor: priya,

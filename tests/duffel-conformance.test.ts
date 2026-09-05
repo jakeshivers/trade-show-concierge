@@ -244,3 +244,67 @@ withCaptures('Q3 — what the provider says it charged to the credit', () => {
     expect(candidates.length).toBeGreaterThan(0);
   });
 });
+
+withCaptures('Q4 — does Duffel accept a loyalty account on a passenger', () => {
+  /**
+   * The quietest of the four questions and the reason it is asked at all.
+   *
+   * `client.ts` sends `loyalty_programme_accounts` on the offer request and
+   * again on order create, written to the published schema and never run against
+   * a live key. Every other unverified field in this adapter fails loudly — a
+   * wrong tracking field gives a crate with no scans, a wrong credit field
+   * throws. This one does not: the search returns offers, the order is created,
+   * a real ticket is issued, and the only symptom is a traveler who earns
+   * nothing for a year while their number sits saved on `/settings/profile`.
+   *
+   * What this can and cannot establish: a 200 means the *field name* was
+   * accepted. Whether the carrier credited anything is not in any response body,
+   * which is exactly why the profile screen says so on the page rather than
+   * implying a saved number is a working one.
+   */
+  const sent = captures.filter((c) =>
+    JSON.stringify(c.request.body ?? {}).includes('loyalty_programme_accounts'),
+  );
+
+  it('sent one at all, or says why the question stays open', () => {
+    if (sent.length === 0) {
+      console.log(
+        '\n  No captured request carried a loyalty account. Q4 is unanswered — re-run\n' +
+          '  `pnpm duffel:capture` from a build that includes the Q4 probes.\n',
+      );
+    }
+    expect(true).toBe(true);
+  });
+
+  it('was not rejected for the field', () => {
+    for (const c of sent) {
+      if (c.response.ok) continue;
+      const body = JSON.stringify(c.response.body ?? '');
+      // A 422 naming the field is the finding: `client.ts` is sending a shape
+      // Duffel does not take, and the fix is the field name, not a retry.
+      expect(
+        body.includes('loyalty_programme_accounts'),
+        `${c.step} failed and named loyalty_programme_accounts — client.ts sends a field ` +
+          `Duffel rejects (see duffel/client.ts, offer request and createOrder): ${body}`,
+      ).toBe(false);
+    }
+  });
+
+  it('came back on the passenger where the API echoes one', () => {
+    // Duffel echoes the passengers it was given on an order. Where a capture
+    // shows one, this is the only positive evidence available that the field was
+    // read rather than dropped on the floor.
+    const orders = captures.filter((c) => c.response.ok && c.request.url.includes('/air/orders'));
+    const echoed = orders.filter((c) =>
+      JSON.stringify(c.response.body ?? '').includes('loyalty_programme_accounts'),
+    );
+    if (orders.length && echoed.length === 0) {
+      console.log(
+        '\n  Q4: an order was created and no response echoed loyalty_programme_accounts.\n' +
+          '  That is not proof it was dropped — Duffel may simply not echo it — but it is\n' +
+          '  the point at which to read the order in the Duffel dashboard by hand.\n',
+      );
+    }
+    expect(true).toBe(true);
+  });
+});

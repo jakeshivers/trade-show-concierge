@@ -2743,6 +2743,30 @@ invert phases A and C.
       type, so a blank airline list resolved to `null` and `rules.ts` threw — unreachable for
       twenty-four steps because the seed fills it and because `validatePolicy`, carrying a
       comment since step 3 saying it was for the admin policy editor, was called by nothing.
+- [x] **24b.** **Traveler preferences** (2026-09-05), prompted by a user asking whether the
+      profile carried defaults for airline, hotel and car rental. It carried a seat preference
+      and a Known Traveler Number and nothing else. Two things shipped and two were refused,
+      and the refusals matter as much. Shipped: **`users.home_airport`**, which prefills "From"
+      on a new travel request — **the traveler's, never the requester's**, since a travel
+      manager filing for a colleague is asking where *they* leave from — and which
+      `assistant/draft.ts` falls back to when the person did not say, marked
+      `originFromHomeAirport` in the result so whoever confirms the parse can see which it was.
+      And **`user_loyalty_accounts`**, one number per carrier, sent at search (where a member
+      fare can appear) and again at order create (where the miles credit). Refused: a *personal*
+      airline preference, because §7's `preferredAirlines` is an org policy input and a
+      per-person one quietly becomes a constraint the agent then cannot find fares under —
+      a real design question, not a missing field; and hotel and car rental preferences, which
+      have nothing to act on them (§5 keeps hotel booking out of v1 and car rental is out of
+      scope above), so the profile says that on the page rather than collecting a preference
+      nothing reads. **The finding is the same shape as 24a's four tables, one layer in**:
+      `SearchRequest.passengers.loyaltyAccounts` and the Duffel mapping for it have both existed
+      since step 5, and `agent.ts` never filled the field — so every ticket this product has ever
+      bought was issued with no mileage credit, and no test could have caught it because the
+      builder was correct and nothing called it with anything. **The check 24a introduced was
+      "does anything outside the seed write this table"; this one is "does anything fill this
+      field the adapter already maps".** And the honest ceiling: nothing in a search or an order
+      response says whether the carrier *accepted* a number, so the screen says we passed it on
+      rather than implying miles are accruing, and `duffel-capture.ts` asks it as Q4.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
       gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`

@@ -58,6 +58,7 @@ export type ProfileEdit = {
   gender: string | null;
   knownTravelerNumber: string | null;
   seatPreference: string | null;
+  homeAirport: string | null;
 };
 
 /** What a carrier will accept. Deliberately not a taxonomy of our own. */
@@ -93,6 +94,7 @@ export function validateProfile(
     gender: string | null;
     knownTravelerNumber: string | null;
     seatPreference: string | null;
+    homeAirport: string | null;
   },
   now: Date = new Date(),
 ): ProfileEdit {
@@ -151,7 +153,83 @@ export function validateProfile(
     gender: pick(input.gender, GENDERS, 'gender'),
     knownTravelerNumber: input.knownTravelerNumber?.trim() || null,
     seatPreference: pick(input.seatPreference, SEAT_PREFERENCES, 'seat preference'),
+    homeAirport: airportCode(input.homeAirport),
   };
+}
+
+/* ------------------------------ home airport ------------------------------ */
+
+const IATA_AIRPORT = /^[A-Za-z]{3}$/;
+
+/**
+ * The airport a person leaves from unless they say otherwise.
+ *
+ * Shape only. There is no airport table in this app — `assistant/draft.ts` says
+ * so where it refuses to guess a time zone — so "is ORD a real airport" is a
+ * question nothing here can answer, and pretending to would mean shipping a list
+ * that goes stale. What *is* checkable is that three letters is the only thing a
+ * flight search accepts, and a four-letter ICAO code (`KORD`) is the mistake
+ * somebody who knows aviation actually makes.
+ *
+ * Uppercased on the way in, because it is compared against provider codes and a
+ * lowercase default that silently fails to match is worse than no default.
+ */
+function airportCode(value: string | null): string | null {
+  const v = value?.trim() || null;
+  if (v === null) return null;
+  if (!IATA_AIRPORT.test(v)) {
+    throw new ProfileError(
+      `"${v}" is not an airport code. Use the three-letter IATA code an airline would ` +
+        'print on a boarding pass — ORD, not KORD and not "Chicago".',
+    );
+  }
+  return v.toUpperCase();
+}
+
+/* ---------------------------- loyalty accounts ---------------------------- */
+
+/** IATA airline designators are two characters and may carry a digit: `B6`, `9W`. */
+const IATA_AIRLINE = /^[A-Za-z0-9]{2}$/;
+
+export type LoyaltyAccountEdit = { airlineCode: string; accountNumber: string };
+
+/**
+ * A frequent-flyer number, validated as far as anything here honestly can.
+ *
+ * The airline code is checked for shape and uppercased — it has to match the
+ * carrier on an offer or the number rides along attached to nothing. The
+ * **account number is never reformatted**: carriers use digits, letters, and
+ * lengths that disagree with each other, and this app's whole posture on
+ * provider identifiers (`profile/edit.ts` on phone numbers, `shipping/carrier.ts`
+ * on tracking numbers) is that a helpful normalisation is how a correct value
+ * becomes a wrong one. Spaces are stripped only at the ends.
+ *
+ * Nothing here can tell a valid number from a typo, and that is the important
+ * sentence: the carrier accepts both without comment, so the screen says the
+ * app cannot confirm it rather than implying a saved number is a working one.
+ */
+export function validateLoyaltyAccount(input: {
+  airlineCode: string;
+  accountNumber: string;
+}): LoyaltyAccountEdit {
+  const airlineCode = input.airlineCode.trim();
+  if (!IATA_AIRLINE.test(airlineCode)) {
+    throw new ProfileError(
+      `"${airlineCode}" is not an airline code. Use the two-character IATA designator — ` +
+        'DL, AA, B6. It is what appears before the flight number on a boarding pass.',
+    );
+  }
+  const accountNumber = input.accountNumber.trim();
+  if (!accountNumber) {
+    throw new ProfileError('A loyalty account needs a number. Blank removes it instead.');
+  }
+  if (accountNumber.length > 32) {
+    throw new ProfileError(
+      'That is longer than any frequent-flyer number a carrier issues. Check for a pasted ' +
+        'label or a whole URL.',
+    );
+  }
+  return { airlineCode: airlineCode.toUpperCase(), accountNumber };
 }
 
 /**

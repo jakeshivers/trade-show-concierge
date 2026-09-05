@@ -1,8 +1,8 @@
 import { getActor } from '@/lib/auth/actor';
 import { missingForTicket } from '@/lib/profile/edit';
-import { getMyProfile } from '@/lib/profile/store';
+import { getMyLoyaltyAccounts, getMyProfile } from '@/lib/profile/store';
 import { Card, PageHeader } from '../../_components/ui';
-import { ProfileForm } from './forms';
+import { LoyaltyAccounts, ProfileForm } from './forms';
 
 /**
  * Your own traveler details — the screen this product spent twenty-four steps
@@ -23,7 +23,7 @@ import { ProfileForm } from './forms';
  */
 export default async function ProfilePage() {
   const actor = await getActor();
-  const me = await getMyProfile(actor);
+  const [me, loyalty] = await Promise.all([getMyProfile(actor), getMyLoyaltyAccounts(actor)]);
   const missing = missingForTicket(me);
 
   return (
@@ -56,6 +56,26 @@ export default async function ProfilePage() {
         <ProfileForm profile={me} />
       </Card>
 
+      <Card
+        title="Frequent flyer accounts"
+        subtitle="Sent to the carrier when a fare is searched and again when a ticket is bought. One number per airline — retyping one corrects it."
+      >
+        {/*
+          The honest sentence, and it is why this card has a blurb at all.
+          Nothing in a search or an order response tells us whether the carrier
+          recognised a number, so a saved row is a record that we passed it on
+          and never a claim that miles are accruing. The failure of a mistyped
+          number is a year of trips that quietly earned nothing, which nobody
+          goes looking for — the same shape as the Salesforce join in §19.
+        */}
+        <p className="mb-4 rounded-md bg-surface-muted px-3 py-2 text-xs text-text-muted">
+          We pass these to the airline; the airline never tells us whether it accepted one. A
+          number saved here is not proof that miles are crediting — check your statement after
+          the first trip.
+        </p>
+        <LoyaltyAccounts accounts={loyalty} />
+      </Card>
+
       <Card title="What is not here">
         <ul className="space-y-1 text-sm text-text-muted">
           <li>
@@ -69,6 +89,11 @@ export default async function ProfilePage() {
           <li>
             <span className="text-text">Passport and visa details</span> are deliberately not
             collected. This app books flights; it does not hold travel documents.
+          </li>
+          <li>
+            <span className="text-text">Hotel and car rental preferences</span> have nothing to
+            act on them. This app records hotels rather than booking them, and car rental is out
+            of scope — a preference nothing reads is a promise nothing keeps.
           </li>
         </ul>
       </Card>

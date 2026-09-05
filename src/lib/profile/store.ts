@@ -1,9 +1,9 @@
-import { eq } from 'drizzle-orm';
+import { and, asc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import type { Actor } from '@/lib/auth/actor';
 import { NotFoundError } from '@/lib/shows/store';
-import { validateProfile, type ProfileEdit } from './edit';
+import { validateLoyaltyAccount, validateProfile, type ProfileEdit } from './edit';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -48,7 +48,83 @@ export async function updateMyProfile(
       gender: clean.gender,
       knownTravelerNumber: clean.knownTravelerNumber,
       seatPreference: clean.seatPreference,
+      homeAirport: clean.homeAirport,
     })
     .where(eq(s.users.id, actor.userId));
   return clean;
+}
+
+/* ---------------------------- loyalty accounts ---------------------------- */
+
+/** Your own numbers, for the screen that edits them. Ordered so a list is stable. */
+export async function getMyLoyaltyAccounts(actor: Actor, db: Db = getDb()) {
+  return db
+    .select()
+    .from(s.userLoyaltyAccounts)
+    .where(eq(s.userLoyaltyAccounts.userId, actor.userId))
+    .orderBy(asc(s.userLoyaltyAccounts.airlineCode));
+}
+
+/**
+ * Add a number, or replace the one already held for that carrier.
+ *
+ * An upsert rather than a refusal, deliberately: the unique index exists so
+ * nothing downstream has to choose between two numbers for one airline, and the
+ * person retyping a Delta number is correcting it, not filing a second account.
+ * A conflict error here would make the fix "delete, then add", which is two acts
+ * for one intention — and the intermediate state is a traveler with no number at
+ * all on the carrier they fly most.
+ */
+export async function addMyLoyaltyAccount(
+  actor: Actor,
+  input: { airlineCode: string; accountNumber: string },
+  db: Db = getDb(),
+) {
+  const clean = validateLoyaltyAccount(input);
+  await db
+    .insert(s.userLoyaltyAccounts)
+    .values({ userId: actor.userId, ...clean })
+    .onConflictDoUpdate({
+      target: [s.userLoyaltyAccounts.userId, s.userLoyaltyAccounts.airlineCode],
+      set: { accountNumber: clean.accountNumber },
+    });
+  return clean;
+}
+
+/**
+ * Remove one. Scoped by `userId` in the `where` rather than checked after
+ * loading — `shows/store.ts`'s posture, and the reason is the same: a delete that
+ * loads first and compares is a delete that runs whenever somebody forgets the
+ * comparison.
+ */
+export async function removeMyLoyaltyAccount(actor: Actor, id: string, db: Db = getDb()) {
+  await db
+    .delete(s.userLoyaltyAccounts)
+    .where(
+      and(eq(s.userLoyaltyAccounts.id, id), eq(s.userLoyaltyAccounts.userId, actor.userId)),
+    );
+}
+
+/**
+ * The numbers to send a carrier for one traveler, read on a ticketing path
+ * rather than for a screen.
+ *
+ * Deliberately takes a **user id and no `Actor`**. Every other function in this
+ * file is scoped to the actor's own row because these are the subject's own
+ * facts; this one is called by the booking agent, which is already acting on a
+ * `travel_requests` row whose traveler was resolved through `travelersFor` — so
+ * the narrowing happened before this was reached, and adding an actor parameter
+ * here would imply a second, weaker check exists. It returns what goes on a
+ * ticket, not something a person is shown.
+ */
+export async function loyaltyAccountsForTraveler(userId: string, db: Db = getDb()) {
+  const rows = await db
+    .select({
+      airlineCode: s.userLoyaltyAccounts.airlineCode,
+      accountNumber: s.userLoyaltyAccounts.accountNumber,
+    })
+    .from(s.userLoyaltyAccounts)
+    .where(eq(s.userLoyaltyAccounts.userId, userId))
+    .orderBy(asc(s.userLoyaltyAccounts.airlineCode));
+  return rows;
 }

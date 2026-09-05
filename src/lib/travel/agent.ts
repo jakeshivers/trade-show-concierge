@@ -24,7 +24,8 @@ import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
 import { offerStanding } from './review';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
-import { passengerForUser, type Passenger } from './passengers';
+import { loyaltyAccountsForTraveler } from '@/lib/profile/store';
+import { passengerForUser, searchPassengerForUser, type Passenger } from './passengers';
 import { notifyTicketed, notifyUnreachableCredit } from './notify';
 import { materializeFlights } from '@/lib/flights/store';
 import {
@@ -522,11 +523,15 @@ async function searchAndEvaluate(
   const traveler = await deps.db.query.users.findFirst({
     where: eq(s.users.id, request.travelerId),
   });
-  const [givenName, ...rest] = (traveler?.fullName ?? 'Unknown Traveler').split(' ');
+  // The traveler's own frequent-flyer numbers, so the offers this is ruled
+  // against are the ones they can actually be sold. `loyaltyAccountsForTraveler`
+  // takes no actor because the narrowing already happened: this is a row on a
+  // request whose traveler `travelersFor` resolved.
+  const loyalty = await loyaltyAccountsForTraveler(request.travelerId, deps.db);
 
   const result = await deps.provider.search({
     constraints: base.constraints,
-    passengers: [{ givenName, familyName: rest.join(' ') || givenName }],
+    passengers: [searchPassengerForUser({ fullName: traveler?.fullName ?? 'Unknown Traveler' }, loyalty)],
     cabinClass: base.constraints.cabinPreference,
     maxConnections: base.policy.maxStops,
   });
@@ -692,7 +697,8 @@ async function passengersFor(deps: AgentDeps, request: TravelRequestRow): Promis
     where: eq(s.users.id, request.travelerId),
   });
   if (!traveler) throw new Error(`Traveler ${request.travelerId} not found`);
-  return [passengerForUser(traveler)];
+  const loyalty = await loyaltyAccountsForTraveler(request.travelerId, deps.db);
+  return [passengerForUser(traveler, '', loyalty)];
 }
 
 /* ---------------------------------- holds ---------------------------------- */

@@ -185,6 +185,7 @@ async function main() {
         role: 'admin',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
         phone: '+14155550101',
         bornOn: '1981-04-17',
         gender: 'f',
@@ -198,6 +199,7 @@ async function main() {
         role: 'travel_manager',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
         phone: '+14155550102',
         bornOn: '1988-11-02',
         gender: 'm',
@@ -212,6 +214,10 @@ async function main() {
         costCenterId: se.id,
         knownTravelerNumber: 'KTN9924183',
         seatPreference: 'window',
+        // Deliberately not ORD. Priya is the Member every access test acts as,
+        // and a home airport that matches everybody else's would let a bug that
+        // reads the *requester's* default instead of the traveler's pass unseen.
+        homeAirport: 'SFO',
         phone: '+14155550103',
         bornOn: '1990-06-25',
         gender: 'f',
@@ -225,6 +231,7 @@ async function main() {
         role: 'member',
         costCenterId: se.id,
         seatPreference: 'aisle',
+        homeAirport: 'ATL',
         phone: '+14155550104',
         bornOn: '1986-01-09',
         gender: 'm',
@@ -250,6 +257,7 @@ async function main() {
         role: 'member',
         costCenterId: exec.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
         phone: '+14155550106',
         bornOn: '1975-09-30',
         gender: 'f',
@@ -258,6 +266,17 @@ async function main() {
     ])
     .returning();
   const [shelley, marcus, priya, tomas, reese, ingrid] = people;
+
+  // Frequent flyer numbers, on some people and not others — the same posture as
+  // Reese's missing date of birth. A workspace where everybody has an account on
+  // every carrier is one where "the ticket earned nothing" can never be seen.
+  // These ride on searches and orders; nothing here claims a mile was credited.
+  await db.insert(s.userLoyaltyAccounts).values([
+    { userId: shelley.id, airlineCode: 'AA', accountNumber: 'AA4471902' },
+    { userId: marcus.id, airlineCode: 'DL', accountNumber: 'DL9920184' },
+    { userId: marcus.id, airlineCode: 'AA', accountNumber: 'AA1180773' },
+    { userId: priya.id, airlineCode: 'UA', accountNumber: 'UA3319887' },
+  ]);
 
   const actorFor = (u: (typeof people)[number]): Actor => ({
     userId: u.id,

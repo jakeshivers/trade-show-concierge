@@ -671,3 +671,69 @@ describe('nothing bookable', () => {
     expect(outcome.ranked).toHaveLength(0);
   });
 });
+
+/**
+ * The traveler's frequent-flyer numbers reach the provider.
+ *
+ * Asserted against the real agent rather than against `passengerForUser`,
+ * because the gap this closes was never in the passenger builder: the socket for
+ * `loyaltyAccounts` has been on `SearchRequest` since step 5 and the Duffel
+ * adapter has mapped it since step 5, and `agent.ts` simply never filled it —
+ * so every ticket this product bought was issued with no mileage credit and
+ * nothing anywhere said so. A unit test on the builder would have passed
+ * throughout.
+ */
+describe('loyalty accounts reach the carrier', () => {
+  class SpyingProvider implements FlightProvider {
+    name = 'spy';
+    seen: SearchRequest['passengers'] = [];
+    constructor(private inner: FlightProvider) {}
+    isConfigured() {
+      return true;
+    }
+    async search(request: SearchRequest): Promise<SearchResult> {
+      this.seen = request.passengers;
+      return this.inner.search(request);
+    }
+    hold(...args: Parameters<FlightProvider['hold']>) {
+      return this.inner.hold(...args);
+    }
+    purchase(...args: Parameters<FlightProvider['purchase']>) {
+      return this.inner.purchase(...args);
+    }
+    cancel(...args: Parameters<FlightProvider['cancel']>) {
+      return this.inner.cancel(...args);
+    }
+  }
+
+  it('sends the traveler’s numbers, not the requester’s', async () => {
+    const clock = new Clock(new Date('2026-03-01T12:00:00Z'));
+    const spy = new SpyingProvider(new RecordedFlightProvider({ now: clock.now }));
+    const deps = depsFor(clock, spy);
+
+    // Marcus files for Priya. Marcus holds DL and AA; Priya holds UA. A search
+    // carrying Marcus's accounts would be the *requester's* preference applied
+    // to somebody else's ticket — wrong in a way the offers would not reveal.
+    const request = await submitTravelRequest(
+      {
+        travelerId: priya.userId,
+        showId: automate.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(automate.moveInAt!.getTime() - DAY),
+        latestArrival: automate.moveInAt!,
+        idempotencyKey: 'loyalty-reaches-carrier',
+      },
+      marcus,
+      deps,
+    );
+    await runAgent(request.id, deps, marcus);
+
+    expect(spy.seen[0].loyaltyAccounts).toEqual([
+      { airlineCode: 'UA', accountNumber: 'UA3319887' },
+    ]);
+    // And the same name split the purchase path uses, which `agent.ts` did not
+    // do for eleven steps — it re-implemented `split(' ')` for the search only.
+    expect(spy.seen[0].familyName).toBe('Raghunathan');
+  });
+});

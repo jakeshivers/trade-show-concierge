@@ -42,7 +42,7 @@ Phase A (**the vertical slice through the booking spine**) is done; Phase B is d
 has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
 in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
 cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
-one unasked. 996 tests, no keys required.
+one unasked. 1,091 tests, no keys required.
 
 Read `git log` for the long version of any step: each commit documents what was learned
 building it, and this file keeps only what a fresh session needs before touching code. The
@@ -837,6 +837,54 @@ one is a real argument with two sides. Decide it deliberately.
 one of these is a sentence the product says confidently with no way to respond to it. The CLI
 habit finds wrong *numbers*; this finds rules that outlived the screen that feeds them, and it
 is a different sweep worth running per feature.
+
+### Traveler preferences (2026-09-05) — a field the adapter already mapped and nothing filled
+
+Prompted by a user asking whether the profile carried defaults for airline, hotel and car
+rental. `/settings/profile` carried a seat preference and a Known Traveler Number; airline
+preference existed only as the **org** policy's `preferred_airlines`, hotel preference had
+nothing to act on it, and car rental is out of scope (`SCOPE.md` §"Explicitly out of scope").
+
+Two things shipped. **`users.home_airport`** prefills "From" on `/travel/new` — **the
+traveler's, never the requester's**, because a travel manager filing for a colleague is asking
+where *they* leave from, and `travelersFor` now returns it per person so switching the dropdown
+needs no round trip. It is a prefill in an editable input: typing over it is the whole override,
+and `travel_requests.origin_airport` stays `notNull` and records what was actually asked, so
+changing a home airport next month never moves an open request or the offers priced from it.
+`assistant/draft.ts` falls back to it when the model gives no origin, and says
+`originFromHomeAirport` in the result — deliberately **not** the refusal `resolveZone` makes one
+line above it, because a guessed zone is an inference from nothing while a home airport is a fact
+the traveler typed.
+
+**`user_loyalty_accounts`** is one number per carrier (unique on `(user, airline)`, so nothing
+downstream is ever asked to choose between two), sent at search — where a member account can
+surface a fare nobody else is offered, which is a fare the policy engine should be ruling
+against — and again at order create, which is where the miles actually credit.
+
+Two were refused and the refusals are the interesting half. A **personal** airline preference is
+a real design question rather than a missing field: `preferredAirlines` is an org policy input
+that `rules.ts` reads as a soft preference, and a per-person one quietly becomes a constraint
+under which the agent stops finding fares. **Hotel and car rental preferences have nothing to act
+on them**, so the profile's "What is not here" card says so — a preference nothing reads is a
+promise nothing keeps.
+
+**The finding, and it is 24a's shape one layer in.** `SearchRequest.passengers.loyaltyAccounts`
+and the Duffel mapping for it have both existed since step 5. `agent.ts` never filled the field.
+So every ticket this product has ever bought was issued with no mileage credit, and no test could
+have caught it — the passenger builder was correct and nothing called it with anything. 24a's
+check was *does anything outside the seed write this table*; this one is **does anything fill
+this field the adapter already maps**. The new test asserts it against the real agent with a
+spying provider rather than against the builder, because a unit test on the builder would have
+passed throughout.
+
+The honest ceiling is written on the screen: **nothing in a search or an order response says
+whether the carrier accepted a number**, so `/settings/profile` says we passed it on rather than
+implying miles are accruing. That failure is silent in the way this codebase most distrusts — a
+real ticket, a saved number, and a year of trips that earned nothing — so `duffel-capture.ts`
+asks it as **Q4** and `duffel-conformance.test.ts` reports it. One small fix rode along:
+`agent.ts` had re-implemented `splitName` inline for the search since step 5, so a traveler's
+legal name could be split one way when quoting and another when buying;
+`searchPassengerForUser` is now the one builder.
 
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
@@ -1691,6 +1739,29 @@ unverified and this file will say so rather than implying otherwise.
   saved (`cost_centers`, which §4 requires on all of them), and the booking agent refused to
   search at all (`travel_policies`). **Re-run the check when adding a feature**: for each
   `pgTable`, does anything outside the seed insert or update it?
+- **A default is a prefill at the point of entry, never a fact re-derived at read time.**
+  `users.home_airport` fills "From" on a new request and `travel_requests.origin_airport` stays
+  `notNull`, because that origin is a constraint the policy engine ruled against and the offers
+  were priced from. Re-deriving it later would silently re-write the question a booked ticket
+  answered. And it is **the traveler's** default, not the requester's — a travel manager filing
+  for a colleague is asking where *they* leave from, and the wrong one is a plausible airport
+  nobody would query.
+- **A field the adapter already maps is not a feature until something fills it.** 24a's check
+  was "does anything outside the seed write this table"; this is the same question one layer in.
+  `SearchRequest.passengers.loyaltyAccounts` and its Duffel mapping both shipped in step 5 and
+  `agent.ts` never populated it, so every ticket ever bought here earned no miles — and the unit
+  test on the passenger builder passed the whole time, because the builder was right and nothing
+  called it with anything. **Assert a wiring against the caller, not the callee.**
+- **A loyalty number is passed on, never confirmed.** Nothing in a search or an order response
+  says whether the carrier recognised one, so a saved row is a record that we sent it and never
+  a claim that miles are crediting — the screen says exactly that. A mistyped number's only
+  symptom is a year of trips that earned nothing, which is the silent-failure class §19's
+  Salesforce join is named for, so it is `duffel-capture.ts`'s Q4 rather than an assumption.
+- **A preference nothing reads is a promise nothing keeps.** Hotel and car rental preferences
+  are deliberately not collected — §5 records hotels rather than booking them and car rental is
+  out of scope — and `/settings/profile` says so on the page instead of offering a field. The
+  same reason a personal airline preference is refused: `preferredAirlines` is an org policy
+  input, and a per-person one quietly becomes a constraint the agent cannot find fares under.
 - **Where a board row already knows its target, the write belongs on the row.** `go-to-show.tsx`
   is right for a write with no single target and wrong for one with an obvious one — confirming
   *this* crate, answering for *this* person. A second *action* that revalidates different paths
@@ -1872,6 +1943,10 @@ src/lib/leads/                coverage.ts (the count that says what it is missin
 src/lib/roi/                  attribution.ts (first touch across the whole calendar),
                               rollup.ts (§5k), alerts.ts (never on a low multiple),
                               access.ts, provider.ts, store.ts
+src/lib/profile/              your own traveler details — edit.ts (validation, and the two
+                              things it refuses to check: an airport list and whether a carrier
+                              took a loyalty number), store.ts (your own row only, plus the one
+                              read the ticketing path makes by user id)
 src/lib/safety/               §5o — presence.ts (evidence → a standing, staleness keyed by
                               *basis*), rollcall.ts (presence never answers for safety),
                               access.ts (the loosest gate here), store.ts
