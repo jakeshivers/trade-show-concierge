@@ -31,12 +31,27 @@ saying a step is done, all four:
 2. **Tick the box** in `SCOPE.md` §10 and amend the step text if what shipped differed
    from what was planned.
 3. **Update "Where we are"** below — the current step, and anything deliberately
-   deferred or left broken.
+   deferred or left broken. **Keep it to inventory and pointers, ~2,000 characters.**
+   A step section says what now *exists* — files, schema, screens, what the seed
+   demonstrates — and nothing else. Every rule the step discovered is stated **once**,
+   in Ground rules, next to the rule; the section points at it rather than restating
+   the argument. The story of the afternoon it was found belongs in the commit
+   message. `tests/docs-budget.test.ts` fails when the file outgrows its budget:
+   **do not raise the number** — the growth is always one of those three sentences
+   written in a second place.
 4. **Fold new findings into `SCOPE.md`.** If a step disproved an assumption, the
    assumption gets corrected in the doc, not just in the commit message.
 
 A fresh session reading `CLAUDE.md` + `SCOPE.md` + `git log` should be able to pick up
 the next step with no further explanation. If it couldn't, the step isn't finished.
+
+**And the converse, which is why this file has needed trimming twice.** This is not the
+reasoning record — `git log` is, per item 1. CLAUDE.md is what a session needs *before*
+touching code. Every retrospective written here at full length was correct, well argued,
+and the third copy of something; six of them is 27,000 characters with no new fact in
+them. When in doubt about where a sentence goes: a **rule** goes in Ground rules, a
+**fact about what exists** goes in Where we are, and **everything else goes in the
+commit**.
 
 ## Where we are
 
@@ -44,7 +59,7 @@ Phase A (**the vertical slice through the booking spine**) is done; Phase B is d
 has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
 in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
 cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
-one unasked. 1,129 tests, no keys required.
+one unasked. 1,131 tests, no keys required.
 
 Read `git log` for the long version of any step: each commit documents what was learned
 building it, and this file keeps only what a fresh session needs before touching code. The
