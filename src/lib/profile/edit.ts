@@ -286,25 +286,11 @@ export function validateLoyaltyAccount(input: {
 }
 
 /**
- * What a ticket still needs, in the words `passengers.ts` would use.
+ * What a ticket still needs.
  *
- * Computed here so the profile screen can say it *before* somebody files a
- * travel request and meets the refusal, rather than only after. It deliberately
- * mirrors `passengerForUser`'s list rather than inventing a second one — two
- * opinions about what a ticket needs is how the screen comes to say you are
- * ready while the agent says you are not.
+ * Re-exported rather than defined here: the rule belongs beside the code that
+ * throws it, and this file kept a hand-written mirror of it that had already
+ * drifted from the original — see `missingForTicket`'s own note. Same shape as
+ * `plural`, which lives in `src/lib/text.ts` and is re-exported for the screens.
  */
-export function missingForTicket(user: {
-  fullName: string;
-  email: string;
-  phone: string | null;
-  bornOn: string | null;
-}): string[] {
-  const missing: string[] = [];
-  const parts = user.fullName.trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) missing.push('a full legal name (given and family)');
-  if (!user.bornOn) missing.push('a date of birth');
-  if (!user.email) missing.push('an email address');
-  if (!user.phone) missing.push('a phone number');
-  return missing;
-}
+export { missingForTicket } from '@/lib/travel/passengers';

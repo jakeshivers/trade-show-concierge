@@ -315,10 +315,12 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
         <p className="mt-3 text-xs text-text-muted">
           Alerts escalate at 30, 14 and 3 days out and on the day. A date nobody has confirmed
           against this year&rsquo;s manual is chased as a <em>date</em> rather than quoted as an
-          amount, because a penalty figure behind a guessed date is a fabricated bill. Run{' '}
-          <code>pnpm deadlines</code> to see what the engine would send tonight, or read what it
-          has already said on the <a className="underline hover:no-underline" href="/alerts">alerts
-          feed</a>.
+          amount, because a penalty figure behind a guessed date is a fabricated bill. What it
+          has already said is on the{' '}
+          <a className="underline hover:no-underline" href="/alerts">
+            alerts feed
+          </a>
+          .
         </p>
       </Card>
 

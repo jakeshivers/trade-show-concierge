@@ -251,7 +251,7 @@ export default async function AssetRegisterPage() {
 
       <Card
         title="What the engine would say tonight"
-        subtitle="Written to the alerts table by `pnpm assets --sweep`. Two of these have no transition behind them — a window closing and a fact staying true — which is why the sweep looks at every row rather than the ones that changed."
+        subtitle="These reach the alerts feed the next time it is re-checked. Two of them have nothing happening behind them — a window closing, and a fact staying true — which is why every asset is looked at rather than only the ones that changed."
       >
         {alerts.length === 0 ? (
           <Empty>Nothing. Which is the usual answer and the right one.</Empty>

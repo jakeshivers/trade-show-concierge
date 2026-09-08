@@ -1038,6 +1038,49 @@ the pre-dry-run copy — and both mistakes returned *confirming* answers. **When
 contradicts a comment the code has carried for twenty-four steps, re-derive the state before
 believing the measurement**, and kill `next dev` before anything else writes to the database.
 
+### UX pass 3 — the first five minutes (2026-09-08)
+
+`UI-REWORK.md` §12–§18 were all driven by a reader working *inside* a seeded workspace, on
+screens that already had data. Nothing had looked at the path **before** that: the first screen
+somebody lands on, what an unconfigured workspace tells them, and what the app shows while it is
+thinking or when it breaks. §21 is the long version. **The empty states turned out to be fine**,
+which is worth knowing before looking again — the gaps were all somewhere else.
+
+- **The overview had been wrong since step 9.** It led with a card headed *"The booking spine
+  runs headless"*, saying the travel form and approvals queue would *"land at step 9"* and
+  listing three `pnpm` commands as the way to use the product — sixteen steps after they
+  shipped. Deleted rather than reworded. Under it, **"What you can do here" was a hand-written
+  array of seven capabilities frozen at step 8**, beside a nav grown to twenty-three entries.
+  `_components/nav.ts` is now the one list both read, and **`does` is a required field**, so a
+  new screen cannot join the navigation without a sentence saying what a person does there.
+- **`src/lib/setup/`** is the first-run card, pure plus a store. It renders only while something
+  is outstanding, names the **consequence** rather than the chore (*"the booking agent will not
+  search for a fare at all"*), lists a step the reader cannot perform with **who can** beside it,
+  and is **not dismissible**. It is deliberately **not an eighth engine** — the drayage rate-card
+  rule, that a condition with no clock is not an alert.
+- **Four boundary files that did not exist**: `(app)/loading.tsx`, `(app)/error.tsx`,
+  `(app)/not-found.tsx` and root `not-found.tsx` plus `global-error.tsx`. Five call sites already
+  threw `notFound()` and every one landed outside the shell.
+- **An alert badge on the nav**, from `feed.summary.outstanding` — never a second SQL `count()`.
+  `_request.ts` holds `currentActor` / `currentFeed` as **zero-argument** `cache()` wrappers,
+  because `cache()` keys on argument identity and passing `actor` from two components is two
+  misses. Rendering `/` was already doing two actor lookups before this.
+- **`pnpm` was on five end-user screens.** §17's vocabulary scan greps `§`, `SCOPE.md`,
+  `a floor`, `lawful basis` and `x(s)` and never looked for a **command name**. Adding
+  `pnpm [a-z:-]+` to it also turned up a *seventh* "lawful basis", on `/settings/intake` — the
+  one screen §14 and §15 did not walk. `layout.tsx`'s `NoDevActor` keeps its `pnpm db:reset`,
+  because it renders only for somebody running this locally with no Clerk keys.
+
+**Two things reading the rendered page found.** `1 flights booked` on the overview — §18 fixed
+seven `in 1 days` and could not see this one, because a hard-coded plural noun beside an
+interpolated count is not an `(s)`. And the real defect: **`missingForTicket` was a commented
+*mirror* of the inline list in `passengers.ts`, and the two had already drifted.** `splitName`
+maps a one-word `fullName` to a given and family name that are the same word, so
+`!givenName || !familyName` was false and **the agent would have ticketed somebody whose legal
+name cannot match their ID** — the exact failure that module exists to prevent — while the
+profile screen correctly refused. One function now, in `passengers.ts`, asserted against
+`passengerForUser` rather than against the helper.
+
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
 The backlog in `SCOPE.md` §10.25 is sponsorship campaigns, a public API + Zapier, impersonation,
@@ -1057,6 +1100,13 @@ HubSpot. Three observations that should shape the choice more than the list does
 - **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's backlog has
   carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with their own deadlines,
   which composes the §5a engine that already exists rather than adding a ninth thing that alerts.
+
+**The next UX step is responsive layout, and it is written down rather than done** (2026-09-08).
+`sidebar.tsx` is a fixed `w-60` / `w-16` column at every width and `_components/ui.tsx` contains
+no `sm:` / `md:` / `lg:` variant at all — while `manifest.ts` sets `start_url: '/day-of'`, which
+is the screen used standing on a show floor, on a phone, and is therefore the one most likely to
+be opened by somebody who is not at a desk. It is a whole-app pass touching every screen, so it
+deserves its own commit rather than riding along with the first-five-minutes work above.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on **localhost
@@ -1974,6 +2024,43 @@ unverified and this file will say so rather than implying otherwise.
 - **Never run `pnpm dev` and `pnpm test` against the same `.pglite`.** Concurrent access leaves
   it damaged and every DB-touching test then fails with `RuntimeError: Aborted()`, naming
   nothing. `pnpm db:reset` fixes it.
+- **A hand-written list beside a thing that grows is the `SOURCE_LABEL` trap, and prose is not
+  an exception.** It has appeared three times now: a runtime guard, a blurb naming five engines
+  when there were seven, and the overview's capability list, frozen at step 8 beside a nav that
+  reached twenty-three entries. Nothing failed in any of them. `_components/nav.ts` is the one
+  list of screens, `does` is a **required** field on an entry, and the compiler is what makes a
+  new screen impossible to add without saying what it is for.
+- **A command name on an end-user screen is a vocabulary leak the scan could not see.** §17's
+  pattern greps `§`, `SCOPE.md`, `a floor`, `lawful basis` and `x(s)`; `pnpm deadlines` in a
+  paragraph is the most literal case of a doc comment wearing page copy's clothes — it asks
+  somebody who reached the product through a browser to open a terminal. Add `pnpm [a-z:-]+` to
+  the scan. The one exception is `NoDevActor`, which renders only for somebody running this
+  locally with no Clerk keys and is addressed to exactly the right reader.
+- **A workspace that is not set up is a screen, not an engine.** `travel_policies` and
+  `cost_centers` had write paths and nothing told anybody they had to be used first, so a real
+  organization met `NoPolicyError` on the screen where they were trying to do something else.
+  `src/lib/setup/` says so on the overview and disappears when done — it is **not** an eighth
+  alert engine, because a condition with no clock is not an alert. A step names what stops
+  working rather than the chore, a step the reader cannot do names who can, and it is **not
+  dismissible**: a hidden setup step and a finished one look identical from every other screen.
+- **A count is derived once and badged, never counted again in SQL.** The sidebar's alert badge
+  is `feed.summary.outstanding` — the same number the overview prints — because what counts as
+  outstanding is `standingOf`'s decision, and a predicate that agrees with it today is the
+  `SOURCE_LABEL` bug waiting. `_request.ts` makes that affordable with **zero-argument**
+  `cache()` wrappers: `cache()` keys on argument identity, so `getAlertFeed(actor)` called from a
+  layout and a page is two different objects and two misses.
+- **Two copies of a rule kept in step by a comment is a rule with a wrong version and nothing to
+  say which.** `missingForTicket` sat in `profile/edit.ts` describing itself as a mirror of
+  `passengers.ts`, and they had drifted: `splitName` gives a one-word name a given and family
+  name that are the same word, so the agent's check passed a traveler the screen was correctly
+  refusing — a real ticket in a name that cannot match an ID. One function, beside the thing that
+  throws, and the test asserts it **against the caller**. Grep for "mirrors" in a doc comment.
+- **Every navigation needs a `loading.tsx` and every throw needs an `error.tsx`.** Pages here are
+  `force-dynamic` and read the database, so without one a click leaves the *previous* page on
+  screen and a slow board is indistinguishable from a broken one. `(app)/error.tsx` deliberately
+  renders `error.message`, because the config and provider errors here are written to be read and
+  Next already genericizes anything it did not expect. `notFound()` had five call sites and no
+  boundary, so each one landed outside the shell with no navigation and no way back.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.
@@ -2087,7 +2174,13 @@ src/app/(app)/                the app shell and its screens; never prerendered
   _components/                the shared vocabulary: ui.tsx (Card, Badge, Table, formatting),
                               form.ts (one FormState + FormData helpers, dependency-free),
                               form-ui.tsx (Input/Field/Message/Submit/ZonedDateTime), cn.ts,
-                              sidebar.tsx, go-to-show.tsx (a chooser, not a shortcut)
+                              nav.ts (the one list of screens; `does` is required, and the
+                              overview renders it), sidebar.tsx, go-to-show.tsx (a chooser,
+                              not a shortcut)
+  _request.ts                 currentActor / currentFeed — zero-argument cache() wrappers, so
+                              the layout and a page share one lookup and one feed query
+  setup-card.tsx              what this workspace still needs, on the overview, until it does
+  loading/error/not-found     the boundaries every navigation and every throw lands in
 src/app/api/intake/leads/     POST from a badge scanner: the only route that authenticates
                               without getActor(), and a retry answered as a success
 src/app/api/day-of/           snapshot (GET: the whole screen as data) and sync (POST: a
@@ -2145,6 +2238,9 @@ src/lib/profile/              your own traveler details — edit.ts (validation,
                               things it refuses to check: an airport list and whether a carrier
                               took a loyalty number), store.ts (your own row only, plus the one
                               read the ticketing path makes by user id)
+src/lib/setup/                what a workspace needs before it works — checklist.ts (pure:
+                              the consequence, and who can fix it), store.ts. Deliberately not
+                              an alert engine; see the ground rules
 src/lib/safety/               §5o — presence.ts (evidence → a standing, staleness keyed by
                               *basis*), rollcall.ts (presence never answers for safety),
                               access.ts (the loosest gate here), store.ts

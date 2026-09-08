@@ -317,7 +317,7 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
         <Link href={`/shows/${id}/lodging`} className="underline">
           Lodging tab
         </Link>
-        . <code>pnpm roster</code> prints this coverage model without a screen, across every show.
+        .
       </p>
     </div>
   );

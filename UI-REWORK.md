@@ -906,3 +906,140 @@ Three things worth keeping from how this went:
 - **The wall clock is an input.** The failure window was 23:20–00:00 UTC and this machine is
   on `MDT`, so an early misread of the offset made the theory look disproved when it was
   right. `date -u` first.
+
+## §21 — The first five minutes, which no pass had looked at
+
+§12–§18 were all driven by a reader working *inside* a seeded workspace, on screens that
+already had data. Nothing had looked at the path **before** that: the first screen somebody
+lands on, what an unconfigured workspace tells them, and what the app shows while it is
+thinking or when it breaks. That path decides whether there is a second session, and it had
+never been swept.
+
+**The empty states were fine, which is worth recording.** The survey checked every board and
+every tab expecting the gap to be there, and `Empty`'s doctrine comment — *"an empty state
+says why it is empty and where the thing comes from"* — is honoured throughout. The gaps were
+somewhere else entirely.
+
+### The overview had been wrong since step 9
+
+The first substantive thing a new user read on the home screen was a card headed **"The
+booking spine runs headless"**, saying the travel request form and the approvals queue would
+*"land at step 9"*, and listing `pnpm booking:dry-run`, `pnpm booking:audit` and `pnpm
+credits` as the way to use the product. Step 9 shipped sixteen steps before anybody read that
+sentence again. It is deleted rather than reworded: the thing it describes stopped existing,
+and what replaced it says what is *actually* unfinished about this particular workspace.
+
+Underneath it, **"What you can do here" was a hand-written array of seven capabilities frozen
+at step 8**, beside a nav that had grown to twenty-three entries — no readiness, no deadlines,
+no manual reader, no leads, shipping, drayage, assets, cost, ROI, safety, day-of or assistant.
+This is §18's defect exactly (*"the screens said five engines; there have been seven since step
+19"*), and it gets §18's fix: `_components/nav.ts` now holds the one list of screens, the
+sidebar and the overview both read it, and **`does` is a required field** — a new screen cannot
+be added to the navigation without one sentence saying what a person does there. The compiler
+is what makes that true, as `ENGINE_NOUN` does for the engines.
+
+**The rule, stated once: a hand-written list beside a thing that grows is the `SOURCE_LABEL`
+trap, and prose is not an exception.** It has now appeared three times — a guard, a blurb, and
+a capability list — and each time nothing failed.
+
+### A real organization had no way to know what it had to do first
+
+`CLAUDE.md` has named `/settings/travel-policy`, `/settings/cost-centers` and
+`/settings/profile` as *"the three screens that make a non-seeded org usable at all"* since the
+UX pass built them. **No screen in the app said so.** Until a policy exists the booking agent
+throws `NoPolicyError` and refuses to search; until a cost center exists no financial row can
+be saved at all — and both failed with a message about the missing thing, on the screen where
+somebody was trying to do something else.
+
+`src/lib/setup/` is the answer and it is pure plus a store, like everything else here. Three
+decisions worth carrying:
+
+1. **It is deliberately not an eighth alert engine**, for the reason already written down when
+   drayage rate cards raised the same temptation: *a condition with no clock is not an alert*.
+   "This org has no travel policy" is true from the first minute, never sharpens, and a
+   permanently-true alert that never escalates teaches a team to close the next one unread.
+2. **A step names the consequence, not the chore.** "Set a travel policy" is a task nobody
+   does; "until this is set the booking agent will not search for a fare at all" is a reason.
+3. **A step the reader cannot perform is still listed, and names who can.** Hiding the two
+   admin steps from a Member would leave them meeting `NoPolicyError` with no idea why and
+   nobody to ask — the posture every `access.ts` refusal in this codebase already takes. It is
+   also **not dismissible**: a dismissed setup step is a workspace that silently stays broken,
+   and "configured" and "configured except for the part somebody hid" look identical from every
+   other screen.
+
+### Four boundary files that did not exist
+
+There was no `loading.tsx`, `error.tsx`, `not-found.tsx` or `global-error.tsx` anywhere in
+`src/`. Every page under the shell is `force-dynamic` and reads the database, so clicking a nav
+entry left the **previous page** on screen for as long as the next one's queries took — a board
+that is slow and a board that is broken looked identical. Five call sites already threw
+`notFound()` and every one of them landed on Next's default 404 **outside the shell**: no
+navigation, no theme, no way back. A thrown `NoPolicyError` did the same, discarding the most
+useful sentence in the codebase.
+
+`(app)/error.tsx` **renders `error.message`, which is unusual and is the point** — the config
+and provider errors here are written to be read, and Next already replaces the message with a
+generic string plus a `digest` for anything it did not expect, so an unexpected error still
+cannot leak a stack. `(app)/not-found.tsx` says the same thing for a missing row and a
+forbidden one on purpose, because `assistant/[id]` calls `notFound()` for a `ForbiddenError`
+precisely so a colleague's conversation is indistinguishable from one that does not exist.
+There is a root `not-found.tsx` as well, for a URL matching no route at all — that one is
+reached before the shell exists and can only offer the front door.
+
+### The nav had no alert count
+
+Seven engines write to `/alerts` and the number was legible on exactly one screen. It is a
+badge on the nav entry now, from `feed.summary.outstanding` — **the same derivation the
+overview prints, never a second SQL `count()`**, because what counts as outstanding is
+`standingOf`'s decision and a predicate agreeing with it today is the `SOURCE_LABEL` bug
+waiting. Zero renders nothing rather than a `0`; a badge that is always on is one nobody reads.
+
+`_request.ts` is what makes that affordable: `currentActor` and `currentFeed` are **zero-argument**
+`cache()` wrappers, because `cache()` keys on argument identity and `getAlertFeed(actor)` called
+from a layout and a page is two different `actor` objects and therefore two misses. Rendering
+`/` was already running two actor lookups before this; it now runs one of each.
+
+### `pnpm` on an end-user screen — the symptom the scan never grepped for
+
+§17's vocabulary scan looks for `§`, `SCOPE.md`, `a floor`, `lawful basis` and `x(s)`. It
+never looked for a **command name**, and there were six: `pnpm db:reset` in the `/shows` empty
+state, `pnpm deadlines` on the readiness tab, `pnpm roster` on the team tab, `` `pnpm assets
+--sweep` `` in a card subtitle, and three on the overview. Same rule, new tell: a CLI command
+is the most literal possible case of a doc comment's audience wearing page copy's clothes —
+it asks the reader to open a terminal in a product they reached through a browser.
+
+`layout.tsx`'s `NoDevActor` panel **keeps** its `pnpm db:reset`. It renders only for somebody
+running the app locally with no Clerk keys, and it is addressed to exactly the right reader.
+That is the distinction the rule turns on, and it is why the fix is not a blanket grep-and-delete.
+
+**Add `pnpm [a-z:-]+` to the scan.** Re-run across every route and every show tab, it now
+returns nothing but that one panel — and running it *with* the new pattern turned up a
+seventh hit the three earlier passes had missed: **"lawful basis" was still on
+`/settings/intake`**, the one screen §14 and §15 did not walk.
+
+### Two things reading the rendered page found, as usual
+
+- **`1 flights booked`** on the overview, in the "Where you're going" card. §18 fixed seven
+  `in 1 days` and eleven `(s)` and did not reach this one, because it is not a `(s)` — it is a
+  hard-coded plural noun, which the scan's pattern cannot see. The tell for *that* one is a
+  count interpolated directly next to a word.
+- **The one-word-name hole in the booking agent**, below.
+
+### The defect underneath, which the tidy-up exposed
+
+`missingForTicket` lived in `profile/edit.ts` as a deliberate, commented **mirror** of the
+inline list in `passengers.ts` — and `passengers.ts`'s own doc comment already referred to
+`missingForTicket` as though the throwing path called it. It did not, and **the two had
+already drifted.** `splitName` maps a one-word `fullName` to a given and family name that are
+the same word, so `passengerForUser`'s `!givenName || !familyName` was false and **the agent
+would have ticketed somebody whose legal name cannot match their ID** — the exact failure that
+module's header says it exists to prevent — while the profile screen was correctly refusing.
+The screen was right and the agent was wrong, which is the worse way round.
+
+There is one function now, in `passengers.ts` beside the thing that throws, re-exported from
+`profile/edit.ts` so the two call sites are untouched — the shape `plural` already uses. The
+test asserts it **against `passengerForUser`**, not against the helper, for the reason the
+loyalty-account wiring established: a unit test on the callee passes throughout.
+
+**Two copies of a rule, kept in step by a comment, is a rule with a version that is wrong and
+nothing to say which.** Grep for the word "mirrors" in a doc comment.

@@ -46,6 +46,37 @@ export function splitName(fullName: string): { givenName: string; familyName: st
 }
 
 /**
+ * What a ticket still needs — the one list, and the only one.
+ *
+ * It lives here, beside the thing that throws, so the profile screen can say it
+ * *before* somebody files a travel request and meets the refusal. It used to
+ * live in `profile/edit.ts` as a deliberate mirror of the inline list below,
+ * and the two had already drifted: `splitName` maps a one-word `fullName` to a
+ * given and family name that are the same word, so `!givenName || !familyName`
+ * was false and the agent would have ticketed somebody whose name cannot match
+ * their ID — the exact failure this module's header says it exists to prevent.
+ * The screen was right, the agent was wrong, and one function is why that can no
+ * longer be true in either direction. `profile/edit.ts` re-exports it.
+ */
+export function missingForTicket(user: {
+  fullName: string;
+  email: string;
+  phone: string | null;
+  bornOn: string | null;
+}): string[] {
+  const missing: string[] = [];
+  // Counted rather than compared against `splitName`'s output: that helper's
+  // one-word fallback deliberately produces two equal names so a *split* always
+  // succeeds, and "John John" is a real name. What a ticket needs is two parts.
+  if (user.fullName.trim().split(/\s+/).filter(Boolean).length < 2)
+    missing.push('a full legal name (given and family)');
+  if (!user.bornOn) missing.push('a date of birth');
+  if (!user.email) missing.push('an email address');
+  if (!user.phone) missing.push('a phone number');
+  return missing;
+}
+
+/**
  * `id` is left to the caller: it must be the *provider's* passenger id from the
  * offer being bought, which only the provider knows.
  */
@@ -56,11 +87,7 @@ export function passengerForUser(
 ): Passenger {
   const { givenName, familyName } = splitName(user.fullName);
 
-  const missing: string[] = [];
-  if (!givenName || !familyName) missing.push('a full legal name (given and family)');
-  if (!user.bornOn) missing.push('a date of birth');
-  if (!user.email) missing.push('an email address');
-  if (!user.phone) missing.push('a phone number');
+  const missing = missingForTicket(user);
   if (missing.length) throw new MissingTravelerDetailsError(user.id, user.email, missing);
 
   return {

@@ -75,8 +75,9 @@ export default async function ShowsPage() {
 
       {shows.length === 0 && (
         <Empty>
-          No shows yet. Propose one, or run <code>pnpm db:reset</code> to load the sample
-          workspace.
+          No shows yet. Everything here hangs off one — deadlines, freight, the roster, leads
+          and what it all cost. Use <strong>Propose a show</strong> above; proposing is not
+          committing to it.
         </Empty>
       )}
 
