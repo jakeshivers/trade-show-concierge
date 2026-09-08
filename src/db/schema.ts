@@ -1355,6 +1355,20 @@ export const travelPolicies = pgTable(
     preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
     blockedAirlines: jsonb('blocked_airlines').$type<string[]>(),
     /**
+     * What the org's *own* carrier preference is worth, in cents — how much more
+     * the agent may pay to stay on a carrier the company has an agreement with.
+     *
+     * Higher cap than the personal allowance below, and the difference is the
+     * argument: this is a contract term (volume on a negotiated carrier, often
+     * paying for itself in discounts this app cannot see) while the personal one
+     * is somebody's convenience. Both are still bounded, both are still
+     * ranking-only, and `airlineRules` still cannot deny a fare for being off
+     * the list.
+     *
+     * Null is a tie-break only, for the same reason as below.
+     */
+    preferredCarrierAllowanceCents: integer('preferred_carrier_allowance_cents'),
+    /**
      * What a traveler's own carrier preference is worth, in cents of the
      * company's money — the ceiling on how much more the agent may pay to put
      * somebody on the airline they asked for.

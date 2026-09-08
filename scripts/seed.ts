@@ -146,9 +146,14 @@ async function main() {
       maxAcceptableRefundPenaltyCents: 15_000,
       preferredAirlines: ['DL', 'AA'],
       blockedAirlines: [],
-      // Priced, so the feature is demonstrable — a workspace where it is null
-      // shows a tie-break that never fires. $60 is deliberately small: it is
-      // the only number in this policy that lets the agent spend *more*.
+      // Both priced, so the feature is demonstrable — a workspace where they are
+      // null shows a tie-break that never fires. They are the only two numbers in
+      // this policy that let the agent spend *more*, and they stack: the most
+      // this org will ever pay over the cheapest allowed fare is $210.
+      // Deliberately unequal — a negotiated carrier is worth more to the company
+      // than one person's status is, and equal numbers would hide which one moved
+      // a choice in the dry run.
+      preferredCarrierAllowanceCents: 15_000,
       personalCarrierAllowanceCents: 6_000,
       maxHotelNightlyRateCents: 30_000,
       perShowTravelBudgetCents: 1_200_000,

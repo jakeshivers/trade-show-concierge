@@ -42,7 +42,7 @@ Phase A (**the vertical slice through the booking spine**) is done; Phase B is d
 has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
 in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
 cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
-one unasked. 1,103 tests, no keys required.
+one unasked. 1,112 tests, no keys required.
 
 Read `git log` for the long version of any step: each commit documents what was learned
 building it, and this file keeps only what a fresh session needs before touching code. The
@@ -91,8 +91,8 @@ login-method control and a first app shell.
 `pnpm booking:dry-run` walks the whole booking loop headless — auto-book within policy,
 escalation with re-price-on-approval after the offer expires, `no_options` with the reasons
 worth relaxing, the request expiry sweep, the kill switch, credit-first escalation, the credit
-expiry sweep, a traveler's carrier preference run twice (with the allowance and without), and
-the audit trail as a person reads it. **Read that output before reading the
+expiry sweep, carrier preference run three times against three fares (the org's, the traveler's,
+and neither priced), and the audit trail as a person reads it. **Read that output before reading the
 code**; it is the fastest way to understand the spine.
 
 Step 7's correction, still standing: a login-method restriction is enforced at sign-in and we
@@ -938,6 +938,50 @@ produces an `advisory` rule result, and `types.ts` has said since step 3 that ad
 "recorded and ignored" — `scoreOffer` never reads it. That is documented intent rather than a
 defect, but it means the org list and the personal list now do genuinely different jobs, and the
 two must not be quietly merged: one is a statement an auditor reads, the other moves money.
+
+### The org's preferred airlines now rank too (2026-09-08)
+
+The previous section closed by flagging that the org's `preferredAirlines` did nothing to the
+outcome — an `advisory` that `types.ts` called "recorded and ignored", with `scoreOffer` never
+reading a rule result. An org could name its negotiated carriers and the agent still bought
+whatever was cheapest. It is priced now, in `travel_policies.preferred_carrier_allowance_cents`,
+and **the advisory half is untouched**: `airlineRules` still cannot deny a fare or escalate one,
+and the `RuleSeverity` docblock is corrected rather than deleted — `advisory` never changes the
+*verdict*, and what reads its subject is the separate ranking stage.
+
+Three decisions worth carrying:
+
+- **The two lists stack.** An offer on a carrier the company has an agreement with *and* the
+  traveler has status on has two independent reasons behind it, both priced by an admin who
+  typed two separate numbers. Taking the larger would make the smaller inert whenever the other
+  is bigger — a worse surprise than the sum. What the sum costs is visibility, so it is paid
+  for: `PreferenceCredit` keeps `orgCents` and `travelerCents` apart all the way into the audit,
+  and the search line names which one paid, because "the company has a deal with United" and
+  "Priya asked for United" are different answers with different people to argue with.
+- **The caps differ on purpose** — $1,000 for the org, $500 for a person — because a negotiated
+  carrier is a contract term (often paying for itself in discounts this app cannot see) and
+  somebody's status is a convenience. The real worst case is the two added, which is the number
+  to hold in mind before raising either; the policy screen says so under the fields.
+- **`validatePolicy` warns on a list with no price**, which is the exact state this workspace
+  shipped in for twenty-four steps, and on a price with no list. Warnings rather than errors
+  because neither can hurt anybody and both are legitimate mid-edit — but both leave a screen
+  looking configured while the agent behaves as though nothing were set.
+
+**Two things reading the CLI output found, and neither was a test failure.** The first draft of
+the dry-run scenario printed runs 1 and 3 byte-identically: with only a preferred fare and a
+personal one, whichever preference is worth more wins and the trace reads exactly like a run
+with no preferences at all, because the winner was the cheaper fare anyway. `offListCheapestOffer`
+— Alaska, cheapest, on **neither** list — is the control that fixes it, so every outcome is now a
+fare chosen *over the cheapest one*, which is the only thing an allowance can ever buy. And the
+audit line read "within $60.00 for the traveler's own = $60.00": arithmetic showing its working
+on a one-term expression. `describePreference` prints the sum only when there is something to
+sum.
+
+One smaller find, from a test rather than the CLI: the "listed but not priced" warning was first
+written onto the `preferredAirlines` field, where it **shadowed the blocked-and-preferred error**
+for any caller looking an issue up by name. Nothing in `src/` does that today; the existing test
+for that error did, and caught it in a minute. It is on `preferredCarrierAllowanceCents` now,
+which is also the more accurate field — the thing that is absent is the price.
 
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
@@ -1792,6 +1836,15 @@ unverified and this file will say so rather than implying otherwise.
   saved (`cost_centers`, which §4 requires on all of them), and the booking agent refused to
   search at all (`travel_policies`). **Re-run the check when adding a feature**: for each
   `pgTable`, does anything outside the seed insert or update it?
+- **A carrier list that nothing pays for is a sentence, not a preference.** The org's
+  `preferredAirlines` produced an advisory and moved no money for twenty-four steps, which was
+  documented intent and still meant an org could name its negotiated carriers and be ignored.
+  Both lists are priced now and **both still only rank** — `airlineRules` cannot deny or
+  escalate, and `advisory` never changes a verdict. They **stack** when an offer satisfies both,
+  because two admin-typed numbers are two authorizations; the audit keeps the halves apart so
+  whoever disagrees is sent to the right screen. `validatePolicy` warns on a list with no price
+  and a price with no list, since both leave a screen looking configured and an agent behaving
+  as though nothing were set.
 - **A personal preference ranks; it never rules.** `users.preferred_airlines` is read by no
   rule and sits on `EvaluationContext` rather than on `TravelPolicy`, so `evaluate()` cannot
   reach it. A per-person *constraint* is how a preference becomes an agent that stops finding

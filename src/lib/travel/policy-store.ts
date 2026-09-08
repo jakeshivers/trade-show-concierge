@@ -85,6 +85,7 @@ function toLayer(row: PolicyRow): PolicyLayer {
     // A scalar, so `keep`'s ordinary rule applies and the base layer may leave
     // it null: null is a real answer here — "a personal carrier preference is
     // worth nothing but a tie-break" — rather than a hole.
+    preferredCarrierAllowanceCents: keep(row.preferredCarrierAllowanceCents),
     personalCarrierAllowanceCents: keep(row.personalCarrierAllowanceCents),
 
     maxHotelNightlyRateCents: keep(row.maxHotelNightlyRateCents),

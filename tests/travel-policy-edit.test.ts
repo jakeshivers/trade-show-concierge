@@ -42,6 +42,7 @@ const form = (over: Partial<PolicyFormInput> = {}): PolicyFormInput => ({
   maxAcceptableRefundPenalty: '150.00',
   preferredAirlines: 'AA UA',
   blockedAirlines: null,
+  preferredCarrierAllowance: null,
   personalCarrierAllowance: null,
   maxHotelNightlyRate: '350.00',
   perShowTravelBudget: '12000.00',
@@ -143,5 +144,34 @@ describe('saving', () => {
     await expect(saveOrgPolicy(priya, toPolicyRow(form()))).rejects.toThrow(ForbiddenError);
     await expect(listPolicyLayers(priya)).rejects.toThrow(ForbiddenError);
     await actorFor(ADMIN);
+  });
+});
+
+describe('the two carrier allowances', () => {
+  it('refuses a preferred carrier allowance that is a fare rather than a preference', () => {
+    // The only two fields on this form that let the agent spend *more*, so a
+    // slipped decimal does not loosen a rule — it buys a dearer ticket. Caught
+    // where somebody types it rather than in an audit six months later.
+    expect(() => toPolicyRow(form({ preferredCarrierAllowance: '1200.00' }))).toThrow(
+      PolicyEditError,
+    );
+    expect(() => toPolicyRow(form({ personalCarrierAllowance: '600.00' }))).toThrow(
+      PolicyEditError,
+    );
+  });
+
+  it('allows the org more than a person, because the two things differ', () => {
+    // A negotiated carrier is a contract term; somebody's status is a
+    // convenience. Same field shape, deliberately different ceilings.
+    const row = toPolicyRow(
+      form({ preferredCarrierAllowance: '900.00', personalCarrierAllowance: '450.00' }),
+    );
+    expect(row.preferredCarrierAllowanceCents).toBe(90_000);
+    expect(row.personalCarrierAllowanceCents).toBe(45_000);
+  });
+
+  it('blank is a real answer — the list stays advisory', () => {
+    const row = toPolicyRow(form({ preferredCarrierAllowance: '  ' }));
+    expect(row.preferredCarrierAllowanceCents).toBeNull();
   });
 });

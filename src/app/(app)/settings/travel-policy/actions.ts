@@ -31,6 +31,7 @@ export async function savePolicy(_prev: FormState, form: FormData): Promise<Form
         maxAcceptableRefundPenalty: optional(form, 'maxAcceptableRefundPenalty'),
         preferredAirlines: optional(form, 'preferredAirlines'),
         blockedAirlines: optional(form, 'blockedAirlines'),
+        preferredCarrierAllowance: optional(form, 'preferredCarrierAllowance'),
         personalCarrierAllowance: optional(form, 'personalCarrierAllowance'),
         maxHotelNightlyRate: optional(form, 'maxHotelNightlyRate'),
         perShowTravelBudget: optional(form, 'perShowTravelBudget'),

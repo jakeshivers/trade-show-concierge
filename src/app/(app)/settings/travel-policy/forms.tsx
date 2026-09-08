@@ -21,6 +21,7 @@ type Live = {
   nonRefundableAllowedUnderCents: number | null;
   maxAcceptableRefundPenaltyCents: number | null;
   preferredAirlines: string[] | null;
+  preferredCarrierAllowanceCents: number | null;
   personalCarrierAllowanceCents: number | null;
   blockedAirlines: string[] | null;
   maxHotelNightlyRateCents: number | null;
@@ -159,19 +160,37 @@ export function PolicyForm({ live }: { live: Live }) {
           </Field>
         </div>
         {/*
-          The only field on this page that lets the agent spend *more*. Every
+          The only two fields on this page that let the agent spend *more*. Every
           other number here is a ceiling, so a typo makes the policy looser and
           something else catches it; a slipped decimal here buys a dearer fare
-          because somebody likes an airline. `policy-edit.ts` caps it at $500 and
-          says so, and blank is a real answer rather than a missing one.
+          because of a carrier list. `policy-edit.ts` caps them separately and
+          says so, and blank is a real answer rather than a missing one. They
+          stack — an offer that satisfies both lists earns both — which is what
+          the sentence under them says out loud.
         */}
-        <Field
-          label="Personal carrier allowance"
-          hint="How much extra the agent may pay to put somebody on an airline they listed on their own profile. Blank makes a personal preference a tie-break and nothing more. It can never deny a fare, send one for approval, or beat a cheaper fare by more than this."
-        >
-          <Input name="personalCarrierAllowance" density="comfortable"
-            defaultValue={dollars(live?.personalCarrierAllowanceCents)} placeholder="blank — tie-break only" />
-        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field
+            label="Preferred carrier allowance"
+            hint="How much extra the agent may pay to stay on one of the preferred airlines above. Blank makes the list advisory only — recorded on the audit, with no effect on which fare wins."
+          >
+            <Input name="preferredCarrierAllowance" density="comfortable"
+              defaultValue={dollars(live?.preferredCarrierAllowanceCents)} placeholder="blank — tie-break only" />
+          </Field>
+          <Field
+            label="Personal carrier allowance"
+            hint="The same, for an airline the traveler listed on their own profile."
+          >
+            <Input name="personalCarrierAllowance" density="comfortable"
+              defaultValue={dollars(live?.personalCarrierAllowanceCents)} placeholder="blank — tie-break only" />
+          </Field>
+        </div>
+        <p className="text-xs text-text-muted">
+          These two stack: a fare on a carrier the company prefers <em>and</em> the traveler
+          asked for earns both, so the most the agent will ever pay over the cheapest allowed
+          fare is the sum of them. Neither can deny a fare, send one for approval, or move one
+          past a fare that needs approval — that limit is enforced in the ranking code, not by
+          keeping these numbers small.
+        </p>
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="requireCreditFirst" defaultChecked={live?.requireCreditFirst ?? false}
             className="rounded border-border" />

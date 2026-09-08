@@ -580,9 +580,9 @@ async function searchAndEvaluate(
           // Only when it *changed* the answer. Saying "the preference applied"
           // on every search is noise; saying it on the one search where a
           // cheaper offer lost is the sentence somebody needs.
-          (best.preferenceCreditCents > 0 && cheapestBookable(scored) !== best
-            ? ` (chosen over ${usd(cheapestBookable(scored)!.offer.totalCents)} within the ` +
-              `${usd(best.preferenceCreditCents)} carrier preference allowance)`
+          (best.preference.totalCents > 0 && cheapestBookable(scored) !== best
+            ? ` (chosen over ${usd(cheapestBookable(scored)!.offer.totalCents)} within ` +
+              `${describePreference(best.preference)})`
             : '')
         : 'none were bookable'),
     detail: {
@@ -599,7 +599,8 @@ async function searchAndEvaluate(
         // hour; a score with no explanation beside it is a number nobody can
         // argue with, which is the shape of audit trail this file exists to
         // avoid.
-        preferenceCreditCents: r.preferenceCreditCents,
+        preferenceCreditCents: r.preference.totalCents,
+        preferenceCredit: r.preference,
         blockers: r.verdict.blockers.map((b) => b.ruleId),
       })),
     },
@@ -697,6 +698,23 @@ export async function runAgent(
   });
 
   return { request, status: 'pending_approval', ranked, selected, policy: resolution };
+}
+
+/**
+ * Which preference paid for a choice, in the words somebody would argue with.
+ *
+ * Names both halves when both applied, because they are answerable by different
+ * people: the org's allowance is a contract term an admin set, and the
+ * traveler's is a line on their own profile. A single blended figure would send
+ * whoever disagrees to the wrong screen.
+ */
+function describePreference(p: RankedOffer['preference']): string {
+  const parts: string[] = [];
+  if (p.orgCents > 0) parts.push(`${usd(p.orgCents)} for a preferred carrier`);
+  if (p.travelerCents > 0) parts.push(`${usd(p.travelerCents)} for the traveler's own`);
+  // The sum only when there is something to sum. "$60.00 for the traveler's own
+  // = $60.00" is the arithmetic showing its working on a one-term expression.
+  return parts.length > 1 ? `${parts.join(' + ')} = ${usd(p.totalCents)}` : parts[0];
 }
 
 /**

@@ -2789,6 +2789,26 @@ invert phases A and C.
       otherwise. `/settings/profile` says which of your carriers the org blocks and whether the
       allowance is priced at all — both are silent failures otherwise. `booking:dry-run` scenario
       8 runs the same two fares twice, with the allowance and without.
+- [x] **24d.** **The org's preferred airlines now rank too** (2026-09-08). The list had existed
+      since step 3 and moved nothing: `airlineRules` produced an `advisory`, `types.ts` said
+      advisory was *"recorded and ignored"*, and `scoreOffer` never read a rule result — so an
+      org could name its negotiated carriers and the agent bought whatever was cheapest. It is
+      priced now, in `travel_policies.preferred_carrier_allowance_cents`, and **the advisory half
+      is unchanged**: it still cannot deny a fare or send one for approval. Three decisions.
+      **The two lists stack** — an offer on a carrier the company has a deal with *and* the
+      traveler has status on has two independent reasons behind it, both priced by an admin who
+      typed two separate numbers; taking the larger would make the smaller inert whenever the
+      other is bigger, which is a worse surprise than the sum. What the sum costs is visibility,
+      so `PreferenceCredit` keeps the halves apart into the audit and the search line names which
+      one paid — *"the company has a deal with United"* and *"Priya asked for United"* are
+      different answers with different people to argue with. **The caps differ** ($1,000 org,
+      $500 personal) because a negotiated carrier is a contract term while a person's status is a
+      convenience; the worst case is the sum, and the policy screen says so. And `validatePolicy`
+      now warns on **a list with no price** — the exact state this workspace shipped in for
+      twenty-four steps — and on a price with no list, because both look configured while the
+      agent behaves as though nothing were set. `booking:dry-run` scenario 8 runs three fares
+      against three configurations; the third fare is on **neither** list and is cheapest, which
+      is what makes the other two runs mean anything.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
       gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`

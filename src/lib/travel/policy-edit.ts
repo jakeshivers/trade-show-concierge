@@ -67,6 +67,7 @@ export type PolicyFormInput = {
   maxAcceptableRefundPenalty: string | null;
   preferredAirlines: string | null;
   blockedAirlines: string | null;
+  preferredCarrierAllowance: string | null;
   personalCarrierAllowance: string | null;
   maxHotelNightlyRate: string | null;
   perShowTravelBudget: string | null;
@@ -90,6 +91,7 @@ export type PolicyRowValues = {
   maxAcceptableRefundPenaltyCents: number | null;
   preferredAirlines: string[] | null;
   blockedAirlines: string[] | null;
+  preferredCarrierAllowanceCents: number | null;
   personalCarrierAllowanceCents: number | null;
   maxHotelNightlyRateCents: number | null;
   perShowTravelBudgetCents: number | null;
@@ -116,30 +118,38 @@ function whole(value: string | null, field: string, max: number): number | null 
 }
 
 /**
- * What a traveler's own carrier preference may cost the company.
+ * What a carrier preference may cost the company — either kind.
  *
- * Bounded low on purpose, and the bound is the argument. Every other money field
- * here is a *limit* — a ceiling the agent must stay under — so a typo makes the
- * policy looser and something else catches it. This one is the opposite: it is
- * the only field in the policy that authorizes the agent to pay **more** than it
- * otherwise would, so a slipped decimal does not loosen a rule, it quietly buys
- * a $2,500 fare instead of a $500 one because somebody likes United. Ranking
- * clamps it to the decision tier either way, so the damage is bounded — but a
- * refusal at the point of typing is a better place to find it than an audit.
+ * Bounded on purpose, and the bound is the argument. Every other money field
+ * here is a *limit*, a ceiling the agent must stay under, so a typo makes the
+ * policy looser and something downstream catches it. **These two are the only
+ * fields in the policy that authorize the agent to pay more than it otherwise
+ * would**, so a slipped decimal does not loosen a rule — it quietly buys a
+ * $2,500 fare instead of a $500 one because somebody likes United. Ranking
+ * clamps a preference to its decision tier either way, so the damage is bounded;
+ * a refusal at the point of typing is simply a better place to find it than an
+ * audit six months later.
+ *
+ * The two caps differ because the two things differ. An org's list is a
+ * negotiated agreement — volume on a contracted carrier, often paying for itself
+ * in discounts this app cannot see — and a person's is a convenience. And they
+ * **stack**, so the real worst case is the two caps added, which is the number
+ * to have in mind when raising either one.
  */
-function allowance(value: string | null): number | null {
-  const cents = money(value, 'The personal carrier allowance');
-  if (cents !== null && cents > MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS) {
+function allowance(value: string | null, field: string, cap: number): number | null {
+  const cents = money(value, field);
+  if (cents !== null && cents > cap) {
     throw new PolicyEditError(
-      `A personal carrier allowance of ${usd(cents)} is a fare, not a preference. This is ` +
-        `how much extra the agent may pay to put somebody on the airline they asked for; ` +
-        `the cap is ${usd(MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS)}. Leave it blank to make a ` +
-        'personal preference a tie-break and nothing more.',
+      `${field} of ${usd(cents)} is a fare, not a preference. This is how much extra the ` +
+        `agent may pay to stay on a preferred carrier; the cap is ${usd(cap)}. Leave it ` +
+        'blank to make that preference a tie-break and nothing more.',
     );
   }
   return cents;
 }
 
+/** $1,000. A negotiated-carrier premium is a contract term, not a convenience. */
+export const MAX_PREFERRED_CARRIER_ALLOWANCE_CENTS = 100_000;
 /** $500. High enough for a real long-haul preference, low enough to notice. */
 export const MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS = 50_000;
 
@@ -217,7 +227,16 @@ export function toPolicyRow(input: PolicyFormInput): PolicyRowValues {
     ),
     preferredAirlines: airlines(input.preferredAirlines),
     blockedAirlines: airlines(input.blockedAirlines),
-    personalCarrierAllowanceCents: allowance(input.personalCarrierAllowance),
+    preferredCarrierAllowanceCents: allowance(
+      input.preferredCarrierAllowance,
+      'The preferred carrier allowance',
+      MAX_PREFERRED_CARRIER_ALLOWANCE_CENTS,
+    ),
+    personalCarrierAllowanceCents: allowance(
+      input.personalCarrierAllowance,
+      'The personal carrier allowance',
+      MAX_PERSONAL_CARRIER_ALLOWANCE_CENTS,
+    ),
     maxHotelNightlyRateCents: money(input.maxHotelNightlyRate, 'The hotel nightly cap'),
     perShowTravelBudgetCents: money(input.perShowTravelBudget, 'The per-show travel budget'),
     requireCreditFirst: input.requireCreditFirst,

@@ -140,6 +140,8 @@ async function carrierPreferenceStanding(
 
   const blocked = preferred.filter((c) => policy.blockedAirlines.includes(c));
   const allowance = policy.personalCarrierAllowanceCents;
+  const orgAllowance = policy.preferredCarrierAllowanceCents;
+  const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
   const parts: string[] = [];
   if (blocked.length) {
@@ -150,10 +152,27 @@ async function carrierPreferenceStanding(
   }
   parts.push(
     allowance && allowance > 0
-      ? `Your organization will pay up to $${(allowance / 100).toFixed(2)} more to put you on ` +
-        'one of these. Beyond that, the cheaper fare wins.'
-      : 'Your organization has not priced a carrier preference, so this only breaks a tie ' +
-        'between two fares that cost the same. An admin sets that on the travel policy.',
+      ? `Your organization will pay up to ${usd(allowance)} more to put you on one of these. ` +
+        'Beyond that, the cheaper fare wins.'
+      : 'Your organization has not priced a personal carrier preference, so this only breaks ' +
+        'a tie between two fares that cost the same. An admin sets that on the travel policy.',
   );
+
+  // The org's own list, said here because it is the other thing moving the same
+  // choice and somebody reading their preference has no other way to learn it.
+  // Overlap earns both allowances, which is worth knowing before wondering why a
+  // fare on one carrier keeps winning.
+  const orgPreferred = policy.preferredAirlines;
+  if (orgPreferred.length && orgAllowance && orgAllowance > 0) {
+    const shared = preferred.filter((c) => orgPreferred.includes(c));
+    parts.push(
+      `Separately, your organization prefers ${orgPreferred.join(', ')} and will pay up to ` +
+        `${usd(orgAllowance)} more to stay on ${orgPreferred.length === 1 ? 'it' : 'them'}` +
+        (shared.length
+          ? `. ${shared.join(', ')} ${shared.length === 1 ? 'is' : 'are'} on both lists, so a ` +
+            'fare there earns both allowances.'
+          : '.'),
+    );
+  }
   return parts.join(' ');
 }

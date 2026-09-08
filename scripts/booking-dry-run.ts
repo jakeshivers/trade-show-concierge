@@ -17,7 +17,11 @@ import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import { getActor, type Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
-import { nonstopOffer, unitedNearTieOffer } from '../src/lib/integrations/flights/duffel/fixtures';
+import {
+  nonstopOffer,
+  offListCheapestOffer,
+  unitedNearTieOffer,
+} from '../src/lib/integrations/flights/duffel/fixtures';
 import {
   submitTravelRequest,
   runAgent,
@@ -403,28 +407,40 @@ async function scenarioCreditExpiry() {
 }
 
 /**
- * The traveler's own carrier preference, and what it is and is not allowed to do.
+ * Carrier preference — the org's and the traveler's — and what neither is
+ * allowed to do.
  *
- * Priya prefers UA; the org prefers DL and AA and has priced a personal carrier
- * preference at $60. So the UA fare wins by $22 — and the same run, read with
- * the allowance removed, picks the cheaper Delta. Both halves are printed,
- * because the interesting claim is not that a preference works, it is that it is
- * **bounded**: the second half is what somebody signing off on the feature needs
- * to see.
+ * Three fares, and the third is the one that makes the other two readable:
+ * Alaska at **$415.00** on neither list, Delta at $430.55 which the *org*
+ * prefers, and United at $452.55 which *Priya* prefers. Without a cheapest fare
+ * that nobody prefers, every run picks the cheaper of two and reads exactly like
+ * a run with no preferences at all — the first draft of this scenario did, and
+ * printing it side by side is what showed it.
+ *
+ *   1. Both priced. The org's $150 buys Delta over the $415 Alaska.
+ *   2. The org's withdrawn. Priya's $60 buys United over the same $415.
+ *   3. Neither priced — what this workspace did for twenty-four steps. Alaska
+ *      wins, and both lists are sentences nobody paid for.
+ *
+ * Every outcome is now a fare chosen *over the cheapest one*, which is the only
+ * thing an allowance can ever buy and the only thing worth signing off on.
  */
 async function scenarioCarrierPreference() {
-  console.log('\n━━ 8. A traveler’s own carrier preference — bounded, and it never rules ━━\n');
+  console.log('\n━━ 8. Carrier preference — priced, bounded, and it never rules ━━\n');
   const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
   if (!show?.moveInAt) throw new Error('Seed is missing Automate 2026 move-in time');
   const day = 86_400_000;
 
-  const run = async (key: string, allowanceCents: number | null) => {
-    // The allowance is an org policy value, so this moves the *policy* rather
+  const run = async (key: string, orgCents: number | null, personalCents: number | null) => {
+    // Both allowances are org policy values, so this moves the *policy* rather
     // than the person — which is the honest way round: a traveler cannot change
-    // what their preference is worth.
+    // what their own preference is worth.
     await db
       .update(s.travelPolicies)
-      .set({ personalCarrierAllowanceCents: allowanceCents })
+      .set({
+        preferredCarrierAllowanceCents: orgCents,
+        personalCarrierAllowanceCents: personalCents,
+      })
       .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
 
     const clock = new Clock(new Date());
@@ -432,7 +448,7 @@ async function scenarioCarrierPreference() {
       db,
       provider: new RecordedFlightProvider({
         now: clock.now,
-        payloads: [nonstopOffer, unitedNearTieOffer],
+        payloads: [nonstopOffer, unitedNearTieOffer, offListCheapestOffer],
       }),
       now: clock.now,
       live: false,
@@ -454,27 +470,38 @@ async function scenarioCarrierPreference() {
     return request.id;
   };
 
-  console.log('    Priya prefers UA. The org prefers DL/AA and pays up to $60 for a preference.\n');
-  const withAllowance = await run('demo-carrier-preference', 6_000);
-  await offerTable(withAllowance);
-  console.log();
-  await trace(withAllowance);
+  console.log('    Alaska $415.00 — on nobody’s list. The cheapest fare, and the control.');
+  console.log('    Delta  $430.55 — the org prefers DL/AA, and pays up to $150 to stay on one.');
+  console.log('    United $452.55 — Priya prefers UA, and the org pays up to $60 for that.\n');
 
-  console.log('\n    The same two fares with the allowance withdrawn — nobody has priced it:\n');
-  const withoutAllowance = await run('demo-carrier-preference-unpriced', null);
-  await offerTable(withoutAllowance);
+  console.log('    Both priced — the org’s $150 buys Delta over the cheaper Alaska:\n');
+  const both = await run('demo-carrier-preference', 15_000, 6_000);
+  await offerTable(both);
   console.log();
-  await trace(withoutAllowance);
+  await trace(both);
+
+  console.log('\n    The org allowance withdrawn — now Priya’s $60 buys United instead:\n');
+  const personalOnly = await run('demo-carrier-preference-personal', null, 6_000);
+  await offerTable(personalOnly);
+  console.log();
+  await trace(personalOnly);
+
+  console.log('\n    Neither priced — what this workspace did for twenty-four steps:\n');
+  const neither = await run('demo-carrier-preference-unpriced', null, null);
+  await offerTable(neither);
+  console.log();
+  await trace(neither);
 
   // Leave the seeded policy as the seed wrote it.
   await db
     .update(s.travelPolicies)
-    .set({ personalCarrierAllowanceCents: 6_000 })
+    .set({ preferredCarrierAllowanceCents: 15_000, personalCarrierAllowanceCents: 6_000 })
     .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
 
   console.log(
-    '\n    It never denies, never escalates, and cannot cross a decision tier — `rank.ts`\n' +
-      '    clamps the discounted score to the tier floor rather than trusting the number.',
+    '\n    Neither denies, neither escalates, and neither can cross a decision tier —\n' +
+      '    `rank.ts` clamps the discounted score to the tier floor rather than trusting\n' +
+      '    the numbers. They stack when both apply, and the audit names which one paid.',
   );
 }
 

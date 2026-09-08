@@ -153,6 +153,14 @@ export type TravelPolicy = {
   preferredAirlines: string[];
   blockedAirlines: string[];
   /**
+   * The ceiling on how much more the agent may pay to stay on a carrier the
+   * **org** prefers — a negotiated agreement rather than somebody's convenience,
+   * which is why its cap is higher than the personal one. Null is a tie-break
+   * only. Read by `rank.ts`; `airlineRules` still reports the advisory, and
+   * still cannot deny anything.
+   */
+  preferredCarrierAllowanceCents: Money | null;
+  /**
    * The ceiling on how much more the agent may pay to honour a *traveler's* own
    * carrier preference. Null is a tie-break only, and is the app declining to
    * spend money nobody authorized rather than a guessed default. Read by
@@ -198,7 +206,15 @@ export type RuleStatus = 'pass' | 'fail' | 'not_applicable';
 
 /**
  * What a failure costs you. `deny` cannot be approved by anyone; `approval`
- * escalates to a human; `advisory` is recorded and ignored.
+ * escalates to a human; `advisory` **never changes the verdict**.
+ *
+ * That last word used to be "ignored", and it was true until the org's carrier
+ * list started paying for itself in `rank.ts`. It is worth being exact now:
+ * `evaluate()` ignores advisories entirely — they never appear in `blockers`,
+ * never move a decision, and never stop a booking. What reads an advisory's
+ * *subject* is the separate ranking stage, which chooses among offers the
+ * verdict has already allowed. The two stages stay apart on purpose; a severity
+ * that could quietly become a blocker is the thing this split exists to prevent.
  */
 export type RuleSeverity = 'deny' | 'approval' | 'advisory';
 
