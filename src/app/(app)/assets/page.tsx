@@ -172,7 +172,11 @@ export default async function AssetRegisterPage() {
         subtitle="One row per live reservation, plus a row for anything reserved to nothing. An asset promised to two shows appears twice, which is how the double-booking is visible here and not only in the list above."
       >
         {register.rows.length === 0 ? (
-          <Empty>Nothing in the register yet.</Empty>
+          <Empty>
+            No reservations. An asset is promised to a show from that show&rsquo;s Logistics tab,
+            and appears here for the window it is unavailable — which starts before move-in and
+            ends after the crate is home.
+          </Empty>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -214,7 +218,10 @@ export default async function AssetRegisterPage() {
         subtitle="On hand is not available. Stock promised to a show that has not packed yet is off the table, and a low-stock figure judged on the shelf reads fine right up to the morning somebody opens the cupboard."
       >
         {collateral.length === 0 ? (
-          <Empty>No collateral items.</Empty>
+          <Empty>
+            Nothing on the shelf yet. Add a print run or giveaway above and the count here becomes
+            what is free — on hand minus whatever is already promised to a show.
+          </Empty>
         ) : (
           <ul className="space-y-3">
             {collateral.map((c) => (

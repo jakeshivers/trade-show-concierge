@@ -8,7 +8,7 @@ import { ENGINE_COUNT } from '@/lib/alerts/feed';
 import { getSetupSteps } from '@/lib/setup/store';
 import { getDb } from '@/db';
 import { currentActor, currentFeed } from './_request';
-import { GROUPS, visibleItems } from './_components/nav';
+import { GROUPS, hiddenItems, visibleItems } from './_components/nav';
 import { SetupCard } from './setup-card';
 import {
   Badge,
@@ -21,7 +21,7 @@ import {
   readinessLabel,
   readinessTone,
 } from './_components/ui';
-import { plural } from './_components/text';
+import { andList, plural } from './_components/text';
 
 /**
  * The overview.
@@ -73,6 +73,13 @@ export default async function OverviewPage() {
     label: g.label,
     items: visibleItems(g.items, gates).filter((i) => i.href !== '/'),
   })).filter((g) => g.items.length > 0);
+
+  // The complement, from the same predicate. Until this line existed, a Member
+  // lost seven nav entries with no trace and "why can I not see cost?" had no
+  // answer in the product — the /cost page explains itself well, and nothing led
+  // anybody to it.
+  const hidden = GROUPS.flatMap((g) => hiddenItems(g.items, gates));
+  const hidesMoney = hidden.some((i) => i.approverOnly);
 
   return (
     <div className="space-y-10">
@@ -223,6 +230,20 @@ export default async function OverviewPage() {
             </div>
           ))}
         </div>
+
+        {hidden.length > 0 && (
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
+            Not shown for your role: {andList(hidden.map((i) => i.label))}.{' '}
+            {hidesMoney
+              ? 'A show’s cost — and the ROI figure built on it — is every colleague’s fare, room and freight bill in one number, so it sits with travel managers and admins. The rest are workspace-wide settings an admin owns.'
+              : 'These are workspace-wide settings an admin owns.'}{' '}
+            Your role is set by an admin, and it is shown on{' '}
+            <Link href="/settings/profile" className="underline hover:no-underline">
+              your details
+            </Link>
+            .
+          </p>
+        )}
       </Card>
 
       <Card title="Organization">

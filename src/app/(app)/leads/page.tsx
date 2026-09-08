@@ -59,7 +59,11 @@ export default async function LeadsPage() {
       </div>
 
       {rows.length === 0 ? (
-        <Empty>Nothing on the calendar yet.</Empty>
+        <Empty>
+          No shows to count leads against yet. Leads are captured on a show — at the booth on the
+          day-of screen, typed on its Leads tab, imported from a scanner export, or posted by a
+          badge scanner through an intake key.
+        </Empty>
       ) : (
         <div className="space-y-4">
           {rows.map((row) => {

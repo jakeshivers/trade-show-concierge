@@ -15,9 +15,20 @@
 export const plural = (n: number, one: string, many: string) =>
   `${n} ${n === 1 ? one : many}`;
 
-/** Names joined the way a person says them out loud: "Ingrid, Reese and Tomás". */
+/**
+ * A list joined the way a person says it out loud: "Ingrid, Reese and Tomás".
+ *
+ * The joining rule lives here once. `names` was the first caller and `setup/`
+ * grew a second copy of the same three lines within a week of it — which is the
+ * duplication this file exists to stop, arriving from inside.
+ */
+export function andList(items: string[]): string {
+  if (items.length <= 1) return items[0] ?? '';
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
+}
+
+/** The same, for people. */
 export function names(list: { fullName: string }[]): string {
-  const all = list.map((p) => p.fullName);
-  if (all.length <= 1) return all.join('');
-  return `${all.slice(0, -1).join(', ')} and ${all[all.length - 1]}`;
+  return andList(list.map((p) => p.fullName));
 }

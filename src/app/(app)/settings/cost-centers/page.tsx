@@ -48,7 +48,10 @@ export default async function CostCentersPage() {
 
       <Card title="In use">
         {centers.length === 0 ? (
-          <Empty>None yet.</Empty>
+          <Empty>
+            None yet. A cost center starts being used the moment somebody files an expense, hotel,
+            crate, asset or print run against it.
+          </Empty>
         ) : (
           <Table>
             <thead>

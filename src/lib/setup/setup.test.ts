@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { andList, setupSteps, type SetupInputs } from './checklist';
+import { setupSteps, type SetupInputs } from './checklist';
+import { andList } from '@/lib/text';
 import { missingForTicket, passengerForUser, MissingTravelerDetailsError } from '@/lib/travel/passengers';
 
 const configured: SetupInputs = {

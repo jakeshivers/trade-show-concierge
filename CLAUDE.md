@@ -12,8 +12,8 @@ admin-defined spend and schedule constraints.
   travel policy, ROI, non-negotiables, build order (§10), and open decisions (§11).
 - **`RESEARCH.md`** — competitive analysis. Explains *why* the service-manual deadline
   engine and ticket-credit recovery are the differentiators.
-- **`UI-REWORK.md`** — **done, all eight tranches**, plus findings §9–§21 added afterwards
-  (four UX passes; §21 is the most recent). §6 is the foundation survey — Tailwind v4
+- **`UI-REWORK.md`** — **done, all eight tranches**, plus findings §9–§22 added afterwards
+  (five UX passes; §22 is the most recent). §6 is the foundation survey — Tailwind v4
   CSS-first with no config file, and the `@theme inline` trap that breaks runtime dark mode.
   **Read §6 before writing any CSS.** The step narratives in *this* file are deliberately
   short; the long version of any of them is in `git log` and in that document.
@@ -679,7 +679,11 @@ builds, renders, and **404s every tab under `/shows/[id]`**; only `pnpm smoke` c
 rendering as real ones. **A nullable column in a unique index is an idempotency rail with an off
 switch.**
 
-**Pass 4 (2026-09-08) swept the path *before* all of that** — the first screen somebody lands on,
+**Passes 4 and 5 (2026-09-08) swept the path *before* all of that** — and pass 5 added two
+things: eight empty states that said only *that* they were empty (`Empty`'s docblock has demanded
+"where the thing comes from" since step 8, and coverage is not the same measurement as content),
+and the fact that a Member loses seven nav entries with nothing in the product saying why. Both
+are ground rules below. **Pass 4** — the first screen somebody lands on,
 what an unconfigured workspace tells them, and what the app shows while it is thinking or when it
 breaks. The empty states turned out to be fine; the gaps were elsewhere. The overview had led
 since step 9 with a card saying the travel form would *"land at step 9"* and listing three `pnpm`
@@ -1714,6 +1718,19 @@ unverified and this file will say so rather than implying otherwise.
   renders `error.message`, because the config and provider errors here are written to be read and
   Next already genericizes anything it did not expect. `notFound()` had five call sites and no
   boundary, so each one landed outside the shell with no navigation and no way back.
+- **An empty state names where the thing comes from, and only promises a control the reader
+  has.** `Empty`'s docblock has said the first half since step 8, and eight of them said only
+  *that* they were empty — "Nothing yet", "None yet" — which is the state a new workspace is
+  almost entirely made of. The second half stops the fix becoming a new defect: three sit above a
+  **gated** form, so the sentence branches on the same predicate the form does and otherwise
+  names who can. A pointer to a control the reader cannot see is worse than no pointer.
+- **A role that hides a screen has to say so somewhere, once.** A Member loses seven nav entries
+  and two show tabs; `/cost` and `/roi` explain themselves on arrival and nothing led anybody to
+  them, so "why can I not see cost?" was answerable only by guessing a URL. The overview says it,
+  from `nav.ts`'s `hiddenItems` — `visibleItems`' complement over one `maySee` predicate, not the
+  filter written twice. Deliberately **not** the same act as a disabled tab on every show:
+  `shows/[id]/layout.tsx` argues a tab that exists and says no invites the question, and that
+  still stands. One line where somebody is orienting is not a locked door drawn ten times.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.
@@ -1816,7 +1833,8 @@ src/app/(app)/              the shell and its screens; never prerendered
   settings/                 security · crm · intake · cost-centers · travel-policy (admin) ·
                             profile · notifications (the two that are not admin-only)
   _components/              ui.tsx · form.ts · form-ui.tsx · cn.ts · text.ts · sidebar.tsx ·
-                            nav.ts (the one list of screens; `does` required) ·
+                            nav.ts (the one list of screens; `does` required; maySee →
+                            visibleItems / hiddenItems) ·
                             go-to-show.tsx (a chooser, not a shortcut)
   _request.ts               currentActor / currentFeed — zero-arg cache(), one query per request
   setup-card.tsx            what this workspace still needs, until it does not
@@ -1863,7 +1881,8 @@ src/lib/integrations/       flights/ (Duffel) · flightstatus/ (AeroAPI) · ship
                             (Slack + a `console` transport reaching nobody) · extract/
                             (Anthropic structured output, deliberately no `recorded` provider)
 src/lib/auth/               the seam — getActor(), the Clerk adapter, login-method control
-src/lib/text.ts             plural / names, re-exported by `_components/text.ts`
+src/lib/text.ts             plural / andList / names — one joining rule, re-exported
+                            by `_components/text.ts`
 src/proxy.ts                Next 16's Middleware: Clerk's context, or a pass-through
 src/lib/money/ datetime/    correctness primitives; see ground rules
 scripts/seed.ts             the only place seed data lives

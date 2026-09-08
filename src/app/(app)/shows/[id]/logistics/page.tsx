@@ -223,7 +223,12 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
         subtitle="Chain of custody: who took it, when it came back, and in what condition. The window is when the asset is unavailable — which is longer than the show at both ends, because the crate leaves before move-in and comes home after move-out."
       >
         {assets.rows.length === 0 ? (
-          <Empty>Nothing reserved for this show.</Empty>
+          <Empty>
+            Nothing reserved for this show.{' '}
+            {mayReserve
+              ? 'Reserve a booth or a demo unit below. The window is typed rather than taken from the show dates, because the crate leaves before move-in and comes home after move-out.'
+              : 'A travel manager or an admin promises an asset to a show. Signing one out and checking it back in is open to anybody.'}
+          </Empty>
         ) : (
           <ul className="space-y-3">
             {assets.rows.map((row) => (
@@ -332,7 +337,14 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
         subtitle="Promised, packed, counted back. An allocation is a claim on stock; the movement happens when somebody picks it off the shelf. A blank return count is not a zero — it means nobody looked."
       >
         {allocations.length === 0 ? (
-          <Empty>Nothing allocated to this show.</Empty>
+          <Empty>
+            Nothing allocated to this show.{' '}
+            {!mayReserve
+              ? 'A travel manager or an admin promises stock to a show. Counting a shelf is open to anybody.'
+              : collateral.length === 0
+                ? 'There is nothing on the shelf to promise yet — print runs and giveaways are added on the Assets page.'
+                : 'Promise stock to it below. Promising is a claim; the shelf only moves when somebody picks it and records the count.'}
+          </Empty>
         ) : (
           <ul className="space-y-2">
             {allocations.map((a) => (

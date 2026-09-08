@@ -7,4 +7,4 @@
  * two import paths, and this one stays dependency-free so a client component or
  * a server action can use it.
  */
-export { names, plural } from '@/lib/text';
+export { andList, names, plural } from '@/lib/text';

@@ -1043,3 +1043,50 @@ loyalty-account wiring established: a unit test on the callee passes throughout.
 
 **Two copies of a rule, kept in step by a comment, is a rule with a version that is wrong and
 nothing to say which.** Grep for the word "mirrors" in a doc comment.
+
+## §22 — Eight empty states that said nothing, and the role that explained itself nowhere
+
+Two gaps from the same question as §21 — *what does this screen tell somebody who has no data
+and no context yet* — and a new workspace is made almost entirely of both.
+
+**`Empty`'s own docblock has said this since step 8:** *"an empty state says why it is empty and
+where the thing comes from. 'No data' is indistinguishable from a bug."* Coverage was complete —
+every board and tab has one, which is why §21's survey passed them — but eight said only the
+first half: `Nothing on the calendar yet` · `Nothing in the register yet` · `No collateral items`
+· `Nothing yet` · `None yet` · `Nobody is staffed on this show yet` · `Nothing reserved for this
+show` · `Nothing allocated to this show`. **Coverage is not the same measurement as content**,
+and the survey that graded the first found the second by not looking.
+
+**The fix nearly became a worse defect, which is the part worth keeping.** Three of the eight sit
+above a *gated* form, and the first draft of the copy cheerfully told everybody to use it —
+§16's rule ("copy that asks for an action names the button") inverted into a promise a Member
+cannot keep. Worse, one sentence pointed at the wrong screen entirely: `ReserveForm` renders
+inside the very card whose empty state said *"reserve from the register on Assets"*. Both were
+caught by checking where each control actually lives before writing the sentence, which took
+four greps. So each of the three now branches on the same predicate the form does, and otherwise
+names who can — the setup card's posture, and the collateral one has a **third** branch, because
+its form also requires stock to exist before there is anything to promise.
+
+**And the role that explained itself nowhere.** A Member loses seven nav entries and two show
+tabs with no trace. `/cost` and `/roi` already explain themselves well on arrival — *"a show's
+cost is every colleague's fare, room and freight bill in one figure"* — and nothing in the
+product leads anybody there, so the answer to "why can I not see cost?" was to guess the URL.
+The overview now says it once, derived from `nav.ts` through **`hiddenItems`**, which is
+`visibleItems`' complement over a single `maySee` predicate rather than the filter written twice.
+
+**The tension worth recording, because it is a documented decision this deliberately does not
+overturn.** `shows/[id]/layout.tsx:40` argues that *"a tab that exists and says no is an
+invitation to ask why"*, and hides Cost and ROI from a Member rather than rendering a refusal.
+That argument stands and the tabs are untouched. One explanatory line where somebody is
+orienting is a different act from a locked door drawn on every show, and the sentence it renders
+is the one those two pages already say to anybody who arrives — this closes the *discovery* gap
+and reveals nothing new. If that call is ever revisited, revisit both together.
+
+**One duplicate removed on the way, and it was mine, one session old.** `setup/checklist.ts`
+grew an `andList` in §21 and `src/lib/text.ts` had contained the same three lines inside `names`
+since §18. `andList` is the primitive now and `names` is defined in terms of it — the rule about
+two copies kept in step by a comment, caught before it had a chance to drift.
+
+Verified across all three roles by reading the rendered page: the Member sees seven hidden
+entries and the money clause, the Travel Manager sees four settings and correctly no money
+clause, the Admin sees no line at all. 1,131 tests, 39 routes 200, vocabulary scan clean.

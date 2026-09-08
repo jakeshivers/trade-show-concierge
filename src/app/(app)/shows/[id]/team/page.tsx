@@ -31,7 +31,12 @@ export default async function TeamTab({ params }: { params: Promise<{ id: string
     <div className="space-y-6">
       <Card title="Attendees">
         {roster.length === 0 ? (
-          <Empty>Nobody is staffed on this show yet.</Empty>
+          <Empty>
+            Nobody is staffed on this show yet.{' '}
+            {may.staff
+              ? 'Invite a colleague below — they confirm for themselves, and only an answer they gave counts toward booth coverage.'
+              : 'A travel manager or an admin staffs a show. Once you are invited you answer for yourself here.'}
+          </Empty>
         ) : (
           <ul className="space-y-3">
             {roster.map((entry) => {

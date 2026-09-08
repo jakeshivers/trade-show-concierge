@@ -1,4 +1,5 @@
 import type { UserRole } from '@/lib/auth/actor';
+import { andList } from '@/lib/text';
 
 /**
  * What a workspace still needs before it works at all — pure.
@@ -124,11 +125,4 @@ export function setupSteps(inputs: SetupInputs): SetupStep[] {
   }
 
   return steps;
-}
-
-/** "a date of birth and a phone number" — never "a date of birth, a phone number". */
-export function andList(items: string[]): string {
-  if (items.length <= 1) return items[0] ?? '';
-  if (items.length === 2) return `${items[0]} and ${items[1]}`;
-  return `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;
 }

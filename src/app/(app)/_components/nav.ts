@@ -258,10 +258,32 @@ export const GROUPS: NavGroup[] = [
   },
 ];
 
+export type NavGates = { isAdmin: boolean; isApprover: boolean };
+
+/** The one role predicate. Everything else here is defined in terms of it. */
+export function maySee(item: NavItem, { isAdmin, isApprover }: NavGates): boolean {
+  return (!item.adminOnly || isAdmin) && (!item.approverOnly || isApprover);
+}
+
 /** The one role filter, so the nav and the overview cannot disagree about it. */
-export function visibleItems(
-  items: NavItem[],
-  { isAdmin, isApprover }: { isAdmin: boolean; isApprover: boolean },
-): NavItem[] {
-  return items.filter((i) => (!i.adminOnly || isAdmin) && (!i.approverOnly || isApprover));
+export function visibleItems(items: NavItem[], gates: NavGates): NavItem[] {
+  return items.filter((i) => maySee(i, gates));
+}
+
+/**
+ * The complement, and it is a real question rather than the filter written twice.
+ *
+ * A Member loses seven of these entries and two show tabs, and until the overview
+ * said so nothing in the product did — so "why can I not see cost?" had no answer
+ * anywhere except by guessing the URL, where the page itself explains itself
+ * perfectly well. This closes the discovery gap and nothing else: it names the
+ * screens and who owns them, exactly as `/cost` and `/roi` already do on arrival.
+ *
+ * It is deliberately **not** the same act as rendering a disabled tab on every
+ * show — see `shows/[id]/layout.tsx`, which argues that a tab existing and saying
+ * no is an invitation to ask why, and that argument still stands. One explanatory
+ * line where somebody is orienting is not a locked door drawn ten times.
+ */
+export function hiddenItems(items: NavItem[], gates: NavGates): NavItem[] {
+  return items.filter((i) => !maySee(i, gates));
 }
