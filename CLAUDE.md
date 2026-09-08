@@ -1016,13 +1016,27 @@ of them) and turned a $15.55 premium into *"$16 more"* — a figure that reads a
 than as a number to check. `moneyExact` is a **second function rather than a flag on the first**,
 so the choice has to be made: `money` for an amount, `moneyExact` for a gap between amounts.
 
-And `pnpm smoke` **silently skipped `/travel/[id]`** on a clean seed and still reported "all
-200". Nothing in the seed belongs to the default `DEV_ACTOR_EMAIL` and nothing is awaiting
-approval, so the id scrape finds nothing and the check drops; the route count going 39 → 38 was
-the only signal, and nobody reads a count. It had looked covered because `pnpm booking:dry-run`
-leaves a pending approval behind, and this session had been running that first. The skip is
+And `pnpm smoke` can **silently skip `/travel/[id]`** and still report "all 200" over the most
+complex page in the app, with the route count going 39 → 38 as the only signal. The skip is
 printed now. **A check that can skip has to say when it did** — §5f's unchecked flight, applied
 to the thing that checks the screens.
+
+**The first account of *why* it skipped was wrong in both directions, and how that happened is
+the more useful half.** It claimed a clean seed leaves the approvals queue empty and that
+`pnpm booking:dry-run` is what covers the page. The opposite is true: the seed puts
+`seed:ingrid:lhr` in `pending_approval` deliberately — its comment has said since step 4 that it
+is *"the row the approvals queue exists for"* — so a clean seed gives **39 routes** with that
+page covered, and it is the **dry run** that empties the queue, deleting the seeded requests and
+leaving nine of its own in terminal states because approving the escalated one and sweeping the
+expiring one is exactly what those scenarios exist to show.
+
+Two measurement mistakes produced it, both of them ones this file already warns about. A
+`pkill` aborted a compound shell command before its `pnpm db:reset` ran, so the database called
+"a clean seed" was a post-dry-run one. Then the re-measurement ran `booking:dry-run` from a
+second process **against a `.pglite` that `next dev` was holding**, so the page was served from
+the pre-dry-run copy — and both mistakes returned *confirming* answers. **When a measurement
+contradicts a comment the code has carried for twenty-four steps, re-derive the state before
+believing the measurement**, and kill `next dev` before anything else writes to the database.
 
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
@@ -1890,9 +1904,17 @@ unverified and this file will say so rather than implying otherwise.
   and `money` renders it "$16 more". They are two functions rather than one with a flag so the
   choice is made rather than defaulted.
 - **A check that can skip has to say when it did.** `pnpm smoke` drops `/travel/[id]` whenever
-  no request is visible to `DEV_ACTOR_EMAIL` and the approvals queue is empty — true on a clean
-  seed — and still printed "all 200" over the most complex page in the app, with the route count
-  as the only signal. §5f's unchecked flight, applied to the thing that checks the screens.
+  no request is visible to `DEV_ACTOR_EMAIL` and the approvals queue is empty, and still printed
+  "all 200" over the most complex page in the app with the route count as the only signal. §5f's
+  unchecked flight, applied to the thing that checks the screens. A **clean seed covers it** —
+  `seed:ingrid:lhr` is left pending on purpose; `pnpm booking:dry-run` is what empties the queue,
+  because every request it creates ends in a terminal state.
+- **A measurement taken against a database something else is writing is not a measurement.**
+  Two wrong conclusions in one sitting came from this: a `pkill` that aborted a compound command
+  before its `db:reset` ran, and a `booking:dry-run` fired from a second process while `next dev`
+  held the `.pglite`. Both returned answers that *confirmed* the wrong story. Kill `next dev`
+  before anything writes, and when a measurement contradicts a comment the code has carried for
+  twenty-four steps, re-derive the state before believing the measurement.
 - **A carrier list that nothing pays for is a sentence, not a preference.** The org's
   `preferredAirlines` produced an advisory and moved no money for twenty-four steps, which was
   documented intent and still meant an org could name its negotiated carriers and be ignored.

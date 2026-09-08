@@ -2824,9 +2824,25 @@ invert phases A and C.
       column and the sentence appear only when a preference actually cost something. Two things
       fell out: `money()` drops cents by design, which turns a $15.55 premium into "$16 more",
       so `moneyExact` is a **second function rather than a flag** — the choice has to be made;
-      and `pnpm smoke` silently skipped `/travel/[id]` on a clean seed (nothing belongs to the
-      default actor and nothing awaits approval), reporting "all 200" over the app's most
-      complex page with a route count as the only signal. It says so now.
+      and `pnpm smoke` could silently skip `/travel/[id]` and still report "all 200" over the
+      app's most complex page, with a route count as the only signal. It says so now. **The
+      first version of this note had the cause backwards** and is corrected in §10.24f.
+- [x] **24f.** **A correction to 24e** (2026-09-08), and the finding is about how it was
+      measured rather than about the app. 24e claimed `pnpm smoke` skips `/travel/[id]` on a
+      clean seed and that `pnpm booking:dry-run` is what covers it. **Both halves are the wrong
+      way round.** The seed deliberately leaves `seed:ingrid:lhr` in `pending_approval` — the
+      comment on it has said since step 4 that it is *"the row the approvals queue exists
+      for"* — so a clean seed gives 39 routes with that page covered. What empties the queue is
+      the **dry run**, which deletes the seeded requests and leaves nine of its own in terminal
+      states, because approving the escalated one and sweeping the expiring one is precisely
+      what those scenarios demonstrate. The wrong conclusion came from a `pkill` that aborted a
+      compound shell command before its `pnpm db:reset` ran, so the "clean seed" being measured
+      was a post-dry-run database — and then from re-measuring against a `next dev` that was
+      holding a `.pglite` a second process had written to, which is the hazard this file has
+      documented since step 20 and which produced a *confirming* answer both times. **When a
+      measurement contradicts a comment the code has carried for twenty-four steps, re-derive
+      the state before believing the measurement.** Nothing was seeded; the skip message is
+      corrected to name the dry run and to say `db:reset` is the fix.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
       gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`

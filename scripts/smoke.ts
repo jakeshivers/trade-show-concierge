@@ -110,17 +110,23 @@ async function routes(): Promise<Check[]> {
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
-  // A skip has to say so. On a clean seed nothing belongs to the default
-  // `DEV_ACTOR_EMAIL` and nothing is awaiting approval, so this check quietly
-  // drops and the run still reports "all 200" — over the most complex page in
-  // the app. The count going 39 → 38 is the only signal, and nobody reads a
-  // count. `pnpm booking:dry-run` leaves a pending approval behind, which is why
-  // it looked covered.
+  // A skip has to say so, because the only other signal is the route count
+  // going 39 → 38 and nobody reads a count — meanwhile the run still says "all
+  // 200" over the most complex page in the app.
+  //
+  // The seed covers this: `seed:ingrid:lhr` is left in `pending_approval` on
+  // purpose, so the approvals queue an admin sees is never empty. What empties
+  // it is **`pnpm booking:dry-run`**, which deletes the seeded requests and
+  // leaves nine of its own, every one of them in a terminal state — it approves
+  // the escalated one and sweeps the expiring one, which is the whole point of
+  // those scenarios. So the sequence that drops this check is a dry run, not a
+  // fresh clone, and the fix is to re-seed rather than to run anything else.
   else {
     console.log(
       '\n  skip  /travel/[id] — no request is visible to DEV_ACTOR_EMAIL and the approvals\n' +
-        '        queue is empty, so there is no id to open. Run `pnpm booking:dry-run` first\n' +
-        '        to cover it.',
+        '        queue is empty. The seed leaves one pending on purpose, so this means the\n' +
+        '        database has moved on since: `pnpm booking:dry-run` ends every request it\n' +
+        '        creates. Re-run `pnpm db:reset` to cover this page.',
     );
   }
 
