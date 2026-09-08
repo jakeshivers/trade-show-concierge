@@ -365,3 +365,76 @@ export function whyNot(actions: ActionAvailability[], action: RequestAction): st
   const found = actions.find((a) => a.action === action);
   return found?.available ? undefined : found?.reason;
 }
+
+/* ---------------------- what a preference actually paid --------------------- */
+
+/**
+ * One offer as this reader needs it — the audit trail's shape, narrowed.
+ *
+ * Structural rather than an import of `AuditOffer` so this file stays free of
+ * the audit assembly, which is a database module. The three fields here are the
+ * whole input: what it cost, whether the policy would have allowed it, and what
+ * preference took off its score.
+ */
+export type PricedOffer = {
+  totalCents: number;
+  selected: boolean;
+  decision: string | null;
+  preference: { orgCents: number; travelerCents: number; totalCents: number };
+};
+
+export type PreferencePremium = {
+  chosenCents: number;
+  /** The cheapest fare the policy would actually have permitted. */
+  cheapestAllowedCents: number;
+  /** What was really paid over it. Always ≤ the allowance, never equal to it. */
+  premiumCents: number;
+  orgAllowanceCents: number;
+  travelerAllowanceCents: number;
+};
+
+/**
+ * Why the agent did not take the cheapest fare — the one question this page has
+ * to be able to answer about a carrier preference.
+ *
+ * Two refusals, and the second is the one that keeps the screen honest.
+ *
+ * **The comparison is against the cheapest fare the policy *allowed*, never the
+ * cheapest fare seen.** A denied offer was never an option, so measuring a
+ * premium against one invents money that was never available — the page would
+ * report the agent overspending by the width of a fare nobody could have bought.
+ * `agent.ts` makes the same narrowing for the audit line it writes; the two are
+ * deliberately separate implementations over different types rather than one
+ * shared helper, because merging them would put a database shape into this pure
+ * module.
+ *
+ * **An allowance is a ceiling, not a spend.** A $60 preference that broke a
+ * $37.55 gap cost $37.55, and rendering "$60.00" would overstate every
+ * preference on every request — quietly, in the flattering-to-nobody direction,
+ * on the screen an approver reads. So the premium is the *actual* difference and
+ * the allowances are reported beside it as what was authorized.
+ *
+ * Returns null when there is nothing to explain: no preference applied, or the
+ * chosen fare was the cheapest allowed one anyway. A preference that changed
+ * nothing is not news, and a row of zeroes on every request in a workspace that
+ * has never priced a preference is how a real signal gets skimmed past.
+ */
+export function preferencePremium(offers: PricedOffer[]): PreferencePremium | null {
+  const chosen = offers.find((o) => o.selected);
+  if (!chosen || chosen.preference.totalCents <= 0) return null;
+
+  const allowed = offers.filter((o) => o.decision !== 'deny');
+  if (allowed.length === 0) return null;
+  const cheapestAllowedCents = Math.min(...allowed.map((o) => o.totalCents));
+
+  const premiumCents = chosen.totalCents - cheapestAllowedCents;
+  if (premiumCents <= 0) return null;
+
+  return {
+    chosenCents: chosen.totalCents,
+    cheapestAllowedCents,
+    premiumCents,
+    orgAllowanceCents: chosen.preference.orgCents,
+    travelerAllowanceCents: chosen.preference.travelerCents,
+  };
+}

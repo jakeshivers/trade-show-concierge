@@ -42,7 +42,7 @@ Phase A (**the vertical slice through the booking spine**) is done; Phase B is d
 has started. **Steps 1–20, 22, 23 and 24 are done.** Step 21 is **half done and marked `[~]`
 in §10**: the transport and the scheduler shipped, hosting and the SSO rollout did not and
 cannot here — both need a cloud account or a real IdP, and §9's ground rule forbids wiring
-one unasked. 1,112 tests, no keys required.
+one unasked. 1,118 tests, no keys required.
 
 Read `git log` for the long version of any step: each commit documents what was learned
 building it, and this file keeps only what a fresh session needs before touching code. The
@@ -983,6 +983,47 @@ for any caller looking an issue up by name. Nothing in `src/` does that today; t
 for that error did, and caught it in a minute. It is on `preferredCarrierAllowanceCents` now,
 which is also the more accurate field — the thing that is absent is the price.
 
+### The preference breakdown on the travel request page (2026-09-08)
+
+The org and traveler allowances were only ever in `agent_runs.detail`, which is a narrative log
+rather than a schema, and the page a person actually argues with showed a fare and a rank. So
+`offer_snapshots` gained `preference_org_cents` / `preference_traveler_cents`, **beside `score`**
+— a score is the number that decided the purchase, and one whose largest term is invisible is a
+figure nobody can argue with. They are a record of **what was applied**, never re-derived on
+read: the allowances are policy values that move, and re-deriving would restate last quarter's
+purchase in this quarter's numbers. `policy_evaluations` already follows that rule by recording
+the resolved policy.
+
+`travel/review.ts` gained the pure `preferencePremium`, with two refusals:
+
+- **The comparison is against the cheapest fare the policy *allowed*, never the cheapest seen.**
+  A denied offer was never an option, so measuring a premium against one invents money that was
+  never available and reports the agent overspending by the width of a ticket nobody could have
+  bought. `agent.ts`'s `cheapestBookable` makes the same narrowing for the audit line, and the
+  two are deliberately separate implementations over different types — merging them would put a
+  database shape into a pure module.
+- **An allowance is a ceiling, not a spend.** A $60 preference that broke a $37.55 gap cost
+  $37.55; rendering "$60.00" overstates every preference on every request, on the screen an
+  approver reads. The page reports the actual difference and names the allowances beside it as
+  what was *authorized*.
+
+Both the column and the sentence appear only when a preference actually cost something — a
+column that is blank a hundred times is one nobody reads on the hundred-and-first.
+
+**Two things fell out, and both were found by looking at the rendered page rather than a test.**
+`money()` drops cents by design (right for a board of fares, wrong for a difference between two
+of them) and turned a $15.55 premium into *"$16 more"* — a figure that reads as rounded rather
+than as a number to check. `moneyExact` is a **second function rather than a flag on the first**,
+so the choice has to be made: `money` for an amount, `moneyExact` for a gap between amounts.
+
+And `pnpm smoke` **silently skipped `/travel/[id]`** on a clean seed and still reported "all
+200". Nothing in the seed belongs to the default `DEV_ACTOR_EMAIL` and nothing is awaiting
+approval, so the id scrape finds nothing and the check drops; the route count going 39 → 38 was
+the only signal, and nobody reads a count. It had looked covered because `pnpm booking:dry-run`
+leaves a pending approval behind, and this session had been running that first. The skip is
+printed now. **A check that can skip has to say when it did** — §5f's unchecked flight, applied
+to the thing that checks the screens.
+
 ### Next: step 25, and there is no obvious pick — read this before choosing
 
 The backlog in `SCOPE.md` §10.25 is sponsorship campaigns, a public API + Zapier, impersonation,
@@ -1836,6 +1877,22 @@ unverified and this file will say so rather than implying otherwise.
   saved (`cost_centers`, which §4 requires on all of them), and the booking agent refused to
   search at all (`travel_policies`). **Re-run the check when adding a feature**: for each
   `pgTable`, does anything outside the seed insert or update it?
+- **A figure that decided a purchase carries the terms that produced it.** `offer_snapshots`
+  stores the preference credit beside `score` rather than leaving it in `agent_runs.detail`,
+  which is a log, and never re-derives it on read — allowances move, and a re-derived one
+  restates last quarter's purchase in this quarter's numbers. And a premium is measured against
+  **the cheapest fare the policy allowed**, never the cheapest seen: a denied fare was never an
+  option, so measuring against one invents money that was never available. An allowance is a
+  **ceiling, not a spend** — report what was paid, name what was authorized.
+  `src/lib/travel/review.ts`.
+- **`money()` drops cents on purpose, so a difference needs `moneyExact`.** Two decimals on
+  every row of a board is noise; two decimals on a $15.55 gap between two fares is the point,
+  and `money` renders it "$16 more". They are two functions rather than one with a flag so the
+  choice is made rather than defaulted.
+- **A check that can skip has to say when it did.** `pnpm smoke` drops `/travel/[id]` whenever
+  no request is visible to `DEV_ACTOR_EMAIL` and the approvals queue is empty — true on a clean
+  seed — and still printed "all 200" over the most complex page in the app, with the route count
+  as the only signal. §5f's unchecked flight, applied to the thing that checks the screens.
 - **A carrier list that nothing pays for is a sentence, not a preference.** The org's
   `preferredAirlines` produced an advisory and moved no money for twenty-four steps, which was
   documented intent and still meant an org could name its negotiated carriers and be ignored.

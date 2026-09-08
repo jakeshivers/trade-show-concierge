@@ -5,8 +5,14 @@ import { getActor } from '@/lib/auth/actor';
 import { getAuditTrail } from '@/lib/travel/audit';
 import { loadRequest, NotFoundError } from '@/lib/travel/queue';
 import { selectProviderOrNull } from '@/lib/travel/provider';
-import { availableActions, can, STATUS, type ReviewableRequest } from '@/lib/travel/review';
-import { Badge, Card, Empty, Row, money, type Tone } from '../../_components/ui';
+import {
+  availableActions,
+  can,
+  preferencePremium,
+  STATUS,
+  type ReviewableRequest,
+} from '@/lib/travel/review';
+import { Badge, Card, Empty, Row, money, moneyExact, type Tone } from '../../_components/ui';
 import { Fare, StatusBadge } from '../_components';
 import { Decide, Confirm, Cancel, Search } from './forms';
 
@@ -168,7 +174,15 @@ export default async function TravelRequestPage({
           </Empty>
         ) : (
           <div className="space-y-5">
-            {trail.searches.map((s, i) => (
+            {trail.searches.map((s, i) => {
+              // The column appears only when something in *this* search actually
+              // earned a preference. A workspace that has never priced one would
+              // otherwise carry an empty column on every request forever, and a
+              // column that is blank a hundred times is one nobody reads on the
+              // hundred-and-first.
+              const anyPreference = s.offers.some((o) => o.preference.totalCents > 0);
+              const premium = preferencePremium(s.offers);
+              return (
               <div key={s.searchId ?? i}>
                 <div className="mb-2 text-xs text-text-muted">
                   Search {i + 1} of {trail.searches.length} · {s.capturedAt.toLocaleString()} ·{' '}
@@ -188,6 +202,9 @@ export default async function TravelRequestPage({
                         <th className="py-1 pr-3 font-medium">Cabin</th>
                         <th className="py-1 pr-3 font-medium">Stops</th>
                         <th className="py-1 pr-3 font-medium">Verdict</th>
+                        {anyPreference && (
+                          <th className="py-1 pr-3 font-medium">Preference</th>
+                        )}
                         <th className="py-1 font-medium">Why not</th>
                       </tr>
                     </thead>
@@ -212,6 +229,26 @@ export default async function TravelRequestPage({
                               '—'
                             )}
                           </td>
+                          {anyPreference && (
+                            <td className="py-1.5 pr-3">
+                              {o.preference.totalCents > 0 ? (
+                                <span className="whitespace-nowrap">
+                                  {o.preference.orgCents > 0 && (
+                                    <span className="block">
+                                      &minus;{moneyExact(o.preference.orgCents)} company
+                                    </span>
+                                  )}
+                                  {o.preference.travelerCents > 0 && (
+                                    <span className="block">
+                                      &minus;{moneyExact(o.preference.travelerCents)} traveler
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                '—'
+                              )}
+                            </td>
+                          )}
                           <td className="py-1.5">
                             {o.blockers.length > 0 ? o.blockers.join(', ') : '—'}
                           </td>
@@ -220,8 +257,37 @@ export default async function TravelRequestPage({
                     </tbody>
                   </table>
                 </div>
+
+                {/*
+                  The money question, in one sentence, under the table that
+                  raised it. "Why not the cheaper one" is what this whole card
+                  exists to answer, and a carrier preference is now one of the
+                  answers — but only when it *cost* something, and only measured
+                  against a fare the policy would really have allowed. Both of
+                  those refusals live in `preferencePremium`.
+                */}
+                {premium && (
+                  <p className="mt-2 rounded-md bg-surface-muted px-3 py-2 text-xs text-text-muted">
+                    The chosen fare is{' '}
+                    <strong>{moneyExact(premium.premiumCents)} more</strong> than the cheapest one
+                    the policy allowed ({moneyExact(premium.cheapestAllowedCents)}). Carrier
+                    preference covered it:{' '}
+                    {[
+                      premium.orgAllowanceCents > 0 &&
+                        `up to ${moneyExact(premium.orgAllowanceCents)} for a carrier the company prefers`,
+                      premium.travelerAllowanceCents > 0 &&
+                        `up to ${moneyExact(premium.travelerAllowanceCents)} for one the traveler prefers`,
+                    ]
+                      .filter(Boolean)
+                      .join(', and ')}
+                    . Those are ceilings the travel policy sets, not amounts spent — the agent
+                    pays the difference and no more, and a preference can never move a fare past
+                    one that needs approval.
+                  </p>
+                )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Card>

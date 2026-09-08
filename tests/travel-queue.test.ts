@@ -5,6 +5,7 @@ import * as s from '@/db/schema';
 import { getActor, type Actor } from '@/lib/auth/actor';
 import { RecordedFlightProvider } from '@/lib/integrations/flights/recorded/provider';
 import { runAgent, submitTravelRequest, type AgentDeps } from '@/lib/travel/agent';
+import { preferencePremium } from '@/lib/travel/review';
 import {
   approvalsQueue,
   listRequests,
@@ -233,5 +234,86 @@ describe('selectProvider', () => {
   it('hands back a message instead of throwing, for screens that load before searching', () => {
     const result = selectProviderOrNull({});
     expect('unavailable' in result && result.unavailable).toMatch(/DUFFEL_ACCESS_TOKEN/);
+  });
+});
+
+/**
+ * What the travel request page says about a preference that cost money.
+ *
+ * Pure, so it is tested here rather than through the screen. The two claims
+ * worth holding are both refusals: the comparison is against the cheapest fare
+ * the policy *allowed*, and an allowance is reported as a ceiling rather than
+ * as a spend.
+ */
+describe('preferencePremium', () => {
+  const offer = (
+    totalCents: number,
+    over: Partial<Parameters<typeof preferencePremium>[0][number]> = {},
+  ) => ({
+    totalCents,
+    selected: false,
+    decision: 'auto_approve' as string | null,
+    preference: { orgCents: 0, travelerCents: 0, totalCents: 0 },
+    ...over,
+  });
+
+  it('reports what was really paid, not what was authorized', () => {
+    // The $60 allowance broke a $37.55 gap, so it cost $37.55. Printing $60
+    // would overstate every preference on every request, on the screen an
+    // approver reads.
+    const p = preferencePremium([
+      offer(41_500),
+      offer(45_255, {
+        selected: true,
+        preference: { orgCents: 0, travelerCents: 6_000, totalCents: 6_000 },
+      }),
+    ]);
+    expect(p?.premiumCents).toBe(3_755);
+    expect(p?.cheapestAllowedCents).toBe(41_500);
+    expect(p?.travelerAllowanceCents).toBe(6_000);
+  });
+
+  it('measures against the cheapest fare the policy allowed, never the cheapest seen', () => {
+    // A denied fare was never an option. Measuring against one invents money
+    // that was never available and reports the agent overspending by the width
+    // of a ticket nobody could have bought.
+    const p = preferencePremium([
+      offer(31_820, { decision: 'deny' }),
+      offer(41_500),
+      offer(43_055, {
+        selected: true,
+        preference: { orgCents: 15_000, travelerCents: 0, totalCents: 15_000 },
+      }),
+    ]);
+    expect(p?.cheapestAllowedCents).toBe(41_500);
+    expect(p?.premiumCents).toBe(1_555);
+  });
+
+  it('says nothing when the preference changed nothing', () => {
+    // A preference that applied to the fare that was cheapest anyway cost
+    // nothing, and a row of zeroes on every request is how a real signal gets
+    // skimmed past.
+    expect(
+      preferencePremium([
+        offer(41_500, {
+          selected: true,
+          preference: { orgCents: 15_000, travelerCents: 0, totalCents: 15_000 },
+        }),
+        offer(43_055),
+      ]),
+    ).toBeNull();
+    expect(preferencePremium([offer(41_500, { selected: true })])).toBeNull();
+  });
+
+  it('keeps the two halves apart, because different people set them', () => {
+    const p = preferencePremium([
+      offer(41_500),
+      offer(43_055, {
+        selected: true,
+        preference: { orgCents: 15_000, travelerCents: 6_000, totalCents: 21_000 },
+      }),
+    ]);
+    expect(p?.orgAllowanceCents).toBe(15_000);
+    expect(p?.travelerAllowanceCents).toBe(6_000);
   });
 });

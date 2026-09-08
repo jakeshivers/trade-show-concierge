@@ -36,6 +36,12 @@ export type AuditOffer = {
   blockers: string[];
   policyId: string | null;
   policyVersion: number | null;
+  /**
+   * What carrier preference took off this offer's score, as it was applied at
+   * the time. Zero on both when nothing applied, which is the common case and
+   * renders as nothing rather than as "$0.00".
+   */
+  preference: { orgCents: number; travelerCents: number; totalCents: number };
 };
 
 export type AuditTrail = {
@@ -103,6 +109,11 @@ export async function getAuditTrail(requestId: string, db: Db): Promise<AuditTra
       blockers: evaluation?.blockerRuleIds ?? [],
       policyId: evaluation?.policyId ?? null,
       policyVersion: evaluation?.policyVersion ?? null,
+      preference: {
+        orgCents: snapshot.preferenceOrgCents,
+        travelerCents: snapshot.preferenceTravelerCents,
+        totalCents: snapshot.preferenceOrgCents + snapshot.preferenceTravelerCents,
+      },
     });
   }
 

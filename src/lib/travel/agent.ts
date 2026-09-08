@@ -440,7 +440,7 @@ async function snapshotOffers(
   const byOfferId = new Map<string, OfferSnapshotRow>();
 
   for (const [index, entry] of ranked.entries()) {
-    const { offer, verdict, score } = entry;
+    const { offer, verdict, score, preference } = entry;
     const [snapshot] = await deps.db
       .insert(s.offerSnapshots)
       .values({
@@ -469,6 +469,8 @@ async function snapshotOffers(
         selected: offer.id === bestOfferId,
         rank: index,
         score,
+        preferenceOrgCents: preference.orgCents,
+        preferenceTravelerCents: preference.travelerCents,
         rawPayload: offer as never,
         capturedAt: deps.now(),
       })

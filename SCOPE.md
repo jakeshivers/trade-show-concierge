@@ -2809,6 +2809,24 @@ invert phases A and C.
       agent behaves as though nothing were set. `booking:dry-run` scenario 8 runs three fares
       against three configurations; the third fare is on **neither** list and is cheapest, which
       is what makes the other two runs mean anything.
+- [x] **24e.** **The preference breakdown on the travel request page** (2026-09-08). The
+      numbers existed only in `agent_runs.detail`, which is a narrative log rather than a
+      schema, so `offer_snapshots` gained `preference_org_cents` / `preference_traveler_cents`
+      — beside `score`, because a score is the number that decided the purchase and one whose
+      largest term is invisible is a figure nobody can argue with. They are a **record of what
+      was applied, never re-derived on read**: allowances change, and re-deriving would restate
+      last quarter's purchase in this quarter's numbers, which is the rule `policy_evaluations`
+      already follows for the resolved policy. `review.ts` gained the pure `preferencePremium`
+      with two refusals — the comparison is against **the cheapest fare the policy allowed**,
+      never the cheapest seen (a denied fare was never an option, and measuring against one
+      invents money that was never available), and **an allowance is a ceiling, not a spend**,
+      so the page reports the $15.55 actually paid rather than the $150.00 authorized. The
+      column and the sentence appear only when a preference actually cost something. Two things
+      fell out: `money()` drops cents by design, which turns a $15.55 premium into "$16 more",
+      so `moneyExact` is a **second function rather than a flag** — the choice has to be made;
+      and `pnpm smoke` silently skipped `/travel/[id]` on a clean seed (nothing belongs to the
+      default actor and nothing awaits approval), reporting "all 200" over the app's most
+      complex page with a route count as the only signal. It says so now.
 - [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
       · multi-workspace · custom fields · external share links · room-block optimizer ·
       gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`

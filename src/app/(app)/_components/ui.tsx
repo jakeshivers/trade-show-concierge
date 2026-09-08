@@ -315,6 +315,32 @@ export function money(cents: number | null | undefined): string {
 }
 
 /**
+ * The same figure with its cents, for the places where the cents *are* the
+ * point.
+ *
+ * `money` drops them deliberately: on a board of fares and budgets, two decimals
+ * on every row is noise and nobody is reconciling an invoice from a portfolio
+ * screen. But a **difference** between two fares is often smaller than a dollar
+ * — the travel request page reports a carrier preference that cost $15.55, and
+ * `money` renders that as "$16 more", which overstates it and reads as a figure
+ * somebody rounded rather than a number to check.
+ *
+ * The rule: `money` for an amount, this for a *gap between* amounts, or wherever
+ * the reader is being asked to accept a specific number rather than take in a
+ * magnitude. Deliberately a second function rather than a flag on the first, so
+ * the choice has to be made rather than defaulted.
+ */
+export function moneyExact(cents: number | null | undefined): string {
+  if (cents == null) return '—';
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+/**
  * Dates render in the *show's* zone, not the reader's. A move-in time shown in
  * the viewer's browser zone is the same class of bug as parsing a flight time
  * with `new Date()` — see src/lib/datetime/zoned.ts.

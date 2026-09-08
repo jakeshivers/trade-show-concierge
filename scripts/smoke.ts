@@ -110,6 +110,19 @@ async function routes(): Promise<Check[]> {
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
+  // A skip has to say so. On a clean seed nothing belongs to the default
+  // `DEV_ACTOR_EMAIL` and nothing is awaiting approval, so this check quietly
+  // drops and the run still reports "all 200" — over the most complex page in
+  // the app. The count going 39 → 38 is the only signal, and nobody reads a
+  // count. `pnpm booking:dry-run` leaves a pending approval behind, which is why
+  // it looked covered.
+  else {
+    console.log(
+      '\n  skip  /travel/[id] — no request is visible to DEV_ACTOR_EMAIL and the approvals\n' +
+        '        queue is empty, so there is no id to open. Run `pnpm booking:dry-run` first\n' +
+        '        to cover it.',
+    );
+  }
 
   // Same reasoning as the travel request above, for a stricter reason: an
   // assistant conversation belongs to one person and nobody else can open it,

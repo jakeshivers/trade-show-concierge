@@ -1504,6 +1504,25 @@ export const offerSnapshots = pgTable(
     selected: boolean('selected').notNull().default(false),
     rank: integer('rank'),
     score: integer('score'),
+    /**
+     * How much carrier preference took off this offer's score, split by whose
+     * preference it was.
+     *
+     * Stored **beside the score rather than derived later**, and stored at all
+     * for the reason this whole table exists: a score is the number that decided
+     * the purchase, and a score whose largest term is invisible is a figure
+     * nobody can argue with. The org's allowance and the traveler's are separate
+     * columns because they are answerable by different people — one is a
+     * contract term an admin set, the other a line on somebody's own profile —
+     * and a single blended figure sends whoever disagrees to the wrong screen.
+     *
+     * They are a **record of what was applied**, never re-derived on read. The
+     * allowances are policy values that change; re-deriving would silently
+     * restate last quarter's purchase in this quarter's numbers, which is the
+     * same rule `policy_evaluations` follows by recording the resolved policy.
+     */
+    preferenceOrgCents: integer('preference_org_cents').notNull().default(0),
+    preferenceTravelerCents: integer('preference_traveler_cents').notNull().default(0),
 
     rawPayload: jsonb('raw_payload').notNull(),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
