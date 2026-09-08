@@ -17,6 +17,8 @@ admin-defined spend and schedule constraints.
   CSS-first with no config file, and the `@theme inline` trap that breaks runtime dark mode.
   **Read §6 before writing any CSS.** The step narratives in *this* file are deliberately
   short; the long version of any of them is in `git log` and in that document.
+- **`UX-BACKLOG.md`** — **open, nothing started.** What is left on the app layer, ranked,
+  with evidence, plus the mechanical checks already clean so nobody re-runs them.
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
@@ -679,23 +681,18 @@ builds, renders, and **404s every tab under `/shows/[id]`**; only `pnpm smoke` c
 rendering as real ones. **A nullable column in a unique index is an idempotency rail with an off
 switch.**
 
-**Passes 4 and 5 (2026-09-08) swept the path *before* all of that** — and pass 5 added two
-things: eight empty states that said only *that* they were empty (`Empty`'s docblock has demanded
-"where the thing comes from" since step 8, and coverage is not the same measurement as content),
-and the fact that a Member loses seven nav entries with nothing in the product saying why. Both
-are ground rules below. **Pass 4** — the first screen somebody lands on,
-what an unconfigured workspace tells them, and what the app shows while it is thinking or when it
-breaks. The empty states turned out to be fine; the gaps were elsewhere. The overview had led
-since step 9 with a card saying the travel form would *"land at step 9"* and listing three `pnpm`
-commands, over a capability list frozen at step 8 beside a nav grown to twenty-three entries —
-the `SOURCE_LABEL` trap in prose, now fixed by `nav.ts`'s required `does`. `src/lib/setup/` is
-the first-run card (**not** an eighth engine — a condition with no clock is not an alert).
-`loading.tsx`, `error.tsx` and two `not-found.tsx` did not exist at all, so a slow board looked
-broken and five `notFound()` call sites landed outside the shell. And the tidy-up exposed the
-real defect: **`missingForTicket` was a commented *mirror* of the inline check in
-`passengers.ts`, and they had drifted** — `splitName` gives a one-word name a given and family
-name that are the same word, so the agent would have ticketed somebody whose legal name cannot
-match their ID while the profile screen correctly refused.
+**Passes 4 and 5 (2026-09-08) swept the path *before* all of that** — the first screen somebody
+lands on, an unconfigured workspace, and what the app shows while thinking or when it breaks. The
+overview had led since step 9 with a card saying the travel form would *"land at step 9"* over a
+capability list frozen at step 8 beside a nav grown to twenty-three entries — the `SOURCE_LABEL`
+trap in prose, fixed by `nav.ts`'s required `does`. `src/lib/setup/` is the first-run card (**not**
+an eighth engine). `loading.tsx`, `error.tsx` and two `not-found.tsx` did not exist, so a slow
+board looked broken and five `notFound()` calls landed outside the shell. Pass 5 added the eight
+empty states that said only *that* they were empty, and the role line — a Member lost seven nav
+entries with nothing saying why. **The tidy-up exposed the real defect:** `missingForTicket` was a
+commented *mirror* of the inline check in `passengers.ts` and they had drifted — `splitName` gives
+a one-word name a given and family name that are the same word, so the agent would have ticketed
+somebody whose legal name cannot match their ID while the profile screen correctly refused.
 
 ### Carrier preferences, in four passes (2026-09-05 → 09-08)
 
@@ -758,12 +755,10 @@ HubSpot. Three observations that should shape the choice more than the list does
   carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with their own deadlines,
   which composes the §5a engine that already exists rather than adding a ninth thing that alerts.
 
-**The next UX step is responsive layout, and it is written down rather than done** (2026-09-08).
-`sidebar.tsx` is a fixed `w-60` / `w-16` column at every width and `_components/ui.tsx` contains
-no `sm:` / `md:` / `lg:` variant at all — while `manifest.ts` sets `start_url: '/day-of'`, which
-is the screen used standing on a show floor, on a phone, and is therefore the one most likely to
-be opened by somebody who is not at a desk. It is a whole-app pass touching every screen, so it
-deserves its own commit rather than riding along with the first-five-minutes work above.
+**The next UX step is responsive layout** (2026-09-08): `sidebar.tsx` is a fixed column at every
+width and `ui.tsx` has no `sm:`/`md:`/`lg:` variant at all, while `manifest.ts` makes `/day-of` —
+a screen used standing on a show floor — the installable start_url. It is a whole-app pass and
+wants its own commit. **`UX-BACKLOG.md` has it and six more, ranked, with the evidence.**
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on **localhost
