@@ -66,36 +66,75 @@ none. This is the recommended next piece of work.
 
 ---
 
-## 2. A rejected form submit probably wipes what the person typed — **verify this first**
+## 2. A rejected form submit destroys what the person typed — **CONFIRMED, and it is the worst item here**
 
-**Evidence.** React 19.2 with `<form action={action}>` and `useActionState`
-(`settings/cost-centers/forms.tsx:8-10` is representative; there are **42 call sites**).
-React 19 resets an uncontrolled form after a form action completes. `FormState` is
-`{ error?: string; ok?: string }` (`_components/form.ts`) — it carries **no submitted
-values back**, and every `defaultValue` in the app (126 of them) is populated from *server*
-data, not from the rejected submission.
+**Verified in a real Chromium on 2026-09-09**, driven over CDP against `pnpm dev`. Both
+cases below are measured output, not inference.
 
-**Why it matters.** This product's entire posture is *refuse with a good sentence*. If the
-refusal also costs the person their input, the good sentence is a punishment. The worst
-cases are the longest forms, which are also the ones that refuse most: the travel policy
-editor (a dozen numeric fields, and `validatePolicy` refuses on incoherence), show intake,
-lead capture with seven fields, and the CSV column mapping.
+**Case A — a form with no `defaultValue` blanks every field.** `/settings/cost-centers`,
+Add a cost center. Typed `code: VERIFY-A` (valid) and `name: A` (one character, which the
+store refuses):
 
-**This is asserted from React's documented behaviour and has NOT been confirmed in a
-browser** — no test covers it and `pnpm smoke` only fetches pages. **Confirm before
-building anything.** Repro: `pnpm dev`, open `/settings/cost-centers`, type a code that
-collides with an existing one, submit, and see whether the field still holds what you typed.
+```
+BEFORE submit : { code: 'VERIFY-A', name: 'A' }
+AFTER  submit : { code: '',         name: '',
+                  message: 'A name is needed. The code alone is not readable a year later.' }
+```
 
-**Shape of the fix if confirmed.** Widen `FormState` to carry back the submitted values and
-feed them to `defaultValue` — `{ error?, ok?, values?: Record<string, string> }` — set in
-`formErrorFrom`, which every action already routes through, so it is close to one diff.
-Alternatively, `useActionState`'s `permalink`/`requestFormReset` escape hatches. Prefer the
-first: it keeps the fix in the one helper the 42 sites share.
+The refusal is about `name`. **`code` was valid and was destroyed anyway.**
 
-**Effort:** medium, and mostly in one file if `formErrorFrom` can carry it.
-**Decision needed:** none, but confirm the defect first.
+**Case B — a form with `defaultValue` silently REVERTS the edit, which is worse.**
+`/settings/travel-policy`. Stored domestic cap `650.00`. Raised it to `1250.00`, set a
+label, and put a typo in the international field:
 
----
+```
+AS STORED     : { domestic: '650.00',  international: '1800.00', label: '' }
+AS TYPED      : { domestic: '1250.00', international: 'not-a-number',
+                  label: 'Raised caps for 2027' }
+AFTER REFUSAL : { domestic: '650.00',  international: '1800.00', label: '',
+                  message: 'Cannot parse "not-a-number" as a decimal money amount' }
+```
+
+**The good edit reverted to the stored value and the error names a different field.** So the
+admin reads "cannot parse the international amount", fixes *that*, submits again — and saves
+`650.00`, silently discarding the change they came to make. Blanking is obvious; this looks
+correct. And `saveOrgPolicy` is **versioned**, so it writes a new policy version that quietly
+reverts a cap somebody believed they had raised, on the screen that configures the thing
+`SCOPE.md`'s first sentence is about.
+
+**Cause.** React 19 resets an uncontrolled form after a form action completes. `FormState` is
+`{ error?, ok? }` (`_components/form.ts`) and carries no submitted values, so there is nothing
+to restore from; every `defaultValue` re-renders from *server* data. 42 `useActionState` call
+sites, all affected.
+
+**Why nothing caught it.** The suite is `environment: 'node'` with no DOM, `pnpm smoke` only
+fetches pages, and every CLI check exercises the store rather than the form. The store's
+refusals are all correct and well tested — the defect is entirely in what happens to the
+form afterwards, which nothing in this repo looks at.
+
+**Shape of the fix.** Widen `FormState` to `{ error?, ok?, values?: Record<string, string> }`,
+populate it in `formErrorFrom` (which every action already routes through, from the `FormData`
+it already holds), and have each form prefer `state.values?.x ?? defaultValue`. The first two
+are close to one diff; the third is 42 call sites but mechanical. Consider whether `ok` should
+clear values, so a *successful* add still empties the form — it should.
+
+**Effort:** medium. **Decision needed:** none. **Do this first.**
+
+**How it was verified, since the harness is not in the repo.** A ~90-line zero-dependency
+Node script driving Chromium over CDP (Node 22 has a built-in `WebSocket`), using the
+Playwright browser cache that happens to exist on this machine. It is deliberately **not**
+committed: it depends on a binary a clean clone does not have, and `pnpm db:reset && pnpm test`
+working with zero keys and zero downloads is a non-negotiable. If this becomes a recurring
+need, the honest version is a real dev-dependency and a separate script — not something
+wired into `pnpm test`.
+
+**One measurement mistake worth recording, because it produced a confident wrong answer.**
+The first run reported *"NOT REPRODUCED: the typed input survived"*. The selectors were
+`document.querySelector('form ...')` and the page renders a `RenameForm` per existing cost
+center — so it typed into the wrong form, clicked the wrong button, and read back
+`"Renamed."` as though it were the refusal. The tell was in the output and nearly went past:
+`name: 'AExecutive'`, a value nobody typed. **On a page with repeated forms, scope every
+selector to the form under test** — and read the values a run reports, not just its verdict.
 
 ## 3. Four detail routes light nothing in the navigation
 
@@ -206,8 +245,10 @@ than building the form.**
 
 ## Recommended order
 
-1. **Item 2**, because it is cheap to *check* and, if real, it is the worst thing here —
-   every refusal in a product built on refusals currently costs somebody their typing.
+1. **Item 2 — confirmed, and it is the worst thing here.** Every refusal in a product built
+   on refusals currently costs somebody their typing, and on any form with a `defaultValue`
+   it silently reverts the edit instead, which is harder to notice and lands in a versioned
+   policy row.
 2. **Item 3**, small and it makes the app feel located.
 3. **Item 1**, the real piece of work, on its own commit.
 4. **Item 6**, then **7**, as they fit.

@@ -18,7 +18,9 @@ admin-defined spend and schedule constraints.
   **Read §6 before writing any CSS.** The step narratives in *this* file are deliberately
   short; the long version of any of them is in `git log` and in that document.
 - **`UX-BACKLOG.md`** — **open, nothing started.** What is left on the app layer, ranked,
-  with evidence, plus the mechanical checks already clean so nobody re-runs them.
+  with evidence. Item 2 is **confirmed in a browser and is the one to do first**: a rejected
+  form submit destroys what was typed, and on a form with a `defaultValue` it silently
+  reverts the edit instead.
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
