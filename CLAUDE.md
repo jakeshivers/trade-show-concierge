@@ -786,59 +786,54 @@ there: the request is filed unconfirmed, and reading the parse and confirming it
 returns the whole answer, which keeps every tool call inside the request as the actor `getActor()`
 resolved), and it books no hotels, because §5 keeps hotel booking out of v1.
 
-**There is no read-only tab and no dead control left.** **Booth presence has no seed rows**: every
-seeded show is in the future and `shift_presence` is a record of what happened, so the check-in
+**There is no read-only tab and no dead control left.** **Booth presence has no seed rows**:
+every seeded show is in the future and `shift_presence` records what happened, so the check-in
 control appears on a shift once it has run rather than inviting somebody to pre-record their own
 attendance.
 
-**A lead reaches a CRM only if it may, and as of step 19 that is enforced by the code path rather
-than only by the screen:** every lead row carries `outbound` — `marketabilityOf`'s answer to "may
-this row leave the building", with the reason and the fix — and `roi/store.ts` *reads that same
-verdict* rather than re-deriving one. Every seeded scanner lead fails the check, because a badge
-vendor's export carries no consent column, and those leads are consequently absent from every
-pipeline figure — named on `/roi` as **withheld by us**, deliberately apart from the leads the CRM
-did not know. The verdict is computed on the row rather than at the point of export, because the
-moment somebody can fix it is the moment they are looking at the lead.
+**A lead reaches a CRM only if it may**, enforced by the code path rather than only the screen:
+every lead carries `outbound` — `marketabilityOf`'s answer to "may this row leave the building" —
+and `roi/store.ts` reads *that same verdict* rather than re-deriving one. Every seeded scanner
+lead fails it, because a badge vendor's export carries no consent column, so those leads are
+absent from every pipeline figure and named on `/roi` as **withheld by us**, deliberately apart
+from the leads the CRM did not know.
 
-**`retention_overdue` is now enforced by the nightly job**, which is the promise §5j said was worse
-than none while nothing kept it: stage 2 of `runNightly` really erases, and what it erased goes into
-the run's summary, because an irreversible act performed by nobody has to leave a record made by
-something. Two callers skip it and both have the same reason — the test suite and the seed would each
-destroy the demo they exist to build. `pnpm leads --retention` is the deliberate, typed version.
+**`retention_overdue` is enforced by the nightly job**, the promise §5j said was worse than none
+while nothing kept it: stage 2 of `runNightly` really erases, and what it erased goes into the
+run's summary, because an irreversible act performed by nobody has to leave a record made by
+something. Two callers skip it — the suite and the seed would each destroy the demo they exist to
+build. `pnpm leads --retention` is the deliberate, typed version.
 
-**Nothing runs the nightly job on this machine**: without `CRON_SECRET` the endpoint refuses, and
-until a scheduler is pointed at a real origin the only things that run it are `pnpm nightly` and a
-button on `/settings/notifications` — which is why `manual_only` is a standing of its own, and why
-`unchecked` is still a standing and a figure on the page. With no `SLACK_BOT_TOKEN` the transport is
+**Nothing runs the nightly job on this machine**: without `CRON_SECRET` the endpoint refuses,
+and the only things that run it are `pnpm nightly` and a button on `/settings/notifications` —
+which is why `manual_only` is a standing of its own. With no `SLACK_BOT_TOKEN` the transport is
 `console`, which composes every message from the real alerts and delivers it **to nobody** —
-recorded as `rendered`, never `sent`, so a workspace that has told nobody anything can never read as
-one that has. `pnpm nightly --dry` prints the messages verbatim, which is the only way to read what
-a colleague would receive before installing a Slack app.
+recorded as `rendered`, never `sent`, so a workspace that has told nobody anything can never read
+as one that has. `pnpm nightly --dry` prints them verbatim, the only way to read what a colleague
+would receive before installing a Slack app.
 
 **Nothing rebooks a cancelled flight**, and the alert says so: the agent buys against a travel
 request and the ticket is already bought, so rebooking is a call to the airline — the same shape as
 §6d's cancel.
 
-**Extraction from the manual PDF is built** as of step 22, and the rule it had to obey — nothing
-extracted is quoted in dollars until a human confirms it — is enforced by the step 11 engine exactly
-as written, with no change to it. What is **unverified is recall against a layout nobody in this
-repo has seen**, because the only corpus here is synthetic and was written by whoever wrote the
-prompt. `pnpm manual:probe <file.pdf>` is what measures that, and it is the only capture script here
-whose output is meant to be *read* rather than asserted on: most lines on its unclaimed list are not
-deadlines, and the one that is, is a miss.
+**Extraction from the manual PDF is built** as of step 22, and §5a's rule — nothing extracted is
+quoted in dollars until a human confirms it — is enforced by the step 11 engine unchanged. What
+is **unverified is recall against a layout nobody in this repo has seen**: the only corpus here
+is synthetic and was written by whoever wrote the prompt. `pnpm manual:probe <file.pdf>` measures
+that, and it is the one capture script whose output is meant to be *read* — most lines on its
+unclaimed list are not deadlines, and the one that is, is a miss.
 
 **Checklist templates are code, not rows**: the library in `src/lib/readiness/templates.ts` is
 versioned in git, and an org-editable template builder is deliberately deferred until the standard
 list has been used and argued with, which the templates card says on the page.
 
-**The day-of screen queues, and nothing drains it in the background.** There is no Background Sync
-registration and no push: the outbox goes up when the tab is open and the network comes back, which
-is the ordinary case on a floor and is not every case. A phone put in a pocket at 4pm with three
-captures on it still has three captures on it at 9pm — which is exactly why the count says "on this
-device" rather than "pending". It also **only captures leads and meetings offline**: every other
-write is a server action that needs a connection, because each has a store function with rules the
-device does not carry. And a target-account alert is a line on the capture form, not a notification —
-nothing here asks for notification permission.
+**The day-of screen queues, and nothing drains it in the background.** No Background Sync and no
+push: the outbox goes up when the tab is open and the network returns, which is the ordinary case
+on a floor and is not every case — a phone pocketed at 4pm with three captures still has three at
+9pm, which is why the count says "on this device" rather than "pending". It captures **only leads
+and meetings** offline; every other write is a server action needing a connection, because each
+has a store function with rules the device does not carry. A target-account alert is a line on
+the capture form, not a notification — nothing here asks for notification permission.
 
 ### What has never met a live key
 
@@ -1723,6 +1718,15 @@ unverified and this file will say so rather than implying otherwise.
   the three wrappers covers a minority *and looks complete*. **No test can catch a regression
   here**: the reset is DOM behaviour and this suite is `environment: 'node'`. The check is a
   browser.
+- **The assistant answers in Markdown, so the transcript renders it — as elements.** Nothing
+  told the model how to format, so `**Draft filed:**` showed with its asterisks on the one page
+  whose whole content is model prose. Parsing is pure in `src/lib/markdown.ts` (so it
+  has tests in a suite with no DOM); `_components/prose.tsx` maps tokens to React elements and
+  there is **no `dangerouslySetInnerHTML` near it** — model output is the least trusted text
+  here, shaped by tool results, shaped by rows a stranger at a booth typed. A link
+  renders only for a relative, `http(s)` or `mailto` href; anything else degrades to the
+  **literal token**, and anything unsupported to the lines the model wrote. **A user's own
+  message is not passed through it.**
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.

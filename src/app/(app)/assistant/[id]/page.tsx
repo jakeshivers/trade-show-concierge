@@ -6,6 +6,7 @@ import { selectAssistantModelOrNull } from '@/lib/assistant/provider';
 import { Card, Empty, PageHeader } from '../../_components/ui';
 import { AskForm } from '../ask-form';
 import { DraftNotice, ScriptedBanner, ToolStepRow } from '../_present';
+import { Prose } from '../../_components/prose';
 
 /**
  * One conversation.
@@ -69,7 +70,12 @@ export default async function ConversationPage({
           return (
             <div key={entry.id} className="space-y-3">
               <Card>
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{entry.text}</p>
+                {/* The assistant answers in Markdown — it was never told not to
+                    — and this used to render `**Draft filed:**` with the
+                    asterisks showing. The user's own message above is
+                    deliberately *not* passed through it: those are their words,
+                    verbatim, and a stray asterisk there is theirs to keep. */}
+                <Prose text={entry.text} className="text-sm leading-relaxed" />
               </Card>
               <DraftNotice
                 travelRequestId={entry.draftTravelRequestId}

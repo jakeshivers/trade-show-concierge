@@ -122,6 +122,33 @@ all-raw-form test reported no refusal because the form never submitted — a `re
 **When a browser check reports a surprising pass, suspect the selector before the code**, and
 read the values a run prints rather than its verdict.
 
+## 2b. The assistant's answers rendered as raw Markdown — **FIXED 2026-09-09**
+
+Reported by a reader looking at a transcript: `**Draft filed:**` and `- **Origin is ORD**` on
+screen, asterisks and all. `prompt.ts` never told the model how to format, so it answers in
+Markdown, and `/assistant/[id]` rendered the text in a `whitespace-pre-wrap` paragraph.
+
+`src/lib/markdown.ts` parses the subset it writes (paragraphs, bold, italic, inline code, fenced
+code, headings, bullet and numbered lists, links) and is **pure**, so it has real tests in a
+suite with no DOM — which matters after item 2, whose behaviour could only ever be checked in a
+browser. `_components/prose.tsx` maps tokens to React elements: no `dangerouslySetInnerHTML`, and
+no raw-HTML escape hatch to leave open. Model output is the least trusted text in the app — it is
+shaped by tool results, which are shaped by rows a stranger at a booth typed into a lead form.
+
+Two rules it follows. **Anything unsupported degrades to the lines the model wrote**, never to a
+mangled approximation — a table comes out as prose, which is exactly the old behaviour and is
+honest. And **a link renders only for a relative, `http(s)` or `mailto` href**; anything else,
+`javascript:` first, degrades to the model's *literal token* rather than its link text, because
+the href pattern stops at the first `)` and dropping it would leave a stray bracket behind.
+
+**The user's own message is deliberately not passed through it.** Those are their words, and a
+stray asterisk there is theirs to keep.
+
+**Still open, deliberately:** the model writes bare paths like `**/travel/<uuid>**` rather than
+Markdown links, so the draft flow's *"open /travel/… to confirm"* renders as bold text rather
+than something clickable. Linkifying bare paths out of model output is a judgement call about
+what counts as a path, and it is not the defect that was reported. Decide it separately.
+
 ## 3. Four detail routes light nothing in the navigation
 
 **Evidence.** `sidebar.tsx:isActive` special-cases only `/shows`:
