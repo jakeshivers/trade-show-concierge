@@ -25,10 +25,28 @@
 
 export type Inline =
   | { kind: 'text'; text: string }
-  | { kind: 'bold'; text: string }
-  | { kind: 'italic'; text: string }
+  /**
+   * Emphasis carries spans, not a string, because the assistant bolds a bare
+   * path — the draft flow's "open this to confirm" wraps `/travel/<id>` in
+   * double asterisks — and a bold token holding plain text could never make
+   * that clickable.
+   *
+   * (Writing that example literally is what broke this file once: a bolded
+   * path starts with the three characters that also end a block comment.)
+   */
+  | { kind: 'bold'; spans: Inline[] }
+  | { kind: 'italic'; spans: Inline[] }
   | { kind: 'code'; text: string }
   | { kind: 'link'; text: string; href: string };
+
+/**
+ * Whether a bare path the model wrote is a screen in this app.
+ *
+ * Supplied by the caller rather than known here: `src/lib` has no business
+ * holding a list of routes, and a hand-written one beside a nav that grows is
+ * the `SOURCE_LABEL` trap. `_components/prose.tsx` derives it from `nav.ts`.
+ */
+export type IsAppPath = (path: string) => boolean;
 
 export type Block =
   | { kind: 'paragraph'; spans: Inline[] }
@@ -54,17 +72,47 @@ export function safeHref(href: string): string | null {
 
 const INLINE = /(\[[^\]\n]+\]\([^)\s]+\))|(`[^`\n]+`)|(\*\*[^*\n]+\*\*)|(\*[^*\n]+\*)|(_[^_\n]+_)/;
 
+/**
+ * A bare path in prose. Deliberately conservative: it will not match a lone `/`,
+ * and trailing sentence punctuation is left outside the href — "open /travel/x."
+ * links `/travel/x`, not `/travel/x.`.
+ */
+const BARE_PATH = /\/[A-Za-z0-9._~-]+(?:\/[A-Za-z0-9._~-]+)*/g;
+
 /** One line of prose into spans. Unmatched syntax stays literal. */
-export function parseInline(line: string): Inline[] {
+export function parseInline(line: string, isAppPath?: IsAppPath): Inline[] {
   const out: Inline[] = [];
-  let rest = line;
-  const push = (text: string) => {
+
+  const pushText = (text: string) => {
     if (!text) return;
     const last = out[out.length - 1];
     if (last?.kind === 'text') last.text += text;
     else out.push({ kind: 'text', text });
   };
 
+  /**
+   * Text, with any path this app actually serves turned into a link.
+   *
+   * Only ever applied to *text* runs, so a path inside `code` stays code — the
+   * one place a path is being shown rather than offered.
+   */
+  const push = (text: string) => {
+    if (!text) return;
+    if (!isAppPath) return pushText(text);
+    let at = 0;
+    BARE_PATH.lastIndex = 0;
+    for (let m = BARE_PATH.exec(text); m; m = BARE_PATH.exec(text)) {
+      const raw = m[0].replace(/[.,;:!?)\]]+$/, '');
+      if (!raw.includes('/') || !isAppPath(raw)) continue;
+      pushText(text.slice(at, m.index));
+      out.push({ kind: 'link', text: raw, href: raw });
+      at = m.index + raw.length;
+      BARE_PATH.lastIndex = at;
+    }
+    pushText(text.slice(at));
+  };
+
+  let rest = line;
   while (rest) {
     const m = INLINE.exec(rest);
     if (!m || m.index === undefined) break;
@@ -82,8 +130,8 @@ export function parseInline(line: string): Inline[] {
       if (href) out.push({ kind: 'link', text, href });
       else push(tok);
     } else if (m[2]) out.push({ kind: 'code', text: tok.slice(1, -1) });
-    else if (m[3]) out.push({ kind: 'bold', text: tok.slice(2, -2) });
-    else out.push({ kind: 'italic', text: tok.slice(1, -1) });
+    else if (m[3]) out.push({ kind: 'bold', spans: parseInline(tok.slice(2, -2), isAppPath) });
+    else out.push({ kind: 'italic', spans: parseInline(tok.slice(1, -1), isAppPath) });
     rest = rest.slice(m.index + tok.length);
   }
   push(rest);
@@ -95,14 +143,14 @@ const NUMBER = /^\s*\d+[.)]\s+(.*)$/;
 const HEADING = /^(#{1,3})\s+(.*)$/;
 
 /** A whole answer into blocks. */
-export function parseMarkdown(src: string): Block[] {
+export function parseMarkdown(src: string, isAppPath?: IsAppPath): Block[] {
   const lines = src.replace(/\r\n?/g, '\n').split('\n');
   const blocks: Block[] = [];
   let para: string[] = [];
 
   const flush = () => {
     if (!para.length) return;
-    blocks.push({ kind: 'paragraph', spans: parseInline(para.join(' ').trim()) });
+    blocks.push({ kind: 'paragraph', spans: parseInline(para.join(' ').trim(), isAppPath) });
     para = [];
   };
 
@@ -129,7 +177,7 @@ export function parseMarkdown(src: string): Block[] {
       blocks.push({
         kind: 'heading',
         level: h[1].length as 1 | 2 | 3,
-        spans: parseInline(h[2]),
+        spans: parseInline(h[2], isAppPath),
       });
       continue;
     }
@@ -141,7 +189,7 @@ export function parseMarkdown(src: string): Block[] {
       const re = isBullet ? BULLET : NUMBER;
       const items: Inline[][] = [];
       while (i < lines.length && re.test(lines[i])) {
-        items.push(parseInline(re.exec(lines[i])![1]));
+        items.push(parseInline(re.exec(lines[i])![1], isAppPath));
         i++;
       }
       i--;

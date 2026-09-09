@@ -287,3 +287,31 @@ export function visibleItems(items: NavItem[], gates: NavGates): NavItem[] {
 export function hiddenItems(items: NavItem[], gates: NavGates): NavItem[] {
   return items.filter((i) => !maySee(i, gates));
 }
+
+/**
+ * The first path segment of every screen this app serves.
+ *
+ * Derived, never listed: a hand-written set of routes beside a nav that grows is
+ * the `SOURCE_LABEL` trap, and this one would fail *silently* — a new section's
+ * paths would quietly stop being clickable in the assistant's answers and nobody
+ * would file it.
+ */
+const APP_SEGMENTS = new Set(
+  GROUPS.flatMap((g) => g.items)
+    .map((i) => i.href.split('/')[1])
+    .filter(Boolean),
+);
+
+/**
+ * Whether a bare path the assistant wrote is a screen here.
+ *
+ * Matched on the **first segment**, so `/travel` covers `/travel/<id>` and
+ * `/travel/approvals`, and `/shows` covers a show's ten tabs. It deliberately
+ * does not check the row exists: that is a query per path, and a stale id lands
+ * on `not-found.tsx` inside the shell with a way back — a better answer than
+ * refusing to link the thing the draft flow just told somebody to open.
+ */
+export function isAppPath(path: string): boolean {
+  const seg = path.split('/')[1] ?? '';
+  return path.startsWith('/') && !path.startsWith('//') && APP_SEGMENTS.has(seg);
+}

@@ -1,22 +1,9 @@
 import Link from 'next/link';
 import { parseMarkdown, type Block, type Inline } from '@/lib/markdown';
+import { isAppPath } from './nav';
 
-/**
- * Model prose, rendered.
- *
- * The assistant was never told how to format and answers in Markdown, so the
- * transcript used to show `**Draft filed:**` and `- **Origin is ORD**` with the
- * asterisks in place — on the one page whose entire content is model output.
- *
- * The parsing is in `src/lib/markdown.ts` and is pure, so the decisions have
- * real tests in a suite with no DOM. This file only maps tokens to elements, and
- * it maps them to **elements** — there is no `dangerouslySetInnerHTML` here and
- * no way to introduce one without deleting this comment first. Model output is
- * the least trusted text in the app: it is shaped by tool results, which are
- * shaped by rows a stranger at a booth typed into a lead form.
- */
 export function Prose({ text, className }: { text: string; className?: string }) {
-  const blocks = parseMarkdown(text);
+  const blocks = parseMarkdown(text, isAppPath);
   // An answer that parses to nothing still had something in it — show it rather
   // than rendering a silent gap where a reply should be.
   if (blocks.length === 0) {
@@ -87,11 +74,15 @@ function Spans({ spans }: { spans: Inline[] }) {
           case 'bold':
             return (
               <strong key={i} className="font-semibold text-text">
-                {s.text}
+                <Spans spans={s.spans} />
               </strong>
             );
           case 'italic':
-            return <em key={i}>{s.text}</em>;
+            return (
+              <em key={i}>
+                <Spans spans={s.spans} />
+              </em>
+            );
           case 'code':
             return (
               <code key={i} className="rounded bg-muted px-1 py-0.5 text-[0.9em]">

@@ -138,3 +138,36 @@ describe('what a ticket needs', () => {
     expect(thrown!.missing).toEqual(missingForTicket(user));
   });
 });
+
+/**
+ * The nav-derived path predicate the assistant's answers are linkified with.
+ *
+ * Tested here rather than in `markdown.test.ts` because it is a fact about the
+ * navigation, not about parsing: `src/lib/markdown.ts` deliberately knows no
+ * routes and takes this as a parameter. What must not rot is the *derivation* —
+ * a new section whose paths quietly stopped being clickable would be nobody's
+ * bug report.
+ */
+describe('isAppPath', () => {
+  it('accepts a detail route under a real section', async () => {
+    const { isAppPath } = await import('@/app/(app)/_components/nav');
+    expect(isAppPath('/travel/9abdd71b-765a-4b32-b3c0-1ec26b3ebdea')).toBe(true);
+    expect(isAppPath('/shows/abc/logistics')).toBe(true);
+    expect(isAppPath('/alerts')).toBe(true);
+  });
+
+  it('refuses a path this app does not serve, and anything that leaves', async () => {
+    const { isAppPath } = await import('@/app/(app)/_components/nav');
+    expect(isAppPath('/nowhere/abc')).toBe(false);
+    expect(isAppPath('//evil.test/travel')).toBe(false);
+    expect(isAppPath('travel/abc')).toBe(false);
+  });
+
+  it('is derived from the nav, so every entry is linkable', async () => {
+    const { GROUPS, isAppPath } = await import('@/app/(app)/_components/nav');
+    for (const item of GROUPS.flatMap((g) => g.items)) {
+      if (item.href === '/') continue;
+      expect(isAppPath(item.href), item.href).toBe(true);
+    }
+  });
+});

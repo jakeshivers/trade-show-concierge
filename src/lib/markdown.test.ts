@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { parseInline, parseMarkdown, safeHref } from './markdown';
 
+/** Stands in for the real predicate, which `prose.tsx` derives from `nav.ts`. */
+const isAppPath = (p: string) => ['travel', 'shows', 'alerts'].includes(p.split('/')[1] ?? '');
+
 const text = (s: string) => ({ kind: 'text', text: s });
 
 describe('parseInline', () => {
   it('reads the two things the assistant actually writes', () => {
     // Straight from a seeded transcript, which is what the reader complained about.
     expect(parseInline('**Draft filed:** ORD → MCO')).toEqual([
-      { kind: 'bold', text: 'Draft filed:' },
+      { kind: 'bold', spans: [text('Draft filed:')] },
       text(' ORD → MCO'),
     ]);
   });
@@ -17,7 +20,7 @@ describe('parseInline', () => {
       text('set '),
       { kind: 'code', text: 'FLIGHT_PROVIDER' },
       text(' or '),
-      { kind: 'italic', text: 'nothing' },
+      { kind: 'italic', spans: [text('nothing')] },
       text(' happens'),
     ]);
   });
@@ -53,7 +56,9 @@ describe('links', () => {
     // just refused. Nothing here becomes an anchor, which is the point.
     const spans = parseInline('[click](javascript:alert(1))');
     expect(spans.every((s) => s.kind === 'text')).toBe(true);
-    expect(spans.map((s) => s.text).join('')).toBe('[click](javascript:alert(1))');
+    expect(spans.map((s) => (s.kind === 'text' ? s.text : '')).join('')).toBe(
+      '[click](javascript:alert(1))',
+    );
   });
 
   it('does render a good link, including one to our own screens', () => {
@@ -77,7 +82,7 @@ describe('parseMarkdown', () => {
     expect(block.kind).toBe('bullets');
     expect(block).toMatchObject({
       items: [
-        [{ kind: 'bold', text: 'Origin is ORD' }, text(', from your profile')],
+        [{ kind: 'bold', spans: [text('Origin is ORD')] }, text(', from your profile')],
         [text('No times given')],
       ],
     });
@@ -115,5 +120,47 @@ describe('parseMarkdown', () => {
   it('returns nothing for empty input rather than an empty paragraph', () => {
     expect(parseMarkdown('')).toEqual([]);
     expect(parseMarkdown('   \n\n  ')).toEqual([]);
+  });
+});
+
+describe('bare paths the assistant writes', () => {
+  it('does nothing without a predicate — `src/lib` knows no routes', () => {
+    expect(parseInline('open /travel/abc')).toEqual([text('open /travel/abc')]);
+  });
+
+  it('links a bare app path, and leaves one this app does not serve alone', () => {
+    expect(parseInline('open /travel/abc now', isAppPath)).toEqual([
+      text('open '),
+      { kind: 'link', text: '/travel/abc', href: '/travel/abc' },
+      text(' now'),
+    ]);
+    expect(parseInline('see /nowhere/abc', isAppPath)).toEqual([text('see /nowhere/abc')]);
+  });
+
+  it('links a path the model wrapped in bold — the case that was reported', () => {
+    // The draft flow writes "Open **/travel/<id>** to check the parse".
+    const [span] = parseInline('**/travel/be33-abc**', isAppPath);
+    expect(span).toEqual({
+      kind: 'bold',
+      spans: [{ kind: 'link', text: '/travel/be33-abc', href: '/travel/be33-abc' }],
+    });
+  });
+
+  it('leaves trailing sentence punctuation outside the href', () => {
+    expect(parseInline('open /travel/abc.', isAppPath)).toEqual([
+      text('open '),
+      { kind: 'link', text: '/travel/abc', href: '/travel/abc' },
+      text('.'),
+    ]);
+  });
+
+  it('never linkifies inside code, where a path is shown rather than offered', () => {
+    expect(parseInline('`/travel/abc`', isAppPath)).toEqual([
+      { kind: 'code', text: '/travel/abc' },
+    ]);
+  });
+
+  it('refuses a bare protocol-relative path, which is not ours at all', () => {
+    expect(parseInline('go //evil.test/travel', isAppPath)).toEqual([text('go //evil.test/travel')]);
   });
 });

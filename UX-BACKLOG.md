@@ -144,10 +144,19 @@ the href pattern stops at the first `)` and dropping it would leave a stray brac
 **The user's own message is deliberately not passed through it.** Those are their words, and a
 stray asterisk there is theirs to keep.
 
-**Still open, deliberately:** the model writes bare paths like `**/travel/<uuid>**` rather than
-Markdown links, so the draft flow's *"open /travel/… to confirm"* renders as bold text rather
-than something clickable. Linkifying bare paths out of model output is a judgement call about
-what counts as a path, and it is not the defect that was reported. Decide it separately.
+**Bare paths are clickable too, as of the same day.** The model writes `/travel/<id>` in prose
+rather than as a Markdown link, so the draft flow told people to open something that was not a
+link. Which paths count is `isAppPath` in `nav.ts` — **derived from the nav's own first
+segments**, never listed, because a hand-written route set beside a growing nav fails *silently*:
+a new section's paths would quietly stop being clickable and nobody would file it. It matches on
+the first segment (so `/travel` covers `/travel/<id>` and `/travel/approvals`) and deliberately
+does **not** check the row exists — that is a query per path, and a stale id lands on
+`not-found.tsx` inside the shell with a way back, which beats refusing to link the thing the
+draft flow just told somebody to open. A path inside `code` is never linkified: that is the one
+place a path is being *shown* rather than offered.
+
+Emphasis had to start carrying spans rather than a string for this, because the path the reader
+actually saw was wrapped in bold — a bold token holding plain text could never make it clickable.
 
 ## 3. Four detail routes light nothing in the navigation
 

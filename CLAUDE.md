@@ -736,26 +736,22 @@ HubSpot. Three observations that should shape the choice more than the list does
   only unverified thing here that needs no account at all — just a PDF. Everything structural about
   step 22's extraction is proven and **recall is not**, by construction. That gap is a week of
   prompt work or a nasty surprise, and there is no way to know which without one real document.
-- **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's backlog has
-  carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with their own deadlines,
-  which composes the §5a engine that already exists rather than adding a ninth thing that alerts.
-
-**The next UX step is responsive layout** (2026-09-08): `sidebar.tsx` is a fixed column at every
-width and `ui.tsx` has no `sm:`/`md:`/`lg:` variant at all, while `manifest.ts` makes `/day-of` —
-a screen used standing on a show floor — the installable start_url. It is a whole-app pass and
-wants its own commit. **`UX-BACKLOG.md` has it and six more, ranked, with the evidence.**
+- **Of the pure, no-account features left, sponsorship campaigns is the largest.** §10's backlog
+has carried it since the start and `RESEARCH.md` ranks it tenth: deliverables with their own
+deadlines, which composes the §5a engine that already exists rather than adding a ninth thing
+that alerts.
 
 **Step 21's remaining two halves are deferred by decision, not left undone** (2026-09-01,
 `SCOPE.md` §10.21 `[~]` and §11.2): there is **no real Slack workspace**, this runs on **localhost
 only**, and hosting needs a cloud account that §9's ground rule forbids wiring unasked. Do not pick
 any of them up speculatively.
 
-- **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified, like
-  AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`. The default
-  transport is `console`, which composes the real message and delivers it to nobody. **Do not add a
-  `recorded` Slack provider** — the whole argument for `console` existing is that a replayed
+- - **Slack stays stubbed**, in the sense that matters: the adapter is written and unverified,
+  like AeroAPI, EasyPost and Salesforce, and nothing constructs it without `SLACK_BOT_TOKEN`. The
+  default transport is `console`, which composes the real message and delivers it to nobody. **Do
+  not add a `recorded` Slack provider** — the whole argument for `console` is that a replayed
   *delivery* is a claim somebody's phone buzzed.
-- **The SSO rollout is a TODO gated on hosting, not on itself.** A SAML IdP posts its assertion to an
+**The SSO rollout is a TODO gated on hosting, not on itself.** A SAML IdP posts its assertion to an
   ACS URL it has to be able to reach, and an enterprise OIDC connection wants a redirect URI on a
   real domain — neither can reach `localhost:3000`. So hosting and SSO are one gate, in that order.
   When it does land, the domain-to-org mapping is a **change to a ground rule** rather than a
@@ -1719,14 +1715,15 @@ unverified and this file will say so rather than implying otherwise.
   here**: the reset is DOM behaviour and this suite is `environment: 'node'`. The check is a
   browser.
 - **The assistant answers in Markdown, so the transcript renders it — as elements.** Nothing
-  told the model how to format, so `**Draft filed:**` showed with its asterisks on the one page
-  whose whole content is model prose. Parsing is pure in `src/lib/markdown.ts` (so it
-  has tests in a suite with no DOM); `_components/prose.tsx` maps tokens to React elements and
-  there is **no `dangerouslySetInnerHTML` near it** — model output is the least trusted text
-  here, shaped by tool results, shaped by rows a stranger at a booth typed. A link
-  renders only for a relative, `http(s)` or `mailto` href; anything else degrades to the
-  **literal token**, and anything unsupported to the lines the model wrote. **A user's own
-  message is not passed through it.**
+  told the model how to format, so its markup showed literally on the one page whose whole
+  content is model prose. Parsing is pure in `src/lib/markdown.ts` (tests, in a suite with no
+  DOM); `_components/prose.tsx` maps tokens to React elements with **no
+  `dangerouslySetInnerHTML` near it** — model output is the least trusted text here, shaped by
+  tool results, shaped by rows a stranger at a booth typed. A link renders only for a relative,
+  `http(s)` or `mailto` href; anything else degrades to the **literal token**, and anything
+  unsupported to the lines the model wrote. **A user's own message is not passed through it.**
+  Bare paths are linkified via `isAppPath` in `nav.ts` — derived from the nav's first segments,
+  never listed, because a hand-written route set beside a growing nav fails *silently*.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.
