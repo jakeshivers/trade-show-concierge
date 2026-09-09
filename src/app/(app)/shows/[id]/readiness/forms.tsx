@@ -13,7 +13,7 @@ import { MAX_WEIGHT, MIN_NOTE, TASK_CATEGORIES } from '@/lib/readiness/edit';
 import type { ChecklistEntry } from '@/lib/readiness/store';
 import type { ChecklistTemplate } from '@/lib/readiness/templates';
 import type { FormState } from '../../../_components/form';
-import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit } from '../../../_components/form-ui';
 import { zonedDateInput } from '@/lib/datetime/zoned';
 
 /**
@@ -54,7 +54,7 @@ export function StatusControl({
   const needsNote = next === 'blocked' || next === 'skipped';
 
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="taskId" value={entry.task.id} />
       <select
@@ -84,7 +84,7 @@ export function StatusControl({
 
       <Submit disabled={pending || next === entry.task.status}>Save</Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
@@ -102,7 +102,7 @@ export function AddTaskForm({
   return (
     <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a task</summary>
-      <form action={action} className="mt-3 grid gap-3 sm:grid-cols-2">
+      <Form action={action} state={state} className="mt-3 grid gap-3 sm:grid-cols-2">
         <input type="hidden" name="showId" value={showId} />
         <Field label="Title" className="sm:col-span-2">
           <input name="title" required minLength={3} className={INPUT} />
@@ -141,7 +141,7 @@ export function AddTaskForm({
           </Button>
           <Message state={state} density="comfortable" className="mt-2" />
         </div>
-      </form>
+      </Form>
     </details>
   );
 }
@@ -169,7 +169,7 @@ export function EditTaskForm({
       <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
         Edit
       </summary>
-      <form action={action} className="mt-2 grid gap-2 sm:grid-cols-2">
+      <Form action={action} state={state} className="mt-2 grid gap-2 sm:grid-cols-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="taskId" value={task.id} />
         <Field label="Title" className="sm:col-span-2">
@@ -213,9 +213,9 @@ export function EditTaskForm({
           </Button>
           <Message state={state} />
         </div>
-      </form>
+      </Form>
 
-      <form action={delAction} className="mt-2">
+      <Form action={delAction} state={del} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="taskId" value={task.id} />
         <QuietSubmit
@@ -229,7 +229,7 @@ export function EditTaskForm({
           Skipping keeps the decision. Prefer skipping.
         </span>
         <Message state={del} />
-      </form>
+      </Form>
     </details>
   );
 }
@@ -248,7 +248,7 @@ export function TemplateForm({
   const [state, action, pending] = useActionState<FormState, FormData>(seedFromTemplate, {});
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <input type="hidden" name="showId" value={showId} />
       {templates.map((t) => (
         <div key={t.key} className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
@@ -273,7 +273,7 @@ export function TemplateForm({
         </p>
       )}
       <Message state={state} density="comfortable" />
-    </form>
+    </Form>
   );
 }
 

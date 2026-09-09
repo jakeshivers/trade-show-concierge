@@ -29,7 +29,7 @@ export async function issue(_prev: FormState, form: FormData): Promise<FormState
       ok: `${token} — copy this now. Only its hash is stored, so it cannot be shown again. Issue a new key rather than trying to recover this one.`,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -38,7 +38,7 @@ export async function revoke(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await revokeIntakeKey(actor, str(form, 'keyId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/settings/intake');
   return { ok: 'Revoked. The row stays, so the leads this key wrote are still traceable to it.' };

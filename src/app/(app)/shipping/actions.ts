@@ -57,7 +57,7 @@ export async function trackPackage(_prev: FormState, form: FormData): Promise<Fo
       costCenterId: str(form, 'costCenterId'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/shipping');
@@ -103,7 +103,7 @@ export async function confirmArrival(_prev: FormState, form: FormData): Promise<
   try {
     await confirmReceipt(actor, str(form, 'shipmentId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/shipping');
   revalidatePath(`/shows/${showId}/logistics`);
@@ -118,7 +118,7 @@ export async function withdrawArrival(_prev: FormState, form: FormData): Promise
   try {
     await undoReceipt(actor, str(form, 'shipmentId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/shipping');
   revalidatePath(`/shows/${showId}/logistics`);

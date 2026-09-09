@@ -1,3 +1,6 @@
+'use client';
+
+import { useEffect, useRef } from 'react';
 import { zonedDateInput, zonedTimeInput } from '@/lib/datetime/zoned';
 import { cn } from './cn';
 import type { FormState } from './form';
@@ -41,6 +44,78 @@ export function controlClass(density: Density = 'compact', extra?: string): stri
 }
 
 type Own = { density?: Density };
+
+/**
+ * A `<form>` that puts back what was typed when its action refuses.
+ *
+ * Use this instead of a bare `<form action={…}>` anywhere the action can return
+ * an error — which is all of them.
+ *
+ * **Why this writes to the DOM instead of passing `defaultValue` down.** React
+ * 19 resets an uncontrolled form once a form action completes, whether or not it
+ * succeeded, so every refusal used to destroy the submission — and on a form
+ * carrying `defaultValue` it was worse than destroying it: each field reverted
+ * to the **stored** value while the message named a different field, so fixing
+ * the named field and submitting again saved the old numbers, into a versioned
+ * policy row. See `FormState.values`.
+ *
+ * The obvious fix is `defaultValue={state.values?.x ?? …}` on every control.
+ * It was tried and it is wrong here, for a reason worth keeping: **about ninety
+ * of this app's controls are raw `<input>` / `<select>` / `<textarea>` elements**
+ * carrying local class strings, not the `Input` / `Select` / `Textarea` wrappers
+ * — the migration in `UI-REWORK.md` moved the *form* markup and left those. A
+ * fix living in the three wrappers therefore covers a minority of the controls
+ * and looks complete, which is the worst of both. Restoring at the form element
+ * covers everything inside it, owned or not, and cannot be forgotten by the next
+ * control somebody hand-rolls.
+ *
+ * A file input is skipped: no page may set one, and a `File` never reaches
+ * `values` anyway. A checkbox is restored by **presence** — an unchecked box is
+ * simply absent from `FormData` — and a radio by matching its own value.
+ */
+export function Form({
+  action,
+  state,
+  children,
+  ...props
+}: Omit<React.ComponentPropsWithoutRef<'form'>, 'action'> & {
+  action: (formData: FormData) => void;
+  state: FormState;
+}) {
+  const ref = useRef<HTMLFormElement>(null);
+  const values = state.values;
+
+  useEffect(() => {
+    const form = ref.current;
+    if (!values || !form) return;
+    for (const el of Array.from(form.elements)) {
+      const name = (el as HTMLInputElement).name;
+      if (!name) continue;
+      if (el instanceof HTMLInputElement) {
+        if (el.type === 'file') continue;
+        if (el.type === 'checkbox') {
+          el.checked = Object.prototype.hasOwnProperty.call(values, name);
+          continue;
+        }
+        if (el.type === 'radio') {
+          el.checked = values[name] === el.value;
+          continue;
+        }
+      } else if (!(el instanceof HTMLSelectElement) && !(el instanceof HTMLTextAreaElement)) {
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(values, name)) {
+        (el as HTMLInputElement).value = values[name];
+      }
+    }
+  }, [values]);
+
+  return (
+    <form ref={ref} {...props} action={action}>
+      {children}
+    </form>
+  );
+}
 
 export function Input({
   density = 'compact',

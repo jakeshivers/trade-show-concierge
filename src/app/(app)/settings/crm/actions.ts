@@ -77,6 +77,6 @@ export async function runSync(_prev: FormState, form: FormData): Promise<FormSta
         `${plural(result.attributionsWritten, 'attribution', 'attributions')} written back.`,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }

@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import { SUGGESTED_CATEGORIES } from '@/lib/cost/edit';
-import { Field, Input, Message, QuietSubmit, Select, Submit } from '../../../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit } from '../../../_components/form-ui';
 import { fileExpense, removeExpense } from './actions';
 
 /**
@@ -28,7 +28,7 @@ export function FileExpenseForm({
 }) {
   const [state, action, pending] = useActionState(fileExpense, {});
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} state={state} className="space-y-4">
       <input type="hidden" name="showId" value={showId} />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -88,7 +88,7 @@ export function FileExpenseForm({
 
       <Submit pending={pending} busy="Filing…">File this cost</Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -96,10 +96,10 @@ export function FileExpenseForm({
 export function RemoveExpenseForm({ expenseId }: { expenseId: string }) {
   const [state, action, pending] = useActionState(removeExpense, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="expenseId" value={expenseId} />
       <QuietSubmit pending={pending} busy="…">Remove</QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

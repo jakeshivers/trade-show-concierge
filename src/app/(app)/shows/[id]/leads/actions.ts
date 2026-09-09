@@ -74,7 +74,7 @@ export async function capture(_prev: FormState, form: FormData): Promise<FormSta
     }
     return { ok: 'Captured.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -97,7 +97,7 @@ export async function addMeeting(_prev: FormState, form: FormData): Promise<Form
       notes: optional(form, 'notes'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Recorded.' };
@@ -109,7 +109,7 @@ export async function erase(_prev: FormState, form: FormData): Promise<FormState
   try {
     await redactLead(actor, str(form, 'leadId'), str(form, 'reason'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -160,7 +160,7 @@ export async function editLead(_prev: FormState, form: FormData): Promise<FormSt
     }
     return { ok: 'Saved.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -178,7 +178,7 @@ export async function markAsDuplicate(_prev: FormState, form: FormData): Promise
   try {
     await markDuplicate(actor, str(form, 'leadId'), str(form, 'ofLeadId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -192,7 +192,7 @@ export async function unmarkAsDuplicate(_prev: FormState, form: FormData): Promi
   try {
     await unmarkDuplicate(actor, str(form, 'leadId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Counted again — two people after all.' };
@@ -277,7 +277,7 @@ export async function preview(
       basisUnmapped: result.plan.basisUnmapped,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -309,7 +309,7 @@ export async function commit(_prev: FormState, form: FormData): Promise<FormStat
           : ''),
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -341,7 +341,7 @@ export async function addTargetAccount(_prev: FormState, form: FormData): Promis
       ownerId: optional(form, 'ownerId'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Target account added.' };
@@ -353,7 +353,7 @@ export async function removeTargetAccount(_prev: FormState, form: FormData): Pro
   try {
     await removeTarget(actor, str(form, 'targetId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Removed.' };

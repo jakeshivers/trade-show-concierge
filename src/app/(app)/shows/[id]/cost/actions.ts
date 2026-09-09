@@ -32,7 +32,7 @@ export async function fileExpense(_prev: FormState, form: FormData): Promise<For
       incurredOn: optional(form, 'incurredOn'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Filed. The line above has moved, and so has this show on /cost.' };
@@ -44,7 +44,7 @@ export async function removeExpense(_prev: FormState, form: FormData): Promise<F
     const showId = await deleteExpense(actor, str(form, 'expenseId'));
     refresh(showId);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   return { ok: 'Removed.' };
 }

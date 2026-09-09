@@ -28,7 +28,7 @@ export async function saveProfile(_prev: FormState, form: FormData): Promise<For
       preferredAirlines: optional(form, 'preferredAirlines'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   // The name and phone show up in three other places: the roll call reads the
   // phone, the show's team tab reads the name, and the flight board reads both.
@@ -47,7 +47,7 @@ export async function saveLoyaltyAccount(_prev: FormState, form: FormData): Prom
       accountNumber: str(form, 'accountNumber'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/settings/profile');
   return {
@@ -61,7 +61,7 @@ export async function deleteLoyaltyAccount(_prev: FormState, form: FormData): Pr
   try {
     await removeMyLoyaltyAccount(actor, str(form, 'id'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/settings/profile');
   // Deliberately says what it does not do. A ticket already issued carries the

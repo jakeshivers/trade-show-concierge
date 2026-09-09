@@ -6,7 +6,7 @@ import type { AssetOption } from '@/lib/assets/board';
 import type { ShowAllocationRow } from '@/lib/assets/store';
 import type { CollateralRow } from '@/lib/assets/store';
 import { Badge } from '../_components/ui';
-import { Field, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../_components/form-ui';
 import { AvailabilityNote } from './_present';
 import {
   addAsset,
@@ -129,7 +129,7 @@ export function NewAssetForm({ costCenters }: { costCenters: CostCenter[] }) {
     );
   }
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <AssetFields costCenters={costCenters} />
       <Message state={state} />
       <div className="flex items-center gap-3">
@@ -140,7 +140,7 @@ export function NewAssetForm({ costCenters }: { costCenters: CostCenter[] }) {
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -155,7 +155,7 @@ export function EditAssetForm({ row, costCenters }: { row: AssetRow; costCenters
     );
   }
   return (
-    <form action={action} className="mt-3 w-full space-y-3 rounded-md bg-muted p-3">
+    <Form action={action} state={state} className="mt-3 w-full space-y-3 rounded-md bg-muted p-3">
       <AssetFields row={row} costCenters={costCenters} />
       <Message state={state} />
       <div className="flex items-center gap-3">
@@ -166,20 +166,20 @@ export function EditAssetForm({ row, costCenters }: { row: AssetRow; costCenters
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
 export function DeleteAssetForm({ assetId }: { assetId: string }) {
   const [state, action, pending] = useActionState(removeAsset, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="assetId" value={assetId} />
       <QuietSubmit pending={pending} busy="Deleting…">
         Delete
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -196,7 +196,7 @@ export function ReserveForm({
 }) {
   const [state, action, pending] = useActionState(reserve, {});
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <input type="hidden" name="showId" value={showId} />
       <Field
         label="Asset"
@@ -230,7 +230,7 @@ export function ReserveForm({
       <Submit pending={pending} busy="Reserving…">
         Reserve
       </Submit>
-    </form>
+    </Form>
   );
 }
 
@@ -297,7 +297,7 @@ export function RewindowForm({
     );
   }
   return (
-    <form action={action} className="mt-2 w-full space-y-3 rounded-md bg-muted p-3">
+    <Form action={action} state={state} className="mt-2 w-full space-y-3 rounded-md bg-muted p-3">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="reservationId" value={row.reservation!.id} />
       <input type="hidden" name="assetId" value={row.asset.id} />
@@ -311,14 +311,14 @@ export function RewindowForm({
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
 export function ReleaseForm({ showId, reservationId }: { showId: string; reservationId: string }) {
   const [state, action, pending] = useActionState(release, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="reservationId" value={reservationId} />
       {/* The second press carries the acknowledgement — §5e's rule about un-staffing. */}
@@ -327,7 +327,7 @@ export function ReleaseForm({ showId, reservationId }: { showId: string; reserva
         {state.error ? 'Release anyway' : 'Release'}
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -336,14 +336,14 @@ export function ReleaseForm({ showId, reservationId }: { showId: string; reserva
 export function SignOutForm({ showId, reservationId }: { showId?: string; reservationId: string }) {
   const [state, action, pending] = useActionState(signOut, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       {showId && <input type="hidden" name="showId" value={showId} />}
       <input type="hidden" name="reservationId" value={reservationId} />
       <Submit pending={pending} busy="Signing out…">
         Sign it out
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -353,7 +353,7 @@ export function SignInForm({ row, showId }: { row: AssetRow; showId?: string }) 
   const [condition, setCondition] = useState<string>(out ?? 'good');
   const worse = out !== null && RANK[condition] > RANK[out];
   return (
-    <form action={action} className="space-y-2">
+    <Form action={action} state={state} className="space-y-2">
       {showId && <input type="hidden" name="showId" value={showId} />}
       <input type="hidden" name="reservationId" value={row.reservation!.id} />
       <input type="hidden" name="conditionOnCheckout" value={out ?? ''} />
@@ -382,7 +382,7 @@ export function SignInForm({ row, showId }: { row: AssetRow; showId?: string }) 
         </Field>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -453,7 +453,7 @@ export function NewCollateralForm({ costCenters }: { costCenters: CostCenter[] }
     );
   }
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <CollateralFields costCenters={costCenters} />
       <p className="text-xs text-text-muted">
         It starts at nothing on hand. Stock arrives through a movement so the ledger has a first
@@ -468,7 +468,7 @@ export function NewCollateralForm({ costCenters }: { costCenters: CostCenter[] }
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -483,7 +483,7 @@ export function EditCollateralForm({ row, costCenters }: { row: CollateralRow; c
     );
   }
   return (
-    <form action={action} className="mt-2 w-full space-y-3 rounded-md bg-muted p-3">
+    <Form action={action} state={state} className="mt-2 w-full space-y-3 rounded-md bg-muted p-3">
       <CollateralFields row={row} costCenters={costCenters} />
       <Message state={state} />
       <div className="flex items-center gap-3">
@@ -494,20 +494,20 @@ export function EditCollateralForm({ row, costCenters }: { row: CollateralRow; c
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
 export function DeleteCollateralForm({ itemId }: { itemId: string }) {
   const [state, action, pending] = useActionState(removeCollateral, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="itemId" value={itemId} />
       <QuietSubmit pending={pending} busy="Deleting…">
         Delete
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -522,7 +522,7 @@ export function MoveStockForm({ itemId }: { itemId: string }) {
     );
   }
   return (
-    <form action={action} className="mt-2 space-y-2 rounded-md bg-muted p-3">
+    <Form action={action} state={state} className="mt-2 space-y-2 rounded-md bg-muted p-3">
       <input type="hidden" name="itemId" value={itemId} />
       <div className="flex flex-wrap items-end gap-2">
         <Field label="What happened">
@@ -552,7 +552,7 @@ export function MoveStockForm({ itemId }: { itemId: string }) {
           Cancel
         </button>
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -561,7 +561,7 @@ export function MoveStockForm({ itemId }: { itemId: string }) {
 export function AllocateForm({ showId, items }: { showId: string; items: CollateralRow[] }) {
   const [state, action, pending] = useActionState(allocate, {});
   return (
-    <form action={action} className="flex flex-wrap items-end gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-end gap-2">
       <input type="hidden" name="showId" value={showId} />
       <Field label="Item">
         <Select name="itemId" required defaultValue="">
@@ -580,21 +580,21 @@ export function AllocateForm({ showId, items }: { showId: string; items: Collate
         Allocate
       </Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
 export function PackForm({ showId, allocationId }: { showId?: string; allocationId: string }) {
   const [state, action, pending] = useActionState(packAllocation, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       {showId && <input type="hidden" name="showId" value={showId} />}
       <input type="hidden" name="allocationId" value={allocationId} />
       <QuietSubmit pending={pending} busy="Packing…">
         Pack it
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -607,7 +607,7 @@ export function CountBackForm({
 }) {
   const [state, action, pending] = useActionState(countBack, {});
   return (
-    <form action={action} className="flex flex-wrap items-end gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-end gap-2">
       {showId && <input type="hidden" name="showId" value={showId} />}
       <input type="hidden" name="allocationId" value={row.allocation.id} />
       <Field
@@ -620,20 +620,20 @@ export function CountBackForm({
         Count it back
       </Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
 export function UnallocateForm({ showId, allocationId }: { showId?: string; allocationId: string }) {
   const [state, action, pending] = useActionState(unallocate, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       {showId && <input type="hidden" name="showId" value={showId} />}
       <input type="hidden" name="allocationId" value={allocationId} />
       <QuietSubmit pending={pending} busy="Removing…">
         Remove
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { Message } from '../_components/form-ui';
+import { Form, Message } from '../_components/form-ui';
 import { answerFromBoard } from './actions';
 
 /**
@@ -34,7 +34,7 @@ export function BoardAnswer({
   const [state, action, pending] = useActionState(answerFromBoard, {});
   const first = name.split(' ')[0];
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="userId" value={userId} />
@@ -66,6 +66,6 @@ export function BoardAnswer({
         </button>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

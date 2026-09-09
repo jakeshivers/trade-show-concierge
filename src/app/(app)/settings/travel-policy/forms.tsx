@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import { CABINS, CABIN_LABEL } from '@/lib/travel/policy-edit';
-import { Field, Input, Message, Select, Submit } from '../../_components/form-ui';
+import { Field, Form, Input, Message, Select, Submit } from '../../_components/form-ui';
 import { savePolicy } from './actions';
 
 type Live = {
@@ -50,7 +50,7 @@ function num(n: number | null | undefined): string {
 export function PolicyForm({ live }: { live: Live }) {
   const [state, action, pending] = useActionState(savePolicy, {});
   return (
-    <form action={action} className="space-y-6">
+    <Form action={action} state={state} className="space-y-6">
       <Field label="What changed" hint="Optional. Shown beside this version in the history below.">
         <Input name="label" density="comfortable" placeholder="Raised domestic cap for 2027" />
       </Field>
@@ -200,6 +200,6 @@ export function PolicyForm({ live }: { live: Live }) {
 
       <Submit pending={pending} busy="Saving…">Save as a new version</Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

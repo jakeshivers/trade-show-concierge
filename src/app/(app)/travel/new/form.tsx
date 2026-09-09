@@ -4,7 +4,7 @@ import { useActionState, useState } from 'react';
 import { openRequest } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
-import { Field, controlClass } from '../../_components/form-ui';
+import { Field, Form, controlClass } from '../../_components/form-ui';
 
 /**
  * The request form.
@@ -58,7 +58,7 @@ export function RequestForm({
   const home = traveler?.homeAirport ?? null;
 
   return (
-    <form action={action} className="space-y-5">
+    <Form action={action} state={state} className="space-y-5">
       {state.error && (
         <p className="rounded-md bg-bad-soft px-3 py-2 text-sm text-bad">
           {state.error}
@@ -226,7 +226,7 @@ export function RequestForm({
           This opens the request. Searching is the next step, and it is deliberate.
         </span>
       </div>
-    </form>
+    </Form>
   );
 }
 

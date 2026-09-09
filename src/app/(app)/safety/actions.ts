@@ -40,7 +40,7 @@ export async function answerFromBoard(_prev: FormState, form: FormData): Promise
       optional(form, 'note'),
     );
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/safety');
   revalidatePath(`/shows/${showId}/safety`);

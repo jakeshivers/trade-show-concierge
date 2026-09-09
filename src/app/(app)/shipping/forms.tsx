@@ -2,15 +2,7 @@
 
 import { useActionState, useState } from 'react';
 import Link from 'next/link';
-import {
-  Field,
-  Input,
-  Message,
-  QuietSubmit,
-  Select,
-  Submit,
-  ZonedDateTime,
-} from '../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit, ZonedDateTime } from '../_components/form-ui';
 import { CarrierAndTracking } from './_carrier-field';
 import { confirmArrival, trackPackage, withdrawArrival } from './actions';
 
@@ -62,7 +54,7 @@ export function TrackPackageForm({
   if (!show) return null;
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <CarrierAndTracking />
 
@@ -177,7 +169,7 @@ export function TrackPackageForm({
         </Link>
         <Message state={state} />
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -209,7 +201,7 @@ export function BoardReceiptForm({
     {},
   );
   return (
-    <form action={action}>
+    <Form action={action} state={state}>
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       {receivedAt ? (
@@ -222,6 +214,6 @@ export function BoardReceiptForm({
         </QuietSubmit>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

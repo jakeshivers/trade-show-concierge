@@ -17,10 +17,8 @@ admin-defined spend and schedule constraints.
   CSS-first with no config file, and the `@theme inline` trap that breaks runtime dark mode.
   **Read §6 before writing any CSS.** The step narratives in *this* file are deliberately
   short; the long version of any of them is in `git log` and in that document.
-- **`UX-BACKLOG.md`** — **open, nothing started.** What is left on the app layer, ranked,
-  with evidence. Item 2 is **confirmed in a browser and is the one to do first**: a rejected
-  form submit destroys what was typed, and on a form with a `defaultValue` it silently
-  reverts the edit instead.
+- **`UX-BACKLOG.md`** — what is left on the app layer, ranked, with evidence. Item 2 is
+  **done**; item 3 is next and item 1 (responsive) is the real piece of work.
 - **`git log`** — each step commit documents what was learned building it.
 
 ## Working agreement — do this at the end of every step
@@ -650,30 +648,17 @@ is the fifth and is deliberately left open** — whether a figure a company type
 earns more trust than a replayed one is a real argument with two sides. Decide it deliberately.
 
 **The copy rule, which took four passes to state.** The docs argue in a vocabulary — floors,
-coverage, lawful basis, withheld, fixtures — and that vocabulary is *correct*, which is exactly
-why it leaks onto badges and blurbs. **A doc comment is addressed to whoever maintains the
-decision; page copy is addressed to whoever lives with it.** Symptoms to grep for: a term of art
-on a `Badge`, an `x(s)` plural, a section number, a `pnpm` command, and any sentence explaining
-why we chose something rather than what is true and what to do. The scan is four lines of shell
-against a running `pnpm dev` and belongs in the same habit as `pnpm smoke`:
-
-```
-curl -s localhost:3000$route | strip-tags |
-  grep -oiE 'pnpm [a-z:-]+|§[0-9]+|SCOPE\.md|\ba floor\b|lawful basis|[a-z]\(s\)'
-```
-
-**And a control that exists is not a control that can be found.** A card is named for what
-somebody *does* in it; copy that asks for an action names the button; and **page copy telling
-somebody to do a thing is a claim the product should be checked against** — grep the screens for
-imperatives and confirm each has a control at the other end. That is how the missing lead editor
-(`updateLead`, the fourth write path) was found: two lines on screen pointed at it and
-`canManageLeads`'s doc comment had described its rule, and nobody had written the function.
-
-**What the passes cost in tests.** Five tests across §14–§18 asserted on a user-facing sentence
-and broke without anything true breaking. **A test that asserts on copy is testing the copy.**
-Assert the number, the direction, or the shape. Three `pnpm smoke` expectations were invalidated
-the same way, so prefer a heading or a stat label over a sentence — and **run `pnpm smoke` in the
-same breath as `pnpm test`**, since the suite is pure and a copy pass is invisible to all of it.
+coverage, lawful basis, withheld — and it is *correct*, which is exactly why it leaks onto
+badges. **A doc comment is addressed to whoever maintains the decision; page copy to whoever
+lives with it.** Grep for: a term of art on a `Badge`, an `x(s)` plural, a section number, a
+`pnpm` command, and any sentence saying why we chose something rather than what is true and what
+to do. **A control that exists is not one that can be found**, a card is named for what somebody
+*does* in it, and **copy telling somebody to do a thing is a claim to check the product
+against** — grep the screens for imperatives. The scan is in `UI-REWORK.md` §17; §14–§18 is the
+long version, including the five tests that asserted on a sentence and broke without anything
+true breaking. **A test asserting on copy is testing the copy** — assert the number, the
+direction or the shape. Three `pnpm smoke` expectations went the same way, so prefer a heading
+or a stat label, and **run `pnpm smoke` with `pnpm test`**.
 
 **Two defects worth remembering because nothing could have caught them.** A route may not import
 a module out of another route's folder when the path contains a dynamic segment — it type-checks,
@@ -683,18 +668,16 @@ builds, renders, and **404s every tab under `/shows/[id]`**; only `pnpm smoke` c
 rendering as real ones. **A nullable column in a unique index is an idempotency rail with an off
 switch.**
 
-**Passes 4 and 5 (2026-09-08) swept the path *before* all of that** — the first screen somebody
-lands on, an unconfigured workspace, and what the app shows while thinking or when it breaks. The
-overview had led since step 9 with a card saying the travel form would *"land at step 9"* over a
-capability list frozen at step 8 beside a nav grown to twenty-three entries — the `SOURCE_LABEL`
-trap in prose, fixed by `nav.ts`'s required `does`. `src/lib/setup/` is the first-run card (**not**
-an eighth engine). `loading.tsx`, `error.tsx` and two `not-found.tsx` did not exist, so a slow
-board looked broken and five `notFound()` calls landed outside the shell. Pass 5 added the eight
-empty states that said only *that* they were empty, and the role line — a Member lost seven nav
-entries with nothing saying why. **The tidy-up exposed the real defect:** `missingForTicket` was a
-commented *mirror* of the inline check in `passengers.ts` and they had drifted — `splitName` gives
-a one-word name a given and family name that are the same word, so the agent would have ticketed
-somebody whose legal name cannot match their ID while the profile screen correctly refused.
+**Passes 4–6 (2026-09-08/09) swept the path *before* all of that** — the first screen somebody
+lands on, an unconfigured workspace, what the app shows while thinking or when it breaks, and
+what a form does when it is refused. **`UI-REWORK.md` §21–§22 and `UX-BACKLOG.md` are the long
+version**; the ground rules below are what a session needs first. Three things to carry: the
+overview's capability list was frozen at step 8 beside a nav grown to twenty-three entries (the
+`SOURCE_LABEL` trap in prose — `nav.ts`'s `does` is required now); `src/lib/setup/` is the
+first-run card and is deliberately **not** an eighth engine; and the tidy-up exposed the real
+defect — `missingForTicket` was a commented *mirror* of the inline check in `passengers.ts` and
+they had drifted, so the agent would have ticketed somebody whose one-word legal name cannot
+match their ID while the profile screen correctly refused.
 
 ### Carrier preferences, in four passes (2026-09-05 → 09-08)
 
@@ -1728,6 +1711,18 @@ unverified and this file will say so rather than implying otherwise.
   filter written twice. Deliberately **not** the same act as a disabled tab on every show:
   `shows/[id]/layout.tsx` argues a tab that exists and says no invites the question, and that
   still stands. One line where somebody is orienting is not a locked door drawn ten times.
+- **A form uses `<Form>`, never a bare `<form action=…>`, or a refusal destroys the
+  submission.** React 19 resets an uncontrolled form once a form action completes and does not
+  care whether it succeeded — so every refusal used to blank the fields, and on a form carrying
+  `defaultValue` it did something worse: each field reverted to the **stored** value while the
+  message named a different one, so fixing the named field and submitting again saved the old
+  numbers into a versioned policy row. `FormState.values` carries the submission back on
+  refusal only (a success still clears the form) and `<Form>` restores it. It restores by
+  **writing to the DOM in an effect**, not by passing `defaultValue` down, because ~90 of this
+  app's controls are raw `<input>`/`<select>`/`<textarea>` rather than the wrappers — a fix in
+  the three wrappers covers a minority *and looks complete*. **No test can catch a regression
+  here**: the reset is DOM behaviour and this suite is `environment: 'node'`. The check is a
+  browser.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.

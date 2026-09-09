@@ -48,7 +48,7 @@ export async function createTask(_prev: FormState, form: FormData): Promise<Form
   try {
     await addTask(actor, showId, draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Task added.' };
@@ -60,7 +60,7 @@ export async function updateTask(_prev: FormState, form: FormData): Promise<Form
   try {
     await editTask(actor, String(form.get('taskId') ?? ''), draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Task updated.' };
@@ -77,7 +77,7 @@ export async function changeStatus(_prev: FormState, form: FormData): Promise<Fo
       optional(form, 'note'),
     );
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -89,7 +89,7 @@ export async function removeTask(_prev: FormState, form: FormData): Promise<Form
   try {
     await deleteTask(actor, String(form.get('taskId') ?? ''));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Task deleted.' };
@@ -103,7 +103,7 @@ export async function seedFromTemplate(_prev: FormState, form: FormData): Promis
     const plan = await applyTemplate(actor, showId, String(form.get('templateKey') ?? ''));
     added = plan.create.length;
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {

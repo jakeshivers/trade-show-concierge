@@ -4,7 +4,7 @@ import { useActionState, useState } from 'react';
 import { STRATEGY_KINDS, describeStrategy, type LoginPolicy } from '@/lib/auth/login-methods';
 import { updateLoginPolicy } from './actions';
 import type { FormState } from '../../_components/form';
-import { Message } from '../../_components/form-ui';
+import { Form, Message } from '../../_components/form-ui';
 
 export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
   const [state, action, pending] = useActionState<FormState, FormData>(updateLoginPolicy, {});
@@ -12,7 +12,7 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
   const allowed = current.mode === 'allowlist' ? current.allowedStrategies : [];
 
   return (
-    <form action={action} className="space-y-5 text-sm">
+    <Form action={action} state={state} className="space-y-5 text-sm">
       <fieldset className="space-y-2">
         <legend className="font-medium">Mode</legend>
         {(['unrestricted', 'allowlist'] as const).map((m) => (
@@ -74,6 +74,6 @@ export function LoginPolicyForm({ current }: { current: LoginPolicy }) {
       >
         {pending ? 'Saving…' : 'Save new version'}
       </button>
-    </form>
+    </Form>
   );
 }

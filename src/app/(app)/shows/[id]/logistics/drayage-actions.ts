@@ -60,7 +60,7 @@ export async function saveDrayageRateCard(
       sourceNote: optional(form, 'sourceNote'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -78,7 +78,7 @@ export async function confirmDrayageRateCard(
   try {
     await setRateCardConfirmed(actor, showId, confirmed);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -97,7 +97,7 @@ export async function removeDrayageRateCard(
   try {
     await deleteRateCard(actor, showId);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Rate card removed. The drayage estimate is withheld rather than zero.' };
@@ -109,7 +109,7 @@ export async function recordCrateHandling(_prev: FormState, form: FormData): Pro
   try {
     await setShipmentHandling(actor, str(form, 'shipmentId'), str(form, 'handling') as HandlingKind);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};

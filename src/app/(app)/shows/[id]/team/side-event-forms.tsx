@@ -11,13 +11,7 @@ import {
 } from './actions';
 import { Button } from '../../../_components/ui';
 import type { FormState } from '../../../_components/form';
-import {
-  Message,
-  QuietSubmit,
-  Submit,
-  ZonedDateTime,
-  controlClass,
-} from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, ZonedDateTime, controlClass } from '../../../_components/form-ui';
 import { SIDE_EVENT_KINDS } from '@/lib/team/edit';
 import type { SideEventEntry } from '@/lib/team/store';
 /**
@@ -91,7 +85,7 @@ export function RsvpControl({
   return (
     <span className="inline-flex items-center gap-1">
       {mayAnswer && (
-        <form action={action} className="inline-flex items-center gap-1">
+        <Form action={action} state={state} className="inline-flex items-center gap-1">
           <input type="hidden" name="showId" value={showId} />
           <input type="hidden" name="rsvpId" value={rsvpId} />
           <select
@@ -112,10 +106,10 @@ export function RsvpControl({
           >
             Save
           </button>
-        </form>
+        </Form>
       )}
       {mayRemove && (
-        <form action={dropAction} className="inline">
+        <Form action={dropAction} state={drop} className="inline">
           <input type="hidden" name="showId" value={showId} />
           <input type="hidden" name="rsvpId" value={rsvpId} />
           <button
@@ -125,7 +119,7 @@ export function RsvpControl({
           >
             ×
           </button>
-        </form>
+        </Form>
       )}
       {(state.error || drop.error) && (
         <span className="text-xs text-bad">
@@ -147,7 +141,7 @@ function InviteGuestForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(inviteToSideEvent, {});
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="eventId" value={eventId} />
       <select name="userId" className={inputClass}>
@@ -166,7 +160,7 @@ function InviteGuestForm({
         Invite
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -192,7 +186,7 @@ function Fields({
   submitLabel: string;
 }) {
   return (
-    <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       {event && <input type="hidden" name="eventId" value={event.id} />}
       <input
@@ -264,7 +258,7 @@ function Fields({
         {submitLabel}
       </Button>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -319,14 +313,14 @@ function SideEventFields({
         state={state}
         submitLabel="Save"
       />
-      <form action={dropAction} className="mt-2">
+      <Form action={dropAction} state={dropState} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="eventId" value={entry.event.id} />
         <QuietSubmit pending={dropping}>
           Delete this event
         </QuietSubmit>
         <Message state={dropState} />
-      </form>
+      </Form>
     </details>
   );
 }

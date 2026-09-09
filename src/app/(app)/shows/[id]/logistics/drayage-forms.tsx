@@ -5,7 +5,7 @@ import type { RateCardRow } from '@/lib/drayage/store';
 import type { DrayageEstimate, HandlingKind } from '@/lib/drayage/estimate';
 import { BASIS_LABEL, DRAYAGE_BASES } from '@/lib/drayage/edit';
 import { Badge, money } from '../../../_components/ui';
-import { Field, Input, Message, QuietSubmit, Select, Submit } from '../../../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit } from '../../../_components/form-ui';
 import {
   confirmDrayageRateCard,
   recordCrateHandling,
@@ -38,7 +38,7 @@ export function RateCardForm({ showId, card }: { showId: string; card: RateCardR
   const [state, action, pending] = useActionState(saveDrayageRateCard, {});
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <input type="hidden" name="showId" value={showId} />
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="General contractor" hint="Freeman, GES, or whoever the show appointed.">
@@ -116,7 +116,7 @@ export function RateCardForm({ showId, card }: { showId: string; card: RateCardR
         </span>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -131,17 +131,17 @@ export function RateCardStanding({ showId, card }: { showId: string; card: RateC
       ) : (
         <Badge tone="warn">Not checked against this year’s manual</Badge>
       )}
-      <form action={confirmAction}>
+      <Form action={confirmAction} state={confirmState}>
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="confirmed" value={card.confirmedAt ? 'false' : 'true'} />
         <QuietSubmit pending={confirming}>
           {card.confirmedAt ? 'Withdraw' : 'Confirm it'}
         </QuietSubmit>
-      </form>
-      <form action={removeAction}>
+      </Form>
+      <Form action={removeAction} state={removeState}>
         <input type="hidden" name="showId" value={showId} />
         <QuietSubmit pending={removing}>Remove the card</QuietSubmit>
-      </form>
+      </Form>
       <Message state={confirmState} />
       <Message state={removeState} />
     </div>
@@ -160,7 +160,7 @@ export function HandlingControl({
 }) {
   const [state, action, pending] = useActionState(recordCrateHandling, {});
   return (
-    <form action={action} className="flex items-center gap-1">
+    <Form action={action} state={state} className="flex items-center gap-1">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       <Select name="handling" defaultValue={handling} aria-label="How this crate is packed">
@@ -172,7 +172,7 @@ export function HandlingControl({
       </Select>
       <QuietSubmit pending={pending}>Save</QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 

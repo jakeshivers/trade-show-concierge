@@ -131,7 +131,7 @@ export async function openRequest(_prev: FormState, form: FormData): Promise<For
     );
     id = row.id;
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/travel');
@@ -149,7 +149,7 @@ export async function search(_prev: FormState, form: FormData): Promise<FormStat
     revalidatePath(`/travel/${id}`);
     return { ok: `Agent finished: ${outcome.status.replace('_', ' ')}.` };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -159,7 +159,7 @@ export async function confirm(_prev: FormState, form: FormData): Promise<FormSta
   try {
     await confirmConstraints(id, actor, depsWithoutProvider());
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath(`/travel/${id}`);
   return { ok: 'Constraints confirmed. The agent may search now.' };
@@ -190,7 +190,7 @@ export async function approve(_prev: FormState, form: FormData): Promise<FormSta
           : `Approved — the request is now ${outcome.status.replace('_', ' ')}.`,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -205,7 +205,7 @@ export async function reject(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await rejectRequest(id, actor, reason, depsWithoutProvider());
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/travel');
   revalidatePath('/travel/approvals');
@@ -221,7 +221,7 @@ export async function cancel(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await cancelRequest(id, actor, reason, depsWithoutProvider());
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/travel');
   revalidatePath('/travel/approvals');

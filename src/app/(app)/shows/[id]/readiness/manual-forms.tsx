@@ -3,7 +3,7 @@
 import { useActionState } from 'react';
 import { readManualIntoRegister, type ManualFormState } from './manual-actions';
 import { Badge } from '../../../_components/ui';
-import { Message, Submit } from '../../../_components/form-ui';
+import { Form, Message, Submit } from '../../../_components/form-ui';
 import type { ExtractionReport, ExtractionRun } from '@/lib/manual/store';
 
 /**
@@ -36,7 +36,7 @@ export function ReadManualForm({ showId, configured }: { showId: string; configu
 
   return (
     <>
-      <form action={action} className="flex flex-wrap items-end gap-2">
+      <Form action={action} state={state} className="flex flex-wrap items-end gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input
           type="file"
@@ -46,7 +46,7 @@ export function ReadManualForm({ showId, configured }: { showId: string; configu
           className="text-sm file:mr-3 file:rounded-md file:border file:border-border file:bg-panel file:px-3 file:py-1.5 file:text-sm file:text-text"
         />
         <Submit pending={pending} busy="Reading…">Read it</Submit>
-      </form>
+      </Form>
 
       <p className="mt-2 text-xs text-text-muted">
         The pages are read here and only their <em>text</em> is sent to the model, so every

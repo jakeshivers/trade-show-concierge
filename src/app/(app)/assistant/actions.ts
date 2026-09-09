@@ -42,7 +42,7 @@ export async function askAssistant(_prev: FormState, form: FormData): Promise<Fo
     });
     id = result.conversationId;
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/assistant');

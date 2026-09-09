@@ -43,7 +43,7 @@ export async function disconnect(_prev: FormState, form: FormData): Promise<Form
   try {
     await disableMyChannel(actor, str(form, 'reason'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   revalidatePath('/settings/notifications');
   return {

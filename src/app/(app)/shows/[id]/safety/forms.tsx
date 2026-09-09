@@ -2,7 +2,7 @@
 
 import { useActionState } from 'react';
 import { answer, beginRollCall, endRollCall } from './actions';
-import { Message, QuietSubmit, Submit, Textarea } from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, Textarea } from '../../../_components/form-ui';
 
 /**
  * The controls, and one that is deliberately absent.
@@ -16,7 +16,7 @@ import { Message, QuietSubmit, Submit, Textarea } from '../../../_components/for
 export function StartRollCall({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState(beginRollCall, {});
   return (
-    <form action={action} className="space-y-2">
+    <Form action={action} state={state} className="space-y-2">
       <input type="hidden" name="showId" value={showId} />
       <Textarea
         name="note"
@@ -34,19 +34,19 @@ export function StartRollCall({ showId }: { showId: string }) {
         </span>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function CloseRollCall({ showId, checkId }: { showId: string; checkId: string }) {
   const [state, action, pending] = useActionState(endRollCall, {});
   return (
-    <form action={action} className="inline-flex items-center gap-2">
+    <Form action={action} state={state} className="inline-flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="checkId" value={checkId} />
       <QuietSubmit pending={pending}>Close it</QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -78,7 +78,7 @@ export function AnswerFor({
   // reopened is a name somebody works around by starting a second roll call,
   // which is the one thing that gets answered by fewer people than the first.
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="checkId" value={checkId} />
       <input type="hidden" name="userId" value={userId} />
@@ -130,6 +130,6 @@ export function AnswerFor({
         </button>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

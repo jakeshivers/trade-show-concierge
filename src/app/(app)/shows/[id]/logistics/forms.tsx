@@ -4,7 +4,7 @@ import { useActionState, useState } from 'react';
 import type { ShipmentRow } from '@/lib/shipping/board';
 import { CarrierAndTracking } from '../../../shipping/_carrier-field';
 import { Badge } from '../../../_components/ui';
-import { Field, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../../../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../../../_components/form-ui';
 import {
   addTimelineEntry,
   confirmArrival,
@@ -229,7 +229,7 @@ export function NewShipmentForm(props: {
   }
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <Fields {...props} />
       <div className="flex items-center gap-3">
         <Submit pending={pending} busy="Adding…">
@@ -240,7 +240,7 @@ export function NewShipmentForm(props: {
         </QuietSubmit>
         <Message state={state} />
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -266,7 +266,7 @@ export function EditShipmentForm(props: {
   }
 
   return (
-    <form action={action} className="mt-3 space-y-3 rounded-lg border border-border p-3">
+    <Form action={action} state={state} className="mt-3 space-y-3 rounded-lg border border-border p-3">
       <Fields {...props} />
       <div className="flex items-center gap-3">
         <Submit pending={pending} busy="Saving…">
@@ -277,7 +277,7 @@ export function EditShipmentForm(props: {
         </QuietSubmit>
         <Message state={state} />
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -292,7 +292,7 @@ export function EditShipmentForm(props: {
 export function DeleteShipmentForm({ showId, shipmentId }: { showId: string; shipmentId: string }) {
   const [state, action, pending] = useActionState(removeShipment, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       {state.error && <input type="hidden" name="acknowledged" value="yes" />}
@@ -300,7 +300,7 @@ export function DeleteShipmentForm({ showId, shipmentId }: { showId: string; shi
         {state.error ? 'Delete anyway' : 'Delete'}
       </QuietSubmit>
       <Message state={state} className="mt-1" />
-    </form>
+    </Form>
   );
 }
 
@@ -324,7 +324,7 @@ export function ReceiptForm({
     {},
   );
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={row.shipment.id} />
       {row.shipment.receivedAt ? (
@@ -340,7 +340,7 @@ export function ReceiptForm({
         </Submit>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -358,7 +358,7 @@ export function ManualScanForm({ showId, shipmentId }: { showId: string; shipmen
   }
 
   return (
-    <form action={action} className="mt-2 space-y-2 rounded-lg border border-border p-3">
+    <Form action={action} state={state} className="mt-2 space-y-2 rounded-lg border border-border p-3">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       <div className="flex flex-wrap items-center gap-2">
@@ -388,6 +388,6 @@ export function ManualScanForm({ showId, shipmentId }: { showId: string; shipmen
         way a real scan is, so if a tracker is configured later the same event does not appear
         twice.
       </p>
-    </form>
+    </Form>
   );
 }

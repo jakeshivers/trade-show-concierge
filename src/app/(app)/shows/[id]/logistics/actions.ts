@@ -62,7 +62,7 @@ export async function createShipment(_prev: FormState, form: FormData): Promise<
   try {
     await addShipment(actor, showId, draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -78,7 +78,7 @@ export async function updateShipment(_prev: FormState, form: FormData): Promise<
   try {
     await editShipment(actor, str(form, 'shipmentId'), draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -92,7 +92,7 @@ export async function removeShipment(_prev: FormState, form: FormData): Promise<
   try {
     await deleteShipment(actor, str(form, 'shipmentId'), optional(form, 'acknowledged') === 'yes');
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Deleted here — the freight is still with the carrier.' };
@@ -108,7 +108,7 @@ export async function confirmArrival(_prev: FormState, form: FormData): Promise<
   try {
     await confirmReceipt(actor, str(form, 'shipmentId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Confirmed. This is the only thing on the page that means the crate is here.' };
@@ -120,7 +120,7 @@ export async function withdrawArrival(_prev: FormState, form: FormData): Promise
   try {
     await undoReceipt(actor, str(form, 'shipmentId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Withdrawn.' };
@@ -141,7 +141,7 @@ export async function addTimelineEntry(_prev: FormState, form: FormData): Promis
       location: optional(form, 'location'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Recorded, and marked as entered by hand rather than reported by a carrier.' };

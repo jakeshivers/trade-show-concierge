@@ -73,7 +73,7 @@ export async function addAsset(_prev: FormState, form: FormData): Promise<FormSt
   try {
     await createAsset(actor, assetDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Added. Its condition changes on a check-in, not on this form — that is where the fact comes from.' };
@@ -84,7 +84,7 @@ export async function updateAsset(_prev: FormState, form: FormData): Promise<For
   try {
     await editAsset(actor, str(form, 'assetId'), assetDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Updated.' };
@@ -95,7 +95,7 @@ export async function removeAsset(_prev: FormState, form: FormData): Promise<For
   try {
     await deleteAsset(actor, str(form, 'assetId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Deleted, along with its reservations. Nothing outside this app changed.' };
@@ -120,7 +120,7 @@ export async function reserve(_prev: FormState, form: FormData): Promise<FormSta
   try {
     await reserveAsset(actor, showId, reservationDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -134,7 +134,7 @@ export async function rewindow(_prev: FormState, form: FormData): Promise<FormSt
   try {
     await editReservation(actor, str(form, 'reservationId'), reservationDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Re-windowed. Any alert already sent about the old dates is void — it was a claim about a window that no longer exists.' };
@@ -146,7 +146,7 @@ export async function release(_prev: FormState, form: FormData): Promise<FormSta
   try {
     await releaseReservation(actor, str(form, 'reservationId'), optional(form, 'acknowledged') === 'yes');
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Released here. Nothing outside this app was cancelled.' };
@@ -159,7 +159,7 @@ export async function signOut(_prev: FormState, form: FormData): Promise<FormSta
   try {
     await checkOutAsset(actor, str(form, 'reservationId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -177,7 +177,7 @@ export async function signIn(_prev: FormState, form: FormData): Promise<FormStat
       note: optional(form, 'note'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Checked in. The asset’s condition now says what the person who unpacked it said.' };
@@ -201,7 +201,7 @@ export async function addCollateral(_prev: FormState, form: FormData): Promise<F
   try {
     await createCollateralItem(actor, collateralDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Added with nothing on hand. Stock arrives through a movement, so the ledger has a first entry rather than a number that came from nowhere.' };
@@ -212,7 +212,7 @@ export async function updateCollateral(_prev: FormState, form: FormData): Promis
   try {
     await editCollateralItem(actor, str(form, 'itemId'), collateralDraftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Updated. The quantity is not on this form — it moves only through the ledger.' };
@@ -223,7 +223,7 @@ export async function removeCollateral(_prev: FormState, form: FormData): Promis
   try {
     await deleteCollateralItem(actor, str(form, 'itemId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Deleted, with its ledger.' };
@@ -239,7 +239,7 @@ export async function moveStock(_prev: FormState, form: FormData): Promise<FormS
       reason: optional(form, 'reason'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Recorded as a signed delta. The on-hand figure is the sum of the ledger, never a number typed over it.' };
@@ -255,7 +255,7 @@ export async function allocate(_prev: FormState, form: FormData): Promise<FormSt
       notes: optional(form, 'notes'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -269,7 +269,7 @@ export async function packAllocation(_prev: FormState, form: FormData): Promise<
   try {
     await issueAllocation(actor, str(form, 'allocationId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Packed, and off the shelf. It is owed a count when it comes back.' };
@@ -288,7 +288,7 @@ export async function countBack(_prev: FormState, form: FormData): Promise<FormS
   try {
     await countBackAllocation(actor, str(form, 'allocationId'), Number(raw));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Counted. What did not come back is consumed, and the ledger now says so.' };
@@ -300,7 +300,7 @@ export async function unallocate(_prev: FormState, form: FormData): Promise<Form
   try {
     await deleteAllocation(actor, str(form, 'allocationId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Removed.' };

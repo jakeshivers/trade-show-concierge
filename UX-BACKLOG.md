@@ -66,75 +66,61 @@ none. This is the recommended next piece of work.
 
 ---
 
-## 2. A rejected form submit destroys what the person typed — **CONFIRMED, and it is the worst item here**
+## 2. ~~A rejected form submit destroys what the person typed~~ — **FIXED 2026-09-09**
 
-**Verified in a real Chromium on 2026-09-09**, driven over CDP against `pnpm dev`. Both
-cases below are measured output, not inference.
+Confirmed in a real Chromium, fixed, and re-verified in the same browser. Kept here rather
+than deleted because the *shape* of it recurs.
 
-**Case A — a form with no `defaultValue` blanks every field.** `/settings/cost-centers`,
-Add a cost center. Typed `code: VERIFY-A` (valid) and `name: A` (one character, which the
-store refuses):
+**What was wrong.** React 19 resets an uncontrolled form once a form action completes, whether
+or not it succeeded. On a form with no `defaultValue` every field blanked; on one *with* a
+`defaultValue` — the travel policy editor — each field silently reverted to the **stored**
+value while the error named a different field, so fixing the named field and submitting again
+saved the old numbers into a versioned policy row. 42 `useActionState` call sites.
 
-```
-BEFORE submit : { code: 'VERIFY-A', name: 'A' }
-AFTER  submit : { code: '',         name: '',
-                  message: 'A name is needed. The code alone is not readable a year later.' }
-```
+**The fix.** `FormState` gained `values`, `formErrorFrom` fills it from the `FormData` the
+action already holds (set on refusal only, so a success still clears the form), and a new
+`<Form>` in `_components/form-ui.tsx` restores them.
 
-The refusal is about `name`. **`code` was valid and was destroyed anyway.**
+**`<Form>` writes to the DOM in an effect rather than passing `defaultValue` down, and that
+is the part worth remembering.** The obvious fix — `defaultValue={state.values?.x ?? …}` on
+each control — was built first and is wrong here: **about ninety of this app's controls are
+raw `<input>` / `<select>` / `<textarea>` with local class strings**, not the `Input` /
+`Select` / `Textarea` wrappers, because the `UI-REWORK.md` migration moved the form markup and
+left those behind. A fix living in the three wrappers covers a minority of the controls **and
+looks complete**. The browser said so before the reasoning did: the wrapper version passed on
+text fields and failed on the very first checkbox, which was a raw `<input>`.
 
-**Case B — a form with `defaultValue` silently REVERTS the edit, which is worse.**
-`/settings/travel-policy`. Stored domestic cap `650.00`. Raised it to `1250.00`, set a
-label, and put a typo in the international field:
+**Verified in the browser, after:** text fields survive a refusal; the travel policy edit no
+longer reverts; a successful add still clears the form for the next one; an unchecked raw
+checkbox stays unchecked; and a twelve-field, entirely-raw form (`/shows/new` — text, date,
+textarea, select) comes back whole with the store's refusal above it.
 
-```
-AS STORED     : { domestic: '650.00',  international: '1800.00', label: '' }
-AS TYPED      : { domestic: '1250.00', international: 'not-a-number',
-                  label: 'Raised caps for 2027' }
-AFTER REFUSAL : { domestic: '650.00',  international: '1800.00', label: '',
-                  message: 'Cannot parse "not-a-number" as a decimal money amount' }
-```
+**Unit tests** cover the pure contract in `tests/form-state.test.ts` — a refusal carries the
+submission, a success does not, a `File` never travels, an unchecked box is absent (which is
+how `<Form>` restores one), and a genuine `TypeError` is still rethrown rather than laundered
+into a polite red sentence.
 
-**The good edit reverted to the stored value and the error names a different field.** So the
-admin reads "cannot parse the international amount", fixes *that*, submits again — and saves
-`650.00`, silently discarding the change they came to make. Blanking is obvious; this looks
-correct. And `saveOrgPolicy` is **versioned**, so it writes a new policy version that quietly
-reverts a cap somebody believed they had raised, on the screen that configures the thing
-`SCOPE.md`'s first sentence is about.
+**What is still not covered by any test**, and should be understood before trusting the suite
+here: the reset itself is DOM behaviour, and this repo's suite is `environment: 'node'` with
+no DOM. Nothing in `pnpm test` would notice if `<Form>` stopped restoring. The check is a
+browser, by hand or by the harness described below.
 
-**Cause.** React 19 resets an uncontrolled form after a form action completes. `FormState` is
-`{ error?, ok? }` (`_components/form.ts`) and carries no submitted values, so there is nothing
-to restore from; every `defaultValue` re-renders from *server* data. 42 `useActionState` call
-sites, all affected.
-
-**Why nothing caught it.** The suite is `environment: 'node'` with no DOM, `pnpm smoke` only
-fetches pages, and every CLI check exercises the store rather than the form. The store's
-refusals are all correct and well tested — the defect is entirely in what happens to the
-form afterwards, which nothing in this repo looks at.
-
-**Shape of the fix.** Widen `FormState` to `{ error?, ok?, values?: Record<string, string> }`,
-populate it in `formErrorFrom` (which every action already routes through, from the `FormData`
-it already holds), and have each form prefer `state.values?.x ?? defaultValue`. The first two
-are close to one diff; the third is 42 call sites but mechanical. Consider whether `ok` should
-clear values, so a *successful* add still empties the form — it should.
-
-**Effort:** medium. **Decision needed:** none. **Do this first.**
-
-**How it was verified, since the harness is not in the repo.** A ~90-line zero-dependency
-Node script driving Chromium over CDP (Node 22 has a built-in `WebSocket`), using the
-Playwright browser cache that happens to exist on this machine. It is deliberately **not**
-committed: it depends on a binary a clean clone does not have, and `pnpm db:reset && pnpm test`
-working with zero keys and zero downloads is a non-negotiable. If this becomes a recurring
-need, the honest version is a real dev-dependency and a separate script — not something
+**The harness, deliberately not committed.** ~90 lines of Node driving Chromium over CDP
+(Node 22 has a built-in `WebSocket`), using a Playwright browser cache that happens to exist on
+this machine. It is not in the repo because it depends on a binary a clean clone does not have,
+and `pnpm db:reset && pnpm test` with zero keys and zero downloads is a non-negotiable. If this
+becomes recurring, the honest version is a real dev dependency and a separate script — never
 wired into `pnpm test`.
 
-**One measurement mistake worth recording, because it produced a confident wrong answer.**
-The first run reported *"NOT REPRODUCED: the typed input survived"*. The selectors were
-`document.querySelector('form ...')` and the page renders a `RenameForm` per existing cost
-center — so it typed into the wrong form, clicked the wrong button, and read back
-`"Renamed."` as though it were the refusal. The tell was in the output and nearly went past:
-`name: 'AExecutive'`, a value nobody typed. **On a page with repeated forms, scope every
-selector to the form under test** — and read the values a run reports, not just its verdict.
+**Three measurement mistakes while doing this, all the same shape.** The first run reported
+*"NOT REPRODUCED"* because the selectors were `document.querySelector('form …')` on a page that
+renders a `RenameForm` per cost center — so it drove the wrong form and read `"Renamed."` back
+as the refusal. The tell was in the output and nearly went past: `name: 'AExecutive'`, a value
+nobody typed. Later, a hydration probe on the *first* `input` on the page timed out, and an
+all-raw-form test reported no refusal because the form never submitted — a `required`
+`rationale` textarea the script had not filled, which `form.checkValidity()` named in one call.
+**When a browser check reports a surprising pass, suspect the selector before the code**, and
+read the values a run prints rather than its verdict.
 
 ## 3. Four detail routes light nothing in the navigation
 
@@ -245,10 +231,7 @@ than building the form.**
 
 ## Recommended order
 
-1. **Item 2 — confirmed, and it is the worst thing here.** Every refusal in a product built
-   on refusals currently costs somebody their typing, and on any form with a `defaultValue`
-   it silently reverts the edit instead, which is harder to notice and lands in a versioned
-   policy row.
+1. ~~Item 2~~ — **done 2026-09-09.**
 2. **Item 3**, small and it makes the app feel located.
 3. **Item 1**, the real piece of work, on its own commit.
 4. **Item 6**, then **7**, as they fit.

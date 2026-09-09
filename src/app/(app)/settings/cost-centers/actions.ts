@@ -24,7 +24,7 @@ export async function addCostCenter(_prev: FormState, form: FormData): Promise<F
   try {
     await createCostCenter(actor, { code: str(form, 'code'), name: str(form, 'name') });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Added. It can now be picked wherever this app files money.' };
@@ -35,7 +35,7 @@ export async function rename(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await renameCostCenter(actor, str(form, 'id'), str(form, 'name'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return { ok: 'Renamed.' };
@@ -47,7 +47,7 @@ export async function toggle(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await setCostCenterActive(actor, str(form, 'id'), active);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh();
   return {

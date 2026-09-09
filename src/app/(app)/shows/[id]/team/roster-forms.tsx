@@ -9,12 +9,7 @@ import {
 } from './actions';
 import { Button } from '../../../_components/ui';
 import type { FormState } from '../../../_components/form';
-import {
-  Message,
-  Submit,
-  ZonedDateTime,
-  controlClass,
-} from '../../../_components/form-ui';
+import { Form, Message, Submit, ZonedDateTime, controlClass } from '../../../_components/form-ui';
 import { ATTENDEE_STATUSES } from '@/lib/team/edit';
 import type { RosterEntry } from '@/lib/team/store';
 /**
@@ -103,7 +98,7 @@ function AnswerForm({
   const [status, setStatus] = useState(entry.attendee.status);
 
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="attendeeId" value={entry.attendee.id} />
       <select
@@ -122,7 +117,7 @@ function AnswerForm({
         Save
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -156,7 +151,7 @@ function RecordAnswerForm({
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-text-muted">Record {first}&rsquo;s answer</summary>
-      <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="attendeeId" value={entry.attendee.id} />
         <select name="status" defaultValue={entry.attendee.status} className={inputClass}>
@@ -171,7 +166,7 @@ function RecordAnswerForm({
         <p className="w-full text-text-muted">
           Secondhand: the row is only marked answered when {first} answers it.
         </p>
-      </form>
+      </Form>
     </details>
   );
 }
@@ -189,7 +184,7 @@ function EditAttendee({
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-text-muted">Edit</summary>
-      <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="attendeeId" value={entry.attendee.id} />
         <input name="role" defaultValue={entry.attendee.role} className={inputClass} />
@@ -205,7 +200,7 @@ function EditAttendee({
           Save
         </Submit>
         <Message state={state} />
-      </form>
+      </Form>
     </details>
   );
 }
@@ -213,7 +208,7 @@ function EditAttendee({
 function UnstaffForm({ showId, entry }: { showId: string; entry: RosterEntry }) {
   const [state, action, pending] = useActionState<FormState, FormData>(unstaffAttendee, {});
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="attendeeId" value={entry.attendee.id} />
       {/* The second press carries the acknowledgement the server asked for. */}
@@ -222,7 +217,7 @@ function UnstaffForm({ showId, entry }: { showId: string; entry: RosterEntry }) 
         {state.error ? 'Take them off anyway' : 'Take off this show'}
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -239,7 +234,7 @@ export function InviteForm({
   return (
     <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Staff somebody on this show</summary>
-      <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="mt-3 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <select name="userId" required className={inputClass}>
           <option value="">Who?</option>
@@ -256,7 +251,7 @@ export function InviteForm({
           Invite
         </Button>
         <Message state={state} />
-      </form>
+      </Form>
       <p className="mt-2 text-xs text-text-muted">
         Times are read in the show&rsquo;s own zone ({timezone}). A travel window is optional —
         plenty of people drive — but coverage uses it, so a shift somebody cannot physically reach

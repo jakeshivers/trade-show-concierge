@@ -12,7 +12,7 @@ import { Button } from '../../../_components/ui';
 import { DEADLINE_KINDS, MIN_REASON } from '@/lib/deadlines/edit';
 import type { RegisterEntry } from '@/lib/deadlines/store';
 import type { FormState } from '../../../_components/form';
-import { Message, QuietSubmit, Submit } from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit } from '../../../_components/form-ui';
 import { zonedDateInput, zonedTimeInput } from '@/lib/datetime/zoned';
 
 /**
@@ -96,7 +96,7 @@ function StatusControl({
   const needsReason = next === 'not_applicable';
 
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="deadlineId" value={entry.deadline.id} />
       <select
@@ -128,7 +128,7 @@ function StatusControl({
 
       <Submit disabled={pending || next === entry.deadline.status}>Save</Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
@@ -146,7 +146,7 @@ function ConfirmControl({
   const [state, action, pending] = useActionState<FormState, FormData>(confirmDeadline, {});
 
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="deadlineId" value={deadlineId} />
       <input type="hidden" name="confirmed" value={confirmed ? 'false' : 'true'} />
@@ -158,7 +158,7 @@ function ConfirmControl({
         {confirmed ? 'Withdraw confirmation' : 'Confirm against the manual'}
       </button>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -234,7 +234,7 @@ function EditDeadline({
           guess into a quoted figure without anybody opening the document.
         </p>
       )}
-      <form action={delAction} className="mt-2">
+      <Form action={delAction} state={del} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="deadlineId" value={d.id} />
         <QuietSubmit
@@ -248,7 +248,7 @@ function EditDeadline({
           year, say so instead — that keeps the decision and its reason.
         </span>
         <Message state={del} />
-      </form>
+      </Form>
     </details>
   );
 }
@@ -273,7 +273,7 @@ function Fields({
   submitLabel: string;
 }) {
   return (
-    <form action={action} className="mt-3 grid gap-3 sm:grid-cols-2">
+    <Form action={action} state={state} className="mt-3 grid gap-3 sm:grid-cols-2">
       <input type="hidden" name="showId" value={showId} />
       {deadline && <input type="hidden" name="deadlineId" value={deadline.id} />}
 
@@ -345,7 +345,7 @@ function Fields({
         </Button>
         <Message state={state} density="comfortable" className="mt-2" />
       </div>
-    </form>
+    </Form>
   );
 }
 

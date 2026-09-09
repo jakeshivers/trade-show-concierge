@@ -44,7 +44,7 @@ export async function proposeShow(_prev: FormState, form: FormData): Promise<For
     });
     id = created.id;
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/shows');
@@ -59,7 +59,7 @@ export async function decide(_prev: FormState, form: FormData): Promise<FormStat
   try {
     await decideShow(actor, showId, decision, String(form.get('rationale') ?? ''));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/shows');
@@ -85,7 +85,7 @@ export async function clone(_prev: FormState, form: FormData): Promise<FormState
     });
     id = result.id;
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath('/shows');

@@ -18,7 +18,7 @@ import {
 import { FIELD_LABEL, type LeadField } from '@/lib/leads/parse';
 import type { FormState } from '../../../_components/form';
 import { plural } from '../../../_components/text';
-import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
 
 const input = controlClass('compact');
 
@@ -69,7 +69,7 @@ export function EditLeadForm({ showId, lead }: { showId: string; lead: EditableL
   const [basis, setBasis] = useState(lead.basis === 'unknown' ? '' : lead.basis);
 
   return (
-    <form action={action} className="mt-2 space-y-2">
+    <Form action={action} state={state} className="mt-2 space-y-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={lead.id} />
       <div className="flex flex-wrap items-center gap-2">
@@ -113,7 +113,7 @@ export function EditLeadForm({ showId, lead }: { showId: string; lead: EditableL
         </Submit>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -122,7 +122,7 @@ export function CaptureForm({ showId }: { showId: string }) {
   const [basis, setBasis] = useState('');
 
   return (
-    <form action={action} className="mt-3 space-y-2">
+    <Form action={action} state={state} className="mt-3 space-y-2">
       <input type="hidden" name="showId" value={showId} />
       <div className="flex flex-wrap items-center gap-2">
         <input name="fullName" required placeholder="Name" className={input} />
@@ -159,7 +159,7 @@ export function CaptureForm({ showId }: { showId: string }) {
         </Submit>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -174,7 +174,7 @@ export function MeetingForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(addMeeting, {});
   return (
-    <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input name="subject" required placeholder="Who, or what it was about" className={`${input} min-w-64`} />
       <input name="company" placeholder="Company" className={input} />
@@ -209,7 +209,7 @@ export function MeetingForm({
         Record
       </Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
@@ -229,7 +229,7 @@ export function EraseForm({ showId, leadId }: { showId: string; leadId: string }
     );
   }
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <input
@@ -242,7 +242,7 @@ export function EraseForm({ showId, leadId }: { showId: string; leadId: string }
         Erase permanently
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -263,7 +263,7 @@ export function DuplicateForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(markAsDuplicate, {});
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <input type="hidden" name="ofLeadId" value={ofLeadId} />
@@ -271,34 +271,34 @@ export function DuplicateForm({
         Same person — count once
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function UndoDuplicateForm({ showId, leadId }: { showId: string; leadId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(unmarkAsDuplicate, {});
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <QuietSubmit pending={pending} busy="Saving…">
         Not a duplicate
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function RetentionButton({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(runRetention, {});
   return (
-    <form action={action} className="flex items-center gap-3">
+    <Form action={action} state={state} className="flex items-center gap-3">
       <input type="hidden" name="showId" value={showId} />
       <Submit pending={pending} busy="Erasing…">
         Erase everything past its date
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -333,17 +333,17 @@ export function ImportForm({ showId }: { showId: string }) {
 
   return (
     <div className="mt-3 space-y-3">
-      <form action={action} className="flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="file" name="file" accept=".csv,text/csv" className="text-xs" />
         <Submit pending={pending} busy="Reading…">
           Read the file
         </Submit>
         <Message state={state} />
-      </form>
+      </Form>
 
       {state.headers && state.counts && (
-        <form action={commitAction} className="space-y-3 rounded-md border border-border p-3">
+        <Form action={commitAction} state={commitState} className="space-y-3 rounded-md border border-border p-3">
           <input type="hidden" name="showId" value={showId} />
           <input type="hidden" name="text" value={state.text ?? ''} />
           <input type="hidden" name="filename" value={state.filename ?? ''} />
@@ -405,7 +405,7 @@ export function ImportForm({ showId }: { showId: string }) {
             </QuietSubmit>
             <Message state={commitState} />
           </div>
-        </form>
+        </Form>
       )}
     </div>
   );
@@ -424,7 +424,7 @@ export function TargetForm({
   const [priority, setPriority] = useState('target');
 
   return (
-    <form action={action} className="mt-3 space-y-2">
+    <Form action={action} state={state} className="mt-3 space-y-2">
       <input type="hidden" name="showId" value={showId} />
       <div className="flex flex-wrap items-center gap-2">
         <input name="companyName" required placeholder="Company" className={input} />
@@ -470,20 +470,20 @@ export function TargetForm({
         </Submit>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function RemoveTargetForm({ showId, targetId }: { showId: string; targetId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(removeTargetAccount, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="targetId" value={targetId} />
       <QuietSubmit pending={pending} busy="…">
         Remove
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { Field, Input, Message, QuietSubmit, Select, Submit } from '../../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit } from '../../_components/form-ui';
 import { GENDERS, GENDER_LABEL, HONORIFICS, SEAT_PREFERENCES } from '@/lib/profile/edit';
 import { deleteLoyaltyAccount, saveLoyaltyAccount, saveProfile } from './actions';
 
@@ -29,7 +29,7 @@ export function ProfileForm({
 }) {
   const [state, action, pending] = useActionState(saveProfile, {});
   return (
-    <form action={action} className="space-y-4">
+    <Form action={action} state={state} className="space-y-4">
       <Field label="Full legal name" hint="As printed on the ID you travel with, not a nickname.">
         <Input name="fullName" defaultValue={profile.fullName} density="comfortable" required />
       </Field>
@@ -137,7 +137,7 @@ export function ProfileForm({
 
       <Submit pending={pending} busy="Saving…">Save</Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -177,17 +177,17 @@ export function LoyaltyAccounts({
                 <span className="font-medium">{a.airlineCode}</span>
                 <span className="ml-3 font-mono text-text-muted">{a.accountNumber}</span>
               </span>
-              <form action={removeAction}>
+              <Form action={removeAction} state={removeState}>
                 <input type="hidden" name="id" value={a.id} />
                 <QuietSubmit>Remove</QuietSubmit>
-              </form>
+              </Form>
             </li>
           ))}
         </ul>
       )}
       <Message state={removeState} />
 
-      <form action={action} className="flex flex-wrap items-end gap-3">
+      <Form action={action} state={state} className="flex flex-wrap items-end gap-3">
         <Field label="Airline">
           <Input
             name="airlineCode"
@@ -204,7 +204,7 @@ export function LoyaltyAccounts({
         <Submit pending={pending} busy="Saving…">
           Add
         </Submit>
-      </form>
+      </Form>
       <Message state={state} />
     </div>
   );

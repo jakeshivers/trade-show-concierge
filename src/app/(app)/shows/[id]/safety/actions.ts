@@ -31,7 +31,7 @@ export async function beginRollCall(_prev: FormState, form: FormData): Promise<F
   try {
     await startRollCall(actor, showId, optional(form, 'note'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -45,7 +45,7 @@ export async function endRollCall(_prev: FormState, form: FormData): Promise<For
   try {
     await closeRollCall(actor, str(form, 'checkId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -66,7 +66,7 @@ export async function answer(_prev: FormState, form: FormData): Promise<FormStat
       optional(form, 'note'),
     );
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {

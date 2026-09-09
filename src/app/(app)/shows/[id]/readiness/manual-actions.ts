@@ -59,7 +59,7 @@ export async function readManualIntoRegister(
     // An unconfigured extractor throws a bare Error naming the variable, and that
     // sentence is the useful one — `travel/actions.ts` carries the same extra
     // branch for the same reason.
-    return asFormError(err);
+    return asFormError(err, form);
   }
 
   revalidatePath(`/shows/${showId}/readiness`);

@@ -43,7 +43,7 @@ export async function markSeen(_prev: FormState, form: FormData): Promise<FormSt
     refresh();
     return { ok: 'Marked as seen.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -54,7 +54,7 @@ export async function markUnseen(_prev: FormState, form: FormData): Promise<Form
     refresh();
     return { ok: 'Back on the list.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
