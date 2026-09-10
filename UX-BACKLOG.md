@@ -281,3 +281,38 @@ the tests → re-run the vocabulary scan → and **read the rendered page as eac
 seeded roles** (`DEV_ACTOR_EMAIL` = `shelley@` admin, `marcus@` travel_manager, `priya@`
 member). `tests/docs-budget.test.ts` will stop you writing this up at length in
 `CLAUDE.md`; that is deliberate — put the narrative in the commit message.
+
+---
+
+## Added 2026-09-09 — the executive brief (`pnpm deck`, and a Download button)
+
+Built, not backlog. Recorded here because two things about it are open.
+
+**What it is.** `src/lib/deck/` turns a show into a PowerPoint for a leadership
+audience: last year's results, this year's dates and committed spend, who is going, what we
+are going for, where preparation stands, and a closing *what this brief does not know*.
+`plan.ts` is pure and holds every rule about what a slide may claim; `build.ts` is pptxgenjs
+and nothing else; `store.ts` loads through the same store functions the screens call, as the
+acting actor. `pnpm deck <show id>` prints the outline then writes the file;
+`GET /api/shows/[id]/deck` is the download behind the header link.
+
+**Open 1 — the seed cannot demonstrate the headline slide.** Last year is the show
+`show_decisions.cloned_from_id` points at, and **`scripts/seed.ts` never clones**, so every
+seeded show reports "no prior year is linked". The slide was verified by cloning a show
+through the real `cloneShow` and reading the result, not by a fixture. Either the seed should
+clone one pair (Automate 2025 → 2026 is the natural one, and it is what the workspace's own
+story already says), or this stays a feature you have to make data for — the same shape as
+step 14's finding that every show was too far out to have shipped anything.
+
+**Open 2 — the seeded show names do not match their dates.** "Automate 2025" is dated
+July 2026 in the seeded workspace, because the seed places shows relative to today while the
+names are fixed. It is harmless on a screen and looks wrong on a slide headed *Last year —
+Automate 2025* next to dates two months ago. Pre-existing, not introduced here.
+
+**One defect this found in itself, by reading `pnpm deck`.** The prior-year slide printed
+`Pipeline sourced: $0` while closed-won and the multiple both correctly refused — because
+pipeline was rendered unconditionally from `pipelineCents`, which is 0 when no CRM is
+connected. A printed zero states that the show sourced nothing; the truth is that nobody has
+looked. Pipeline now inherits closed-won's refusal, since both derive from the same
+attribution. Neither a test nor a type would have caught it: the number was real and the code
+was correct.

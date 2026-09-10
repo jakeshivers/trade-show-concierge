@@ -603,62 +603,59 @@ account available it would have become a *fourth* written-to-the-docs-and-hoped 
 seam that honestly throws. It stays throwing; §11.6's "one well rather than both adequately" is
 unchanged.
 
-### The UI rework and four UX passes — all done
+### The UI rework and five UX passes — all done
 
-Four pieces of work on the app layer, none of them a numbered step. **`UI-REWORK.md` is the long
-version and §6 must be read before writing any CSS.** Every rule they produced is stated in
-**Ground rules**; what follows is only what a session needs before touching a screen.
+Four pieces of work on the app layer, none a numbered step. **`UI-REWORK.md` is the long version
+and §6 must be read before writing any CSS**; `UX-BACKLOG.md` holds what is left. Every rule they
+produced is in **Ground rules**; below is only what a session needs before touching a screen.
 
-**The plumbing.** `_components/form.ts` is one `FormState` (`{ error?, ok? }`) plus
-`formErrorFrom` / `optional` / `str`, dependency-free because client components import the type —
-`refresh` is deliberately **not** shared, since each tab's revalidation set differs.
-`form-ui.tsx` is `Input`/`Select`/`Textarea`/`Field`/`Message`/`Submit`/`QuietSubmit`/
-`ZonedDateTime`, with `useActionState` left at all 42 call sites. `_components/nav.ts` is the one
-list of screens (`does` required — the sidebar and the overview both render it); `_request.ts`
-holds `currentActor` / `currentFeed` as zero-argument `cache()` wrappers; `cn.ts` is
-`clsx` + `tailwind-merge`; `src/lib/text.ts` is `plural` / `names`, re-exported by
-`_components/text.ts` so a server action and a client component can both reach it.
+**The plumbing.** `_components/form.ts` is one `FormState` plus `formErrorFrom`/`optional`/`str`,
+dependency-free because client components import the type — `refresh` is deliberately **not**
+shared, since each tab's revalidation set differs. `form-ui.tsx` is `Form` (always, never a bare
+`<form action>`), `Input`/`Select`/`Textarea`/`Field`/`Message`/`Submit`/`ZonedDateTime`, with
+`useActionState` left at all 42 call sites. `nav.ts` is the one list of screens (`does` required);
+`_request.ts` holds zero-argument `cache()` wrappers; `cn.ts` is `clsx` + `tailwind-merge`;
+`src/lib/text.ts` is `plural`/`andList`/`names`, re-exported by `_components/text.ts`.
 
 **The visual half.** `globals.css` **is** the design system — OKLCH semantic (never chromatic)
-tokens in the two-stage `:root` / `.dark` + **non-inline** `@theme` pattern. Dark mode is a
-`.dark` class applied before first paint, with a **three-state** control (system is a real
-answer). `ui.tsx` is a real vocabulary: `Table`/`Th`/`Td`, `PageHeader`, `Stat`, `Card`
-(`id` for anchoring), `Badge`, `Button`, `LinkButton`, `Empty`. **The measurement worth keeping:
-`src/app` contains zero `dark:` variants.**
+tokens in the two-stage `:root` / `.dark` + **non-inline** `@theme` pattern. Dark mode is a `.dark`
+class applied before first paint, with a **three-state** control (system is a real answer).
+`ui.tsx` is the vocabulary: `Table`/`Th`/`Td`, `PageHeader`, `Stat`, `Card` (`id` for anchoring),
+`Badge`, `Button`, `LinkButton`, `Empty`. **The measurement worth keeping: `src/app` contains zero
+`dark:` variants.**
 
-**Board ordering, which is a rule rather than a preference.** A board's order is its clock, and
-the question is which clock and which direction. **Prospective** lists run soonest-first
-(`/flights`, `/shipping`, `/assets`, `/readiness`); **retrospective** ones run backwards
-(`/leads`, `/roi`); `/cost` and `/safety` order by *proximity to now in either direction*.
-Severity is the tie-break, never the key — except that somebody who has **said they need help**
-comes above everything. `shows/proximity.ts` holds `distanceToNow` / `byMostRecentlyOpened`, and
-a comparator that lives in a page is one two views can disagree about. `/alerts` deliberately did
-**not** move: a feed's only clock is `created_at`, a fact about our sweep schedule.
+**Board ordering is a rule, not a preference.** A board's order is its clock, and the question is
+which clock and which direction. **Prospective** lists run soonest-first (`/flights`, `/shipping`,
+`/assets`, `/readiness`); **retrospective** ones run backwards (`/leads`, `/roi`); `/cost` and
+`/safety` order by *proximity to now in either direction*. Severity is the tie-break, never the
+key — except that somebody who has **said they need help** comes above everything.
+`shows/proximity.ts` holds it, because a comparator in a page is one two views can disagree about.
+`/alerts` deliberately did **not** move: a feed's only clock is `created_at`, a fact about our
+sweep schedule.
 
 **Where a write belongs.** `go-to-show.tsx` is a **chooser, not a shortcut** — right for a write
 with no single target (adding freight), wrong for one whose row already knows it. Confirming
-*this* crate and answering for *this* person belong on the row. A second *action* that
-revalidates different paths is fine; a second *write path* that skips the store's rules is not.
+*this* crate belongs on the row. A second *action* that revalidates different paths is fine; a
+second *write path* that skips the store's rules is not.
 
 **Four tables the app read and only the seed wrote** — each a rule correctly enforced on top of a
 table nothing could write, so the seeded workspace worked and a real one silently could not:
-`users` traveler details (`/settings/profile`), `expenses` (the show's Cost tab), `cost_centers`
-(`/settings/cost-centers`) and `travel_policies` (`/settings/travel-policy`). **`show_outcomes`
-is the fifth and is deliberately left open** — whether a figure a company types about itself
-earns more trust than a replayed one is a real argument with two sides. Decide it deliberately.
+`users` traveler details, `expenses`, `cost_centers` and `travel_policies`, now writable at
+`/settings/profile`, the show's Cost tab, `/settings/cost-centers` and `/settings/travel-policy`.
+**`show_outcomes` is the fifth and is deliberately left open** — whether a figure a company types
+about itself earns more trust than a replayed one is a real argument with two sides.
 
-**The copy rule, which took four passes to state.** The docs argue in a vocabulary — floors,
-coverage, lawful basis, withheld — and it is *correct*, which is exactly why it leaks onto
-badges. **A doc comment is addressed to whoever maintains the decision; page copy to whoever
-lives with it.** Grep for: a term of art on a `Badge`, an `x(s)` plural, a section number, a
-`pnpm` command, and any sentence saying why we chose something rather than what is true and what
-to do. **A control that exists is not one that can be found**, a card is named for what somebody
-*does* in it, and **copy telling somebody to do a thing is a claim to check the product
-against** — grep the screens for imperatives. The scan is in `UI-REWORK.md` §17; §14–§18 is the
-long version, including the five tests that asserted on a sentence and broke without anything
-true breaking. **A test asserting on copy is testing the copy** — assert the number, the
-direction or the shape. Three `pnpm smoke` expectations went the same way, so prefer a heading
-or a stat label, and **run `pnpm smoke` with `pnpm test`**.
+**The copy rule, which took five passes to state.** The docs argue in a vocabulary — floors,
+coverage, lawful basis, withheld — and it is *correct*, which is why it leaks onto badges. **A doc
+comment is addressed to whoever maintains the decision; page copy to whoever lives with it.** Grep
+for: a term of art on a `Badge`, an `x(s)` plural, a section number, a `pnpm` command, and any
+sentence saying why we chose something rather than what is true and what to do. **A control that
+exists is not one that can be found**; a card is named for what somebody *does* in it; and **copy
+telling somebody to do a thing is a claim to check the product against**. The scan is in
+`UI-REWORK.md` §17. **A test asserting on copy is testing the copy** — assert the number, the
+direction or the shape; five did, and broke without anything true breaking. Three `pnpm smoke`
+expectations went the same way, so prefer a heading or a stat label, and **run `pnpm smoke` with
+`pnpm test`**.
 
 **Two defects worth remembering because nothing could have caught them.** A route may not import
 a module out of another route's folder when the path contains a dynamic segment — it type-checks,
@@ -787,12 +784,11 @@ every seeded show is in the future and `shift_presence` records what happened, s
 control appears on a shift once it has run rather than inviting somebody to pre-record their own
 attendance.
 
-**A lead reaches a CRM only if it may**, enforced by the code path rather than only the screen:
-every lead carries `outbound` — `marketabilityOf`'s answer to "may this row leave the building" —
-and `roi/store.ts` reads *that same verdict* rather than re-deriving one. Every seeded scanner
-lead fails it, because a badge vendor's export carries no consent column, so those leads are
-absent from every pipeline figure and named on `/roi` as **withheld by us**, deliberately apart
-from the leads the CRM did not know.
+**A lead reaches a CRM only if it may**, enforced by the code path: every lead carries
+`outbound` — `marketabilityOf`'s answer to "may this row leave the building" — and `roi/store.ts`
+reads *that same verdict*. Every seeded scanner lead fails it (a badge vendor's export carries no
+consent column), so those leads are absent from every pipeline figure and named on `/roi` as
+**withheld by us**, apart from the leads the CRM did not know.
 
 **`retention_overdue` is enforced by the nightly job**, the promise §5j said was worse than none
 while nothing kept it: stage 2 of `runNightly` really erases, and what it erased goes into the
@@ -812,12 +808,11 @@ would receive before installing a Slack app.
 request and the ticket is already bought, so rebooking is a call to the airline — the same shape as
 §6d's cancel.
 
-**Extraction from the manual PDF is built** as of step 22, and §5a's rule — nothing extracted is
-quoted in dollars until a human confirms it — is enforced by the step 11 engine unchanged. What
-is **unverified is recall against a layout nobody in this repo has seen**: the only corpus here
-is synthetic and was written by whoever wrote the prompt. `pnpm manual:probe <file.pdf>` measures
-that, and it is the one capture script whose output is meant to be *read* — most lines on its
-unclaimed list are not deadlines, and the one that is, is a miss.
+**Extraction from the manual PDF is built** (step 22), and §5a's rule — nothing extracted is
+quoted in dollars until a human confirms it — is enforced by the step 11 engine unchanged. What is
+**unverified is recall against a layout nobody here has seen**: the only corpus is synthetic and
+was written by whoever wrote the prompt. `pnpm manual:probe <file.pdf>` measures it, and is the
+one capture script whose output is meant to be *read*.
 
 **Checklist templates are code, not rows**: the library in `src/lib/readiness/templates.ts` is
 versioned in git, and an org-editable template builder is deliberately deferred until the standard
@@ -833,14 +828,14 @@ the capture form, not a notification — nothing here asks for notification perm
 
 ### What has never met a live key
 
-**Four adapters have never met a live key**, and each says so in its own header: AeroAPI (13),
-EasyPost (14), Salesforce (19) and Slack (21). All are written to published schemas and tested
-against fixtures we wrote ourselves — the closed loop step 12.5 named, which proves internal
+**Four adapters have never met a live key** — AeroAPI (13), EasyPost (14), Salesforce (19) and
+Slack (21) — and each says so in its own header. All are written to published schemas and tested
+against fixtures we wrote ourselves: the closed loop step 12.5 named, which proves internal
 consistency and structurally cannot catch a wrong field name. The Duffel adapter is in the same
 position and nothing has ever been bought. **The Anthropic assistant adapter (15) is a different
-category**: it uses the vendor's SDK, so there is no hand-written wire schema to be wrong about and
-no capture script would tell us anything — what is unverified is *behavioural* (tool choice, the
-tenses `prompt.ts` asks for, stopping at drafting), and none of that is load-bearing for access,
+category**: it uses the vendor's SDK, so there is no hand-written wire schema to be wrong about
+and no capture script would tell us anything — what is unverified is *behavioural* (tool choice,
+the tenses `prompt.ts` asks for, stopping at drafting), and none of it is load-bearing for access,
 which is the point of putting the access model in `tools.ts`. The step 22 extractor **has** met a
 live key.
 
@@ -881,24 +876,19 @@ Captures are gitignored and the script redacts emails, names and phone numbers b
 suite asserts it did. §5j is about a stranger's details not travelling somewhere they were never
 collected for, and a git history is the least reversible such place.
 
-**Duffel's credit path is where the closed loop bites, and doc research says it is probably already
-broken.** `duffel/fixtures.ts` is the single source for the unit tests, the `recorded` provider
-*and* the seed's travel requests, so `pnpm test`, `pnpm booking:dry-run` and every seeded booking
-validate against payloads we invented. `wire.ts` declares two credit fields and hedges between
-them: `available_airline_credit_ids` (string ids — real, three independent doc reads agree, and
-`normalize.ts` reads it) and `available_airline_credits` (objects carrying values — absent from the
-published Offer schema). `client.ts:resolveCredits` reads **only** the second and throws when it is
-empty, so if it is fictional then **every credit-first purchase has always escalated to a human and
-§5b has never once fired.** It fails loudly, which is exactly why nothing caught it. The docs
-describe credit values living on the credit resource (`GET /air/airline_credits/:id`) and credits
-applying through the order's `payments` array as
-`{type: "airline_credit", airline_credit_id, …}` rather than the top-level
-`airline_credits: [{id}]` we send at `client.ts:440`. A third suspect: the adapter *computes*
-`creditAppliedCents` instead of reading back what the carrier applied, which the ground rules
-forbid. None of it is confirmed — doc sources contradicted each other once during research, so
-**the live key is the arbiter**: capture first, change code second. Q1/Q2/Q3 in
-`scripts/duffel-capture.ts` are asserted in the conformance suite, each failure naming the file,
-the line and the fix.
+**Duffel's credit path is where the closed loop bites, and doc research says it is probably
+already broken.** `duffel/fixtures.ts` is the single source for the unit tests, the `recorded`
+provider *and* the seed's travel requests, so everything validates against payloads we invented.
+`client.ts:resolveCredits` reads `available_airline_credits` — objects carrying values, **absent
+from the published Offer schema** — and throws when empty, so if that field is fictional then
+**every credit-first purchase has always escalated to a human and §5b has never once fired.** It
+fails loudly, which is exactly why nothing caught it. The docs instead put values on the credit
+resource (`GET /air/airline_credits/:id`) and apply credits through the order's `payments` array,
+not the top-level `airline_credits` we send at `client.ts:440`; and the adapter *computes*
+`creditAppliedCents` rather than reading back what the carrier applied, which the ground rules
+forbid. None of it is confirmed — doc sources contradicted each other once — so **the live key is
+the arbiter: capture first, change code second.** Q1/Q2/Q3 in `scripts/duffel-capture.ts` are
+asserted in the conformance suite, each failure naming the file, the line and the fix.
 
 **`pnpm clerk:verify` is Clerk's equivalent**: it reads the Backend API and prints what really
 comes back next to what the code assumes. Four claims, none yet confirmed — that
@@ -1724,6 +1714,13 @@ unverified and this file will say so rather than implying otherwise.
   unsupported to the lines the model wrote. **A user's own message is not passed through it.**
   Bare paths are linkified via `isAppPath` in `nav.ts` — derived from the nav's first segments,
   never listed, because a hand-written route set beside a growing nav fails *silently*.
+- **A deck is the artifact that leaves the building, so every hedge is louder, not quieter.**
+  `/cost` can put the missing lines a tab away; a slide is read in a room by people who cannot
+  click. So "at least" and the named gaps go on the same slide as the number, a `Quotable`'s
+  refusal is printed where the figure would be — **a blank cell reads as zero and a zero is a
+  claim** — and last year is the show `show_decisions.cloned_from_id` points at, **never a name
+  match**. Built as the actor, so a Member's has no cost or ROI slides at all, which is why
+  exporting is ungated. `deck/plan.ts` has the rest.
 - **`@theme`, never `@theme inline`, and there is no `tailwind.config.*`.** `inline` bakes
   token values at build time and breaks runtime theming. Tailwind v4 is CSS-first; theming
   lives in `src/app/globals.css`.
@@ -1776,6 +1773,10 @@ pnpm manual <show id> <file.pdf>   # read a manual into that show's register, un
 pnpm manual <show id>          # every reading of it, with what each one refused
 pnpm manual:probe <file.pdf> --opens YYYY-MM-DD   # the capture-equivalent: what a stupid
                   # date sweep found in the document that the extractor did not claim
+pnpm deck             # every show, with its id, for the brief below
+pnpm deck <show id>   # the executive brief: last year, this year, who is going, what is
+                      # missing — printed as an outline, then written as a .pptx
+pnpm deck <show id> --out brief.pptx
 pnpm day-of           # which show is on the floor, nearest to now first
 pnpm day-of <show id> # one show's snapshot, exactly as a device would hold it
 pnpm day-of <show id> --stale 90   # the same snapshot read later; watch the verdicts go
@@ -1860,6 +1861,8 @@ src/lib/roi/                attribution.ts (first touch across the calendar) · 
 src/lib/profile/            your own traveler details; store.ts writes your own row only
 src/lib/safety/             presence.ts (staleness keyed by *basis*) · rollcall.ts · store.ts
 src/lib/setup/              checklist.ts (pure: the consequence, and who can fix it) · store.ts
+src/lib/deck/               the executive brief — plan.ts (pure: what a slide may claim),
+                            build.ts (pptxgenjs, and nothing else), store.ts, access.ts
 src/lib/dayof/              targets.ts and outbox.ts (pure, and shipped to the *browser*)
 src/lib/alerts/             feed.ts (five standings) · access.ts (no org-wide read) · store.ts
                             (the one writer every engine shares) · sweep.ts
