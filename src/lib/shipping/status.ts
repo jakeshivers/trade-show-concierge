@@ -56,7 +56,7 @@ export type ShipmentPhase =
   | 'cancelled'
   | 'unknown';
 
-export type Consignment = 'advance_warehouse' | 'show_site' | 'office';
+export type Consignment = 'advance_warehouse' | 'show_site' | 'office' | 'direct';
 
 export type TrackedShipment = {
   id: string;

@@ -155,10 +155,24 @@ const SEVERITY_ORDER: Record<PortfolioRow['severity'], number> = { critical: 0, 
  * both on fire, the one that opens sooner is the one you can still do something
  * about.
  */
+/**
+ * Soonest show first, severity as the tie-break.
+ *
+ * This is the one board where flipping to the clock costs the least, because the
+ * ranking it replaces was *already* a function of the clock: the pace model
+ * exists precisely so that 70% nine days out outranks 40% eight months out. What
+ * severity-first added on top was a re-sort the reader has to undo — a show
+ * opening next week sitting below one opening in March because the March one is
+ * further behind pace. The pace verdict is still on every row, in its words and
+ * its tone, and it still breaks ties between two shows opening the same day.
+ *
+ * A show that has already opened sorts first of all and keeps its natural order,
+ * which falls out of `daysUntil` going negative rather than needing a rule:
+ * readiness during move-in is the last moment it means anything.
+ */
 function byRisk(a: PortfolioRow, b: PortfolioRow): number {
-  const bySeverity = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
-  if (bySeverity !== 0) return bySeverity;
-  return a.daysUntil - b.daysUntil;
+  if (a.daysUntil !== b.daysUntil) return a.daysUntil - b.daysUntil;
+  return SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
 }
 
 function dollars(cents: number): string {

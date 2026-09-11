@@ -56,16 +56,26 @@ async function routes(): Promise<Check[]> {
     // sentence that only renders when a show *has* an unknown-basis lead, so it
     // silently depended on which show sorted first. The column heading is there
     // whenever the tab resolved its data, which is what this check is for.
-    { path: `/shows/${id}/leads`, expect: 'Lawful basis' },
+    { path: `/shows/${id}/leads`, expect: 'Target accounts' },
     { path: `/shows/${id}/clone`, expect: 'lone' },
     // Approver-only, like /cost. As a Member both of these render the refusal
     // instead of the figures, which is the access model working rather than a
     // smoke failure — same caveat as /settings/security below.
     { path: `/shows/${id}/cost`, expect: 'has cost so far' },
     { path: `/shows/${id}/roi`, expect: 'Was it worth it' },
+    // Stale for a commit: the sentence this looked for was page copy explaining
+    // *why* the feature has the ceiling it has, and the safety copy pass deleted
+    // it. Both cards here title themselves differently once a roll call is open,
+    // so this takes the resting-state heading — the show smoke picks is the
+    // earliest one, which is not the one the seed runs a roll call on.
+    { path: `/shows/${id}/safety`, expect: 'Who is expected here' },
+    { path: '/safety', expect: 'Duty of care' },
     { path: '/readiness', expect: 'eadiness' },
     { path: '/alerts', expect: 'engines' },
-    { path: '/cost', expect: 'made up' },
+    // A column heading rather than a sentence: the blurb this used to look for
+    // was rewritten by a copy pass, and a heading is there whenever the table
+    // resolved, which is what this check is actually for.
+    { path: '/cost', expect: 'Nothing recorded for' },
     { path: '/roi', expect: 'attribution window' },
     { path: '/itinerary', expect: 'tinerary' },
     { path: '/travel', expect: 'ravel' },
@@ -73,19 +83,52 @@ async function routes(): Promise<Check[]> {
     { path: '/travel/approvals', expect: 'pproval' },
     { path: '/flights', expect: 'ove-in' },
     { path: '/shipping', expect: 'dock opens' },
-    { path: '/assets', expect: 'lost between shows' },
-    { path: '/leads', expect: 'coverage behind it' },
+    // A stat label rather than a blurb sentence, for the reason /cost's check
+    // moved — and deliberately not the conflicts card, which only renders when
+    // two shows actually clash. This one is in the summary grid unconditionally.
+    { path: '/assets', expect: 'Outside the building' },
+    { path: '/leads', expect: 'how complete it is' },
+    { path: '/day-of', expect: 'while you still have a connection' },
+    // The only page here whose content is *not* server-rendered, so the phrase
+    // has to be one the shell prints before the client has read IndexedDB or
+    // reached the snapshot route — which is the whole design, not a limitation.
+    { path: `/day-of/${id}`, expect: 'device' },
     { path: '/assistant', expect: 'never books' },
     // Admin-only: with DEV_ACTOR_EMAIL set to a member this legitimately 404s,
     // which is the shell working rather than a smoke failure.
     { path: '/settings/security', expect: 'Sign-in methods' },
     { path: '/settings/intake', expect: 'intake' },
+    // Not admin-only, unlike everything else under Settings: where your own
+    // alerts go is yours to set.
+    { path: '/settings/profile', expect: 'Traveler details' },
+    { path: '/settings/travel-policy', expect: 'Travel policy' },
+    { path: '/settings/cost-centers', expect: 'Cost centers' },
+    { path: '/settings/notifications', expect: 'Where your alerts go' },
     // Approver-only, like /cost and /roi: a sync reads a customer's pipeline
     // and writes back into it.
     { path: '/settings/crm', expect: 'Attribution' },
   ];
   const request = await firstTravelRequest();
   if (request) checks.push({ path: `/travel/${request}`, expect: 'equest' });
+  // A skip has to say so, because the only other signal is the route count
+  // going 39 → 38 and nobody reads a count — meanwhile the run still says "all
+  // 200" over the most complex page in the app.
+  //
+  // The seed covers this: `seed:ingrid:lhr` is left in `pending_approval` on
+  // purpose, so the approvals queue an admin sees is never empty. What empties
+  // it is **`pnpm booking:dry-run`**, which deletes the seeded requests and
+  // leaves nine of its own, every one of them in a terminal state — it approves
+  // the escalated one and sweeps the expiring one, which is the whole point of
+  // those scenarios. So the sequence that drops this check is a dry run, not a
+  // fresh clone, and the fix is to re-seed rather than to run anything else.
+  else {
+    console.log(
+      '\n  skip  /travel/[id] — no request is visible to DEV_ACTOR_EMAIL and the approvals\n' +
+        '        queue is empty. The seed leaves one pending on purpose, so this means the\n' +
+        '        database has moved on since: `pnpm booking:dry-run` ends every request it\n' +
+        '        creates. Re-run `pnpm db:reset` to cover this page.',
+    );
+  }
 
   // Same reasoning as the travel request above, for a stricter reason: an
   // assistant conversation belongs to one person and nobody else can open it,

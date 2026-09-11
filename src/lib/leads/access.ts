@@ -74,6 +74,28 @@ export function canManageLeads(actor: Actor): boolean {
   return canApprove(actor);
 }
 
+/**
+ * Correcting a lead already captured.
+ *
+ * The same shape as reading it, and deliberately not a new audience: editing a
+ * row you cannot see is not a thing to have a rule about. So your own are
+ * yours, and an approver's reach is the one §3 already grants.
+ *
+ * **Anybody may fix their own, for `canCaptureLead`'s reason one step later.**
+ * The commonest edit in this product is recording what a person was told —
+ * `consent.ts` withholds a row from anything outbound until somebody does, and
+ * the coverage note says "open the lead to record it" in those words. Gating
+ * that on a role makes the fix unavailable to precisely the person who was
+ * standing there and knows the answer, which is how `unknown` becomes permanent.
+ *
+ * A lead nobody captured — imported, or posted by a scanner — has a null
+ * capturer and is therefore an approver's. That falls out rather than being
+ * chosen, and it is right: there is no "the person who was there" to defer to.
+ */
+export function canEditLead(actor: Actor, capturedById: string | null): boolean {
+  return canManageLeads(actor) || (capturedById !== null && capturedById === actor.userId);
+}
+
 /** Erasure. Irreversible, so it sits with changing the plan. */
 export function canRedactLead(actor: Actor): boolean {
   return canApprove(actor);

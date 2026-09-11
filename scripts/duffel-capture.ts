@@ -34,6 +34,17 @@
  *       ground rule is that `creditAppliedCents` comes from the provider and
  *       never from our own arithmetic, and today it is our arithmetic.
  *
+ * A fourth was added when frequent-flyer numbers were wired up, and it is the
+ * quietest of the four:
+ *
+ *   Q4. Does Duffel accept `loyalty_programme_accounts` on a passenger — on the
+ *       offer request *and* on order create? A wrong field name here fails
+ *       silently in the worst way this codebase knows: the search succeeds, the
+ *       order succeeds, a real ticket is issued, and the traveler earns nothing
+ *       for a year while `/settings/profile` shows their number saved. Nothing
+ *       in either response says whether the carrier took it, so a 200 is only
+ *       evidence that the *field* was accepted — which is all this can ask.
+ *
  * ## How it answers them
  *
  * Mostly with **raw probes**, deliberately. Driving `DuffelProvider` would be
@@ -226,7 +237,16 @@ async function main() {
           earliestDeparture: new Date(`${dayAfter(30)}T00:00:00Z`),
           latestArrival: new Date(`${dayAfter(30)}T23:59:59Z`),
         },
-        passengers: [{ givenName: 'Test', familyName: 'Traveler' }],
+        // Q4: a loyalty account on the way out, so the recorded outbound body
+        // shows the shape `client.ts` really sends and the response says whether
+        // Duffel objected to it.
+        passengers: [
+          {
+            givenName: 'Test',
+            familyName: 'Traveler',
+            loyaltyAccounts: [{ airlineCode: 'AA', accountNumber: 'AA0000001' }],
+          },
+        ],
       });
       console.log(`\n    → ${result.offers.length} offers normalized without error`);
       process.stdout.write('  '.padEnd(30));
@@ -274,6 +294,10 @@ async function main() {
       phone_number: '+14155550100',
       gender: 'm',
       title: 'mr',
+      // Q4, the half that matters: order create is where the miles credit.
+      loyalty_programme_accounts: [
+        { airline_iata_code: 'AA', account_number: 'AA0000001' },
+      ],
     });
     const people = passengerIds.map(passenger);
 

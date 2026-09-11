@@ -6,7 +6,7 @@
  * something to develop against without any API keys. Nothing here implies a live
  * flight status or a real fare.
  */
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import type { Actor } from '../src/lib/auth/actor';
@@ -15,6 +15,9 @@ import { runAgent, submitTravelRequest, type AgentDeps } from '../src/lib/travel
 import { applyTemplate, setTaskStatus } from '../src/lib/readiness/store';
 import { setDeadlineStatus, sweepDeadlineAlerts } from '../src/lib/deadlines/store';
 import { acknowledgeAlert } from '../src/lib/alerts/store';
+import { connectMyChannel, deliverPending } from '../src/lib/notify/store';
+import { runNightly } from '../src/lib/schedule/nightly';
+import { ConsoleTransport } from '../src/lib/integrations/notify/console/provider';
 import { syncFlightStatuses } from '../src/lib/flights/store';
 import { RecordedStatusProvider } from '../src/lib/integrations/flightstatus/recorded/provider';
 import { instantToZoned } from '../src/lib/datetime/zoned';
@@ -28,6 +31,12 @@ import {
 } from '../src/lib/team/store';
 import { addLodging, assignRoom } from '../src/lib/lodging/store';
 import { addShipment, syncShipmentTracking } from '../src/lib/shipping/store';
+import {
+  saveRateCard,
+  setRateCardConfirmed,
+  setShipmentHandling,
+} from '../src/lib/drayage/store';
+import { recordSafetyResponse, startRollCall } from '../src/lib/safety/store';
 import { RecordedTrackingProvider } from '../src/lib/integrations/shipping/recorded/provider';
 import { ask } from '../src/lib/assistant/store';
 import {
@@ -52,6 +61,7 @@ import {
   sweepLeadAlerts,
 } from '../src/lib/leads/store';
 import { inferMapping, parseCsv, planImport } from '../src/lib/leads/parse';
+import { addTarget } from '../src/lib/dayof/store';
 import { sweepRoiAlerts, syncCrm } from '../src/lib/roi/store';
 import { RecordedCrmProvider } from '../src/lib/integrations/crm/recorded/provider';
 
@@ -67,8 +77,33 @@ async function main() {
   const db = getDb();
 
   console.log('· clearing existing data');
-  // Order matters only where cascades don't cover it; orgs cascade to everything.
-  await db.delete(s.organizations);
+  /**
+   * One statement, and it has to be `TRUNCATE … CASCADE` rather than a delete.
+   *
+   * This used to be `db.delete(s.organizations)` under a comment claiming "orgs
+   * cascade to everything". Every one of the ~50 tables really is reachable from
+   * `organizations`, so the *intent* was right and the mechanism was not: three
+   * foreign keys are `onDelete: 'restrict'` on purpose — `lodgings` and
+   * `side_events` protect their cost center (§4's rule: a financial row's cost
+   * center must not vanish underneath it) and `approvals` protects its approver.
+   * `RESTRICT` is checked **immediately, per row**, while the order Postgres
+   * processes sibling cascade constraints in is unspecified. So a delete that
+   * reached `cost_centers` before it reached `shows` was refused by a lodging
+   * that was itself about to be deleted a moment later — a real failure, on
+   * correct data, from an ordering nothing declares.
+   *
+   * `TRUNCATE … CASCADE` truncates every table that transitively references this
+   * one instead of firing per-row referential actions, so it is order-free and,
+   * more importantly, **cannot rot**: the next `restrict` FK somebody adds for a
+   * good reason does not silently break the seed the way these three did.
+   *
+   * Why it survived twenty steps: `pnpm db:reset` deletes the whole `.pglite`
+   * directory first, so in the only path anybody runs this statement was a no-op
+   * against an empty database. `pnpm db:seed` on its own — the documented way to
+   * reseed without losing the schema — was broken the whole time, and the
+   * command that hid it is the one the docs recommend.
+   */
+  await db.execute(sql`TRUNCATE TABLE ${s.organizations} CASCADE`);
 
   console.log('· organization & cost centers');
   const [org] = await db
@@ -111,6 +146,15 @@ async function main() {
       maxAcceptableRefundPenaltyCents: 15_000,
       preferredAirlines: ['DL', 'AA'],
       blockedAirlines: [],
+      // Both priced, so the feature is demonstrable — a workspace where they are
+      // null shows a tie-break that never fires. They are the only two numbers in
+      // this policy that let the agent spend *more*, and they stack: the most
+      // this org will ever pay over the cheapest allowed fare is $210.
+      // Deliberately unequal — a negotiated carrier is worth more to the company
+      // than one person's status is, and equal numbers would hide which one moved
+      // a choice in the dry run.
+      preferredCarrierAllowanceCents: 15_000,
+      personalCarrierAllowanceCents: 6_000,
       maxHotelNightlyRateCents: 30_000,
       perShowTravelBudgetCents: 1_200_000,
       requireCreditFirst: true,
@@ -150,6 +194,13 @@ async function main() {
         role: 'admin',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
+        // The default `DEV_ACTOR_EMAIL`, so a clean clone opens
+        // `/settings/profile` on somebody who has a preference — a feature that
+        // renders as absent for whoever actually opens the app is one nobody
+        // finds. DL is on the org's list and UA is not, which is the point:
+        // neither fact changes whether a fare is allowed.
+        preferredAirlines: ['DL', 'UA'],
         phone: '+14155550101',
         bornOn: '1981-04-17',
         gender: 'f',
@@ -163,6 +214,11 @@ async function main() {
         role: 'travel_manager',
         costCenterId: mkt.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
+        // Marcus prefers the two carriers he holds status with. Not derived
+        // from the loyalty rows below — holding an account and preferring an
+        // airline are different facts, and a person can hold five and fly one.
+        preferredAirlines: ['DL', 'AA'],
         phone: '+14155550102',
         bornOn: '1988-11-02',
         gender: 'm',
@@ -177,6 +233,15 @@ async function main() {
         costCenterId: se.id,
         knownTravelerNumber: 'KTN9924183',
         seatPreference: 'window',
+        // Deliberately not ORD. Priya is the Member every access test acts as,
+        // and a home airport that matches everybody else's would let a bug that
+        // reads the *requester's* default instead of the traveler's pass unseen.
+        homeAirport: 'SFO',
+        // Priya prefers United, which the *org* does not prefer — the org's
+        // list is DL/AA. Deliberate: it is the case where the two lists
+        // disagree, and the whole point is that hers ranks while the org's is
+        // advisory, so neither one can refuse a fare.
+        preferredAirlines: ['UA'],
         phone: '+14155550103',
         bornOn: '1990-06-25',
         gender: 'f',
@@ -190,6 +255,7 @@ async function main() {
         role: 'member',
         costCenterId: se.id,
         seatPreference: 'aisle',
+        homeAirport: 'ATL',
         phone: '+14155550104',
         bornOn: '1986-01-09',
         gender: 'm',
@@ -215,6 +281,7 @@ async function main() {
         role: 'member',
         costCenterId: exec.id,
         seatPreference: 'aisle',
+        homeAirport: 'ORD',
         phone: '+14155550106',
         bornOn: '1975-09-30',
         gender: 'f',
@@ -223,6 +290,17 @@ async function main() {
     ])
     .returning();
   const [shelley, marcus, priya, tomas, reese, ingrid] = people;
+
+  // Frequent flyer numbers, on some people and not others — the same posture as
+  // Reese's missing date of birth. A workspace where everybody has an account on
+  // every carrier is one where "the ticket earned nothing" can never be seen.
+  // These ride on searches and orders; nothing here claims a mile was credited.
+  await db.insert(s.userLoyaltyAccounts).values([
+    { userId: shelley.id, airlineCode: 'AA', accountNumber: 'AA4471902' },
+    { userId: marcus.id, airlineCode: 'DL', accountNumber: 'DL9920184' },
+    { userId: marcus.id, airlineCode: 'AA', accountNumber: 'AA1180773' },
+    { userId: priya.id, airlineCode: 'UA', accountNumber: 'UA3319887' },
+  ]);
 
   const actorFor = (u: (typeof people)[number]): Actor => ({
     userId: u.id,
@@ -1263,6 +1341,34 @@ async function main() {
     db,
   );
 
+  // The row that is not freight at all, and is most of what a show generates.
+  //
+  // Two boxes to somebody's hotel, sent USPS, with a tracking number and no
+  // weight, no pieces worth counting and no dock. `direct` is what holds it: no
+  // general contractor ever touches it, so it is absent from the drayage
+  // estimate entirely rather than reported there as freight the card could not
+  // price — which would turn a correct figure into a floor over a box.
+  await addShipment(
+    admin,
+    automate.id,
+    {
+      description: 'Two boxes of datasheets — to the hotel front desk',
+      direction: 'outbound',
+      consignment: 'direct',
+      carrier: 'usps',
+      trackingNumber: '9405511899223197428490',
+      ownerId: priya.id,
+      // No dock, so no window to be early for. The date is when somebody checks
+      // in, and it is allowed to be absent without the row looking incomplete.
+      mustArriveOn: localOn(at(49, 17), DTW),
+      mustArriveAt: localAt(at(49, 17), DTW),
+      cost: '48.90',
+      costCenterId: mkt.id,
+    },
+    now,
+    db,
+  );
+
   // Deliberately unowned, and deliberately the one that goes quiet. An alert
   // addressed to an owner would reach nobody here, which is why unownedness
   // escalates rather than mutes. §5a's third correction, from a fourth direction.
@@ -1718,6 +1824,111 @@ async function main() {
   // After the shipments, deliberately: `freightCoverage` reads the freight rows
   // to decide whether a reservation window covers the trip, and a sweep that ran
   // before them would return `unverified` on every row and quietly prove nothing.
+  // Drayage. After the shipments, necessarily: the estimate is a function of the
+  // crates, and a card written before them would price nothing.
+  //
+  // Three states, because the argument is about which figures may be printed:
+  // Automate has a **confirmed** card, so its estimate is a figure; the live show
+  // has one nobody has checked against this year's manual, so its estimate is
+  // introduced as coming from an unchecked card; and Sensors Converge has real
+  // freight and **no card at all**, which is the case that must never render as
+  // $0 — the largest cost on the show, reported as free.
+  console.log('· drayage rate cards (through the real store, and one show left without one)');
+  await saveRateCard(
+    admin,
+    automate.id,
+    {
+      contractor: 'Freeman',
+      advanceCwt: '142.00',
+      showSiteCwt: '175.00',
+      minimumLb: '200',
+      // Read off the manual rather than assumed. Getting this wrong is a 100%
+      // error in whichever direction the assumption ran.
+      basis: 'round_trip',
+      specialHandlingPct: '30',
+      overtimePct: '25',
+      sourceNote: 'Exhibitor services manual, section 7 — material handling rates',
+    },
+    now,
+    db,
+  );
+  await setRateCardConfirmed(admin, automate.id, true, now, db);
+
+  await saveRateCard(
+    admin,
+    dmwest.id,
+    {
+      contractor: 'GES',
+      advanceCwt: '128.50',
+      showSiteCwt: '161.00',
+      minimumLb: '200',
+      basis: 'round_trip',
+      // The card is silent on special handling, which is not the same as saying
+      // there is no surcharge — so an uncrated crate here is a named gap rather
+      // than a crate billed at par.
+      specialHandlingPct: null,
+      overtimePct: '25',
+    },
+    now,
+    db,
+  );
+
+  // How a crate is packed is a fact only somebody standing next to it holds, so
+  // it is recorded by the people who packed them rather than by whoever set the
+  // rates — and most crates stay `unknown`, which is the honest standing of a
+  // workspace where nobody has been asked yet.
+  const automateFreight = await db
+    .select({ id: s.shipments.id, description: s.shipments.description })
+    .from(s.shipments)
+    .where(eq(s.shipments.showId, automate.id));
+  for (const crate of automateFreight) {
+    if (crate.description.includes('Booth crate')) {
+      await setShipmentHandling(actorFor(marcus), crate.id, 'crated', now, db);
+    }
+    // Six cartons of literature on a skid is exactly the freight a contractor
+    // surcharges, and exactly the freight everybody forgets to declare.
+    if (crate.description.includes('Literature')) {
+      await setShipmentHandling(actorFor(priya), crate.id, 'uncrated', now, db);
+    }
+  }
+
+  // Duty of care. The live show is mid move-in with four people in town, which
+  // is the only place on this calendar a roll call is a real thing to run.
+  //
+  // Four states, because the argument is about what closes a name: Priya answers
+  // **for herself**; Tomás is answered **by Priya**, which counts and is labelled
+  // (§5e inverted — hearsay is refused in a staffing number and is exactly what a
+  // roll call needs); Ingrid has not answered; and Reese has not answered *and*
+  // has no phone number on file, so her silence means nothing and the count says
+  // so separately. Nobody is marked safe by the seed, because nothing in this
+  // product marks anybody safe.
+  console.log('· duty of care (a real roll call, answered through the real store)');
+  const rollCall = await startRollCall(
+    admin,
+    dmwest.id,
+    'Fire alarm in Hall B during move-in. Confirm you are out of the building.',
+    at(0, 7),
+    db,
+  );
+  await recordSafetyResponse(
+    actorFor(priya),
+    rollCall.id,
+    priya.id,
+    'ok',
+    'Out front by the rideshare pickup.',
+    at(0, 7.2),
+    db,
+  );
+  await recordSafetyResponse(
+    actorFor(priya),
+    rollCall.id,
+    tomas.id,
+    'ok',
+    'Spoke to him — he is with the crate at the dock.',
+    at(0, 7.4),
+    db,
+  );
+
   console.log('· asset alerts (produced by running the real sweep)');
   const assetSweep = await sweepAssetAlerts(org.id, now);
   console.log(`  ${assetSweep.planned.length} planned · ${assetSweep.alertsWritten} written`);
@@ -1753,9 +1964,14 @@ async function main() {
     await shiftAt(dmwest, at(1, 13), at(1, 17), 3),
   ];
   const dmRoster = [priya, tomas, reese, ingrid] as const;
+  // They arrive the day *before* move-in, which is both how shows actually work
+  // and what makes duty of care measurable at all — §5o's roll call reads travel
+  // windows, and a window that has not started yet is correctly "has not left
+  // yet" rather than a person to go looking for. Seeded with everybody still at
+  // home, the live show's roll call was four people it could say nothing about.
   for (const person of dmRoster) {
-    const invited = await invite(dmwest, person, 'Booth staff', { from: at(0, 12), to: at(3, 19) });
-    await accept(invited, person, dmwest, { from: at(0, 12), to: at(3, 19) });
+    const invited = await invite(dmwest, person, 'Booth staff', { from: at(-1, 14), to: at(3, 19) });
+    await accept(invited, person, dmwest, { from: at(-1, 14), to: at(3, 19) });
   }
   for (const [shiftId, userId] of [
     [dmShifts[0], priya.id],
@@ -1805,6 +2021,54 @@ async function main() {
       capturedAt,
       db,
     );
+  }
+
+  // Who this show is for — the list the day-of screen warns against, built
+  // through the real store so the must-meet reason rule is actually enforced
+  // rather than typed around.
+  //
+  // The shape is the finding rather than the rows. Lakeside Manufacturing is
+  // *met*, and it is met because Priya captured Dana Whitfield an hour ago —
+  // there is no `met_at` column and nothing ticked a box, so erasing that lead
+  // would take the claim with it. Corvid Packaging is met under a different
+  // spelling ("Corvid Packaging Inc." on the badge), which is the only thing
+  // `normalizeCompany` is for. Vance Group is a must-meet nobody has spoken to
+  // and nobody owns, which is the escalation case. And Brightpath is a target
+  // whose lead exists but was captured by somebody else, so the alert on the
+  // floor is "already spoken to" rather than "go and find them".
+  for (const t of [
+    {
+      companyName: 'Lakeside Manufacturing',
+      aliases: ['Lakeside Mfg'],
+      priority: 'must_meet' as const,
+      reason: 'Renewal is up in Q1 and their VP Ops is on the floor Tuesday only.',
+      ownerId: marcus.id,
+    },
+    {
+      companyName: 'Corvid Packaging Inc.',
+      aliases: [],
+      priority: 'target' as const,
+      reason: 'Evaluating cobots against two competitors.',
+      ownerId: priya.id,
+    },
+    {
+      companyName: 'Vance Group',
+      aliases: ['Vance Group Holdings'],
+      priority: 'must_meet' as const,
+      reason: 'Largest unclosed opportunity in the region. Nobody has met them in person.',
+      // Deliberately unowned: an alert addressed to an owner who does not exist
+      // reaches nobody, and this is the row most likely to be walked past.
+      ownerId: null,
+    },
+    {
+      companyName: 'Brightpath Labs',
+      aliases: [],
+      priority: 'watch' as const,
+      reason: null,
+      ownerId: null,
+    },
+  ]) {
+    await addTarget(admin, dmwest.id, t, now, db);
   }
 
   // A badge scanner, through the REST endpoint's own code path — key issued,
@@ -2254,6 +2518,62 @@ async function main() {
     .limit(1);
   if (mine[0]) await acknowledgeAlert(actorFor(marcus), mine[0].id, now, db);
 
+  /* ------------------------------ notifications ----------------------------- */
+
+  // Step 21. Two people connect a destination **through the real store**, and
+  // the delivery pass runs for real — so the log holds rows a screen can be read
+  // against rather than rows typed here.
+  //
+  // The transport is `console`, which composes every message from the real
+  // alerts and delivers it to nobody. That is the honest state of this
+  // workspace and the seed does not dress it up: every row it writes says
+  // `rendered`, never `sent`, and `/settings/notifications` leads with the
+  // sentence "nothing has ever left this workspace". A seeded `sent` would be
+  // the one lie the whole feature exists to make impossible.
+  //
+  // Shelley is deliberately left unconnected, so the run reports somebody with
+  // alerts worth carrying and nowhere to carry them — which is the state most
+  // people in a real workspace are in on the first day, and the only one of the
+  // log's five outcomes that is fixable by anybody.
+  console.log('\n· notifications (real destinations, real delivery pass, nothing delivered)');
+  const rendering = new ConsoleTransport();
+  for (const person of [marcus, priya]) {
+    await connectMyChannel(actorFor(person), { transport: rendering, now }, db);
+  }
+  const carried = await deliverPending(org.id, { transport: rendering, now }, db);
+  console.log(
+    `  ${carried.messages} message(s) composed for ${carried.people} people · ` +
+      `${carried.rendered} rendered to nobody · ${carried.suppressed} suppressed · ` +
+      `${carried.undeliverable} with nowhere to go`,
+  );
+
+  // Run it a second time, the way the seed runs the lead sweep twice. Nothing is
+  // carried: a condition that held a moment ago and holds now is one alert row
+  // whose `created_at` never moved, and the delivery rail is keyed on that.
+  const again = await deliverPending(
+    org.id,
+    { transport: rendering, now: new Date(now.getTime() + 60_000) },
+    db,
+  );
+  console.log(`  a second pass a minute later carried ${again.messages} — the rail holds`);
+
+  // And one recorded run of the job itself, so `/alerts` has something true to
+  // say about what runs the engines. `trigger: 'manual'` is the accurate answer
+  // and the interesting one: the page then says "run by a person, not on a
+  // schedule", which is precisely this workspace's situation until somebody
+  // points a scheduler at `/api/cron/nightly`.
+  //
+  // Retention is skipped, and this is the second caller allowed to do that: the
+  // sweep really erases, and a seed that destroyed the overdue leads it had just
+  // created would leave `pnpm db:reset` with a worse demo than the one it built.
+  // `pnpm leads --retention` is where that is exercised, on purpose.
+  const nightly = await runNightly(
+    org.id,
+    { trigger: 'manual', now, transport: rendering, skipRetention: true },
+    db,
+  );
+  console.log(`  one recorded run: ${nightly.ok ? 'finished' : nightly.error}`);
+
   const counts = {
     users: people.length,
     alertsResolved: resweep.resolved,
@@ -2280,8 +2600,23 @@ async function main() {
     crmOpportunities: crmSync.opportunitiesRead,
     roiAlerts: roiSweep.raised,
     leadAlertsResolved: leadSweep.resolved,
+    notificationsComposed: carried.messages,
+    notificationsDelivered: carried.sent,
+    notificationsNowhereToGo: carried.undeliverable,
   };
   console.log('\n✓ seed complete', counts);
+
+  // Said here rather than left to be rediscovered. `pnpm db:reset` deletes
+  // `.pglite` out from under anything holding it, and a running `next dev` then
+  // serves the old database from a deleted inode: new columns and enum values do
+  // not exist in it, a page section gated on a query renders as simply absent
+  // with no error anywhere, and once the inode is really gone every request
+  // hangs for minutes on `ErrnoError { errno: 44 }`. It cost two debugging
+  // detours in one session, both by somebody who already knew the rule.
+  console.log(
+    '\n  If `pnpm dev` is running, restart it — it is holding the database this just\n' +
+      '  replaced, and will keep serving the old one with no error to say so.\n',
+  );
 }
 
 main()

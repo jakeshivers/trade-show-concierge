@@ -475,3 +475,618 @@ Four page headings stayed hand-rolled on purpose. `/shows/[id]` and `/travel/[id
 detail headers carrying badge rows and a tab bar; pushing that into `PageHeader` would put
 shape into a shared component exactly one caller wants — which is the thing this rework
 spent eight tranches unwinding.
+
+## 12. The ninth thing, found by a user rather than by the plan (2026-09-02)
+
+The rework made every screen *look* consistent and left a defect none of its eight tranches
+was shaped to catch: **the portfolio boards have no calls to action.** Asked on `/shipping`,
+"how does a user enter a new tracking number?", the honest answer was *click a crate, land on
+its show's Logistics tab, scroll past everything, find the form* — and if there had been no
+crates at all, the `Empty` state said so in a sentence that disappeared the moment the board
+had one row. Ten screens were like this: `/shipping`, `/readiness`, `/leads`, `/safety`,
+`/flights`, `/itinerary` and `/assets` all rendered a `PageHeader` with no `action`, and
+`PageHeader` had supported one since tranche 5.
+
+**The cause is structural rather than cosmetic, which is why it survived a visual pass.**
+Every board reads across the whole calendar; every *write* belongs to one show, because a
+crate, a task, a lead and a roll call cannot exist without one. That is the right model. It
+just means the boards have nowhere to put a button that a single `href` could satisfy.
+
+`_components/go-to-show.tsx` is the answer, and the important thing about it is what it
+refuses. It is a **chooser, not a shortcut**: it will not guess the show. "The next one" is
+wrong about as often as it is right — there is nothing on a board that says which show the
+reader has in mind — and a wrong guess files a crate against the wrong show as readily as the
+right one, which is `§5j`'s identity rule from the navigation side. It is a `<details>`
+element, so it is a Server Component with no client JavaScript, and its list is real rows
+ordered by proximity to *now* (the `/day-of` picker's rule) rather than alphabetically.
+
+Three things fell out of building it:
+
+1. **A call to action must carry the same gate as the form it points at.** `Add freight` is
+   behind `canManageShipments`, `Start a roll call` behind `canStartRollCall`, and the two
+   asset buttons behind `canManageAssets` — the same predicate that renders the form further
+   down the page. A CTA that scrolls a Member to nothing is worse than no CTA, because it
+   reads as a broken product rather than an unavailable one. `Capture a lead` and `Open a
+   checklist` are deliberately ungated: capture is anybody's and reporting progress is
+   anybody's, and gating either would be the `§8c` bad-count-by-construction failure.
+2. **An anchor is part of the destination, not of the link.** `#new-freight`, `#new-asset`
+   and `#new-collateral` are ids on the destination pages with `scroll-mt-6`, so the form is
+   on screen rather than under the fold of a Logistics tab that renders three models.
+3. **`/flights` and `/itinerary` get a plain `Request travel` link, and that is the honest
+   CTA.** Nothing in this app types a flight in: legs are materialized from a ticketed
+   booking (step 13's first correction). A "Add a flight" button would have been a nicer-looking
+   lie about where flights come from.
+
+**Do not run `prettier` on this repo.** There is no `.prettierrc`, so its defaults rewrite
+every string to double quotes and re-wrap every JSX blurb — 132 lines of churn in one file to
+add six. `pnpm lint` is the formatter of record here.
+
+## §13 — "Needs help" was a one-way door, and only on screen
+
+Reported by the same reader, 2026-09-02, after marking a colleague `needs_help` on
+`/shows/[id]/safety`: *what does that mean, and how do I move them back?*
+
+Both halves were real, and the second is the more serious.
+
+1. **The control disappeared the moment anybody answered.** `page.tsx` rendered `AnswerFor`
+   under `open && !p.response`, so a person's first answer was also their last. The model had
+   never agreed with that: `safety_responses` is append-only, `recordSafetyResponse`'s own
+   comment says *"somebody who said they need help and later says they are fine has said two
+   things"*, and `buildRollCall` deliberately keeps the **latest** response per person. The
+   store had been built for a second answer for a whole step and the screen never offered
+   one. So the fix is not a new write, a status field or an undo — it is rendering the
+   control that was already there, with `standing` passed in so the buttons read *"Ingrid is
+   OK now"* and *"Actually, needs help"* rather than repeating the first-time wording. The
+   earlier answer stays in the record, which is the point of the table being append-only.
+   **The cost of getting this wrong is specific**: a name that cannot be reopened is one
+   somebody works around by starting a *second* roll call, and `forms.tsx` already says in
+   its own copy that the second one gets answered by fewer people than the first.
+2. **The word was never explained where it is pressed.** `needs_help` is the most alarming
+   thing this product can render and the app's part in it is small — it changes an order and
+   holds a name open. Nothing calls anybody. A screen that does not say so invites the
+   opposite assumption at exactly the wrong moment, so the banner now states what it does,
+   what it does *not* do, and how to close it.
+
+And a third thing, from the same message: **the module's prose had leaked onto the page.**
+*"Ordered by what their silence would cost, not by how sure we are they are here"* is an
+accurate sentence from `rollcall.ts`'s header and it is written for somebody who has read the
+module. On the one screen in this product read while something is going wrong, by whoever is
+holding the laptop, it is a puzzle. The subtitles, the evidence line (*"Why we think so:
+badged into a booth shift · 12m ago"*), the staleness note, the close-out copy and the three
+action confirmations are now written for a person who has never seen the code. The
+distinctions are unchanged — none of the refusals moved — only who the sentences are aimed at.
+**Doc comments explain the design to the next engineer; page copy explains the act to the
+person doing it, and the two are not the same text.**
+
+## §14 — The docs' vocabulary had leaked onto the screens
+
+Same reader, same day, two more: *"a floor — where did this chip come from?"* on the leads
+tab, and *"why is this text block there?"* about the notes under the count.
+
+Both are one defect. `SCOPE.md` argues about **floors**, **coverage**, **lawful basis** and
+**withheld** because those distinctions are the product. Somewhere between the argument and
+the screen, the argument's *words* were pasted onto badges and bullets that a show lead reads
+while deciding what to do this afternoon.
+
+- **"a floor" was a badge next to a headline that already said "At least 7 leads, from 2 of 4
+  people on the booth".** It named the *shape* of the number to somebody who wanted to know
+  what was wrong with it, and it was strictly redundant with the "At least" two inches to its
+  left. It is **"undercounted"** now. `sound` → "complete count", `unknown` → "no booth
+  roster". `/cost`'s badge had the same leak twice: "a floor" → "some costs missing", "thin" →
+  "most costs missing".
+- **The notes under the count were `SCOPE.md` §8c in the first person.** *"This is the number
+  a rep can still change while they are standing there"* explains **why the feature exists**;
+  it does not tell a show lead to ask two colleagues to enter their leads. Every note now
+  states the fact and what fixing it looks like, and the names are joined with an "and".
+- **`lead(s)` and `row(s)` were the tell.** Four notes were built by concatenating a count to
+  a singular noun with a parenthesised plural, which is what template text looks like when
+  nobody has read it back as a sentence. There is a `plural()` helper now, and one for names.
+- **`mayQuotePerLead`'s refusal was reasoning, not an explanation.** "Dividing by an
+  undercount overstates cost per lead, which reads as a bad show" is the correct argument for
+  *why the rule exists*. What the reader needs is the consequence and the remedy: too few
+  leads makes each look dearer, that is the number people cut a show over, and it appears once
+  everyone has entered theirs. The two tests that asserted on the old sentence now assert on
+  the direction of the error, which is the thing that must not change.
+
+**The rule, stated once for the next screen:** a doc comment is addressed to whoever maintains
+the decision; page copy is addressed to whoever lives with it. When the same sentence is doing
+both jobs, it is doing the second one badly. Symptoms to grep for: a term of art on a `Badge`,
+a `(s)` plural, and any sentence that explains why we chose something rather than what is true
+and what to do.
+
+## §15 — The rest of `/leads`, and two defects the copy pass found underneath
+
+Same reader, one instruction: *"I don't want copy on the page that I cannot explain to end
+users."* §14 fixed the badges and the notes on the leads tab. This is both leads screens
+swept end to end — and the sweep is what surfaced the two real defects below, neither of
+which is about wording.
+
+**What came off the screens.** The portfolio's closing paragraph was §8c arguing with itself
+about why there is no year-to-date total; that argument belongs in the file's doc comment,
+where it already was, and the paragraph is gone rather than reworded — a footnote explaining
+a design decision is exactly what the reader objected to. `Counts that are floors` was the
+term §14 removed from a badge, still sitting on a stat tile. `Leads with no lawful basis` →
+`Leads with no consent record`; `Lawful basis: not recorded` → `Why we may follow up: not
+recorded`. The `Basis` and `Retention` column headings named our concepts rather than what is
+in the columns, and the second one holds a date: `Consent` and `Erase by`. `outbound ok` →
+`ok for marketing`, beside a refusal that already said "marketing". `Cost per lead is
+withheld` → `is not shown yet` — the reason under it was already in plain words after §14,
+and only the label was still ours. The duplicate-pair card, the meetings and target empty
+states and the CSV import blurb each explained the reasoning behind a rule; all four now
+state what is true and what the reader does about it.
+
+**Two things the reader could not have known, and one they would have.**
+
+1. **A note in the wrong tense, on a show that closed a year ago.** *"Asking them to add what
+   they have is the quickest way to make this number right"* is the correct sentence during a
+   show. It rendered under Automate 2025, status `complete`, telling a show lead to go and
+   chase two colleagues about a show that ended. The note had hedged it in prose — "**if** the
+   show is still on" — which is what a sentence does when the code has not been asked the
+   question. `hasClosed` is `hasOpened`'s mirror now (status overrides the calendar in both
+   directions, for the same reason), it is carried on `LeadCoverage` so both screens read one
+   fact, and past the show the note says the count is final and why that matters when this
+   show is compared with another. §5a's tense rule, reached from the return side. Three tests.
+2. **Eight more `(s)` plurals, four of them in text nobody sees until they press a button.**
+   §14 named `lead(s)` and `row(s)` as the tell and fixed the ones on the page; the rest were
+   in `actions.ts` success messages and a submit label. `plural` and `names` moved out of
+   `leads/_present.tsx` into **`_components/text.ts`**, dependency-free for `form.ts`'s reason
+   turned around — that file stays clear of `next/cache` so a *client* component may import
+   it, and this one stays clear of React so a **server action** may. A helper sitting beside a
+   `<Badge>` would otherwise drag components into an action module.
+3. **`pnpm smoke` had been red for a commit and nobody had run it.** §13's safety pass deleted
+   the sentence *"Nothing on this page reads a device"* — correctly; it was page copy
+   explaining why the feature has the ceiling it has — and the smoke check still looked for
+   it. So the check that exists because "a check done by hand every time is a check that
+   eventually is not done" was itself only done by hand. It now takes a card heading. **Run
+   `pnpm smoke` in the same breath as `pnpm test`**: the suite is pure and touches nothing in
+   `src/app`, so a copy pass is invisible to all 1,029 of them.
+
+**Both defects came from reading the rendered page, not from a test** — `curl` piped through a
+tag-stripper, which is `pnpm smoke`'s trick with the output actually read. That is the sixth
+and seventh time on this project, after `onConflictDoNothing`, `SOURCE_LABEL`, a deduplicated
+reading, a crate count and two in one sitting on presence. It generalises to copy: **a page's
+words are output, and output is for reading.** A sentence with a hedge in it (`if`, `where
+applicable`, `may have`) is worth a second look — it is often a fact the code holds and was
+never asked for.
+
+**Still to do:** the same sweep on the other screens. `/roi`, `/cost` and `/alerts` are the
+demo path and carry the remaining spec citations — `§8e` and `SCOPE §11.7` are on `/settings/crm`
+and `/roi` verbatim, and `§4` is a field hint on the asset form. Grep is `§`, `SCOPE`, `(s)`,
+and any sentence that says why we chose something.
+
+## §16 — Three things a reader could not find, and one they could not do
+
+The same reader, working through `/leads` and the show's Leads tab in order. Three of the
+four are the same defect at different scales: **a control that exists is not a control that
+can be found, and an instruction with nothing behind it is worse than no instruction.**
+
+- **"I see Target accounts and can add to that, but I cannot see a way to add a new lead."**
+  The form was there. It was the last thing in a card *titled* "Capture" whose first 130 words
+  were the count, its coverage notes and the cost-per-lead refusal — so the one control for
+  the act the tab is named after sat under six lines of reporting, and a reader looking for
+  "add a lead" found a report and stopped. One card was doing two jobs and the reporting half
+  was winning. It is two cards now: **Add a lead**, first on the tab and holding only the
+  form, and **Lead count**, next to the list it counts. §14's rule about page copy has a
+  layout half — **a card is named for what somebody does in it.**
+- **The CTA landed at the top of a long tab.** `GoToShow` has documented a `hash` prop since
+  it was written — *"Anchor on the destination tab, so the form is on screen rather than below
+  the fold"* — and **no caller could pass one**, because `Card` had no `id` and there was
+  nothing on any destination to anchor to. Half-built, in the half nobody sees. `Card` takes
+  an `id` now (with `scroll-mt`, or the anchor sits flush against the viewport and reads as a
+  mis-scroll), `/leads` passes `hash="add-lead"`, and the other five boards can do the same.
+- **`Capture` → `Capture lead`** on the submit button. A verb with no object, on a button
+  under seven unlabelled fields.
+
+**And the fourth, which was not a copy defect at all: there was no way to edit a captured
+lead.** `captureLead`, `commitImport`, `intakeLead`, `markDuplicate`, `redactLead` — and
+nothing between "record it" and "erase it". Two lines already on the screen told the reader to
+do it anyway: the coverage note's *"Open the lead to record it"* and `consent.ts`'s fix line,
+*"Record what the person was told at the booth."* Both pointed at a control that did not
+exist. `canManageLeads`'s own doc comment had described the rule — *"editing a lead somebody
+else captured"* — so the permission was designed and the function was never written.
+
+`updateLead` is the fourth write path. Four things it inherits rather than decides:
+
+1. **It re-checks identity, because `dedupe.ts` claimed it could.** That file said a
+   `same_scan` or `same_email` pair *"cannot exist among stored leads, because all three write
+   paths refuse those before they are written"*. An edit that skipped the check would have
+   made that sentence quietly false — type a colleague's address into the email field and the
+   show has two rows for one person, which is §5j's inflation in the flattering direction. The
+   comment now says **four**, and the check is what keeps it true. The candidate list excludes
+   the row being edited, or every lead collides with itself.
+2. **`external_ref` is not editable and is not on the form.** It is the rail a badge scanner
+   retries against, so editing it either collides with a real row or orphans the retry that is
+   coming in ten minutes on bad wifi. The store carries the stored value through.
+3. **A redacted lead is refused; a duplicate is not.** Erasure nulled those columns and an
+   edit would write personal data back into the row that proves it was honoured. A duplicate
+   keeps its own consent record and its own retention clock — which is exactly what marking it
+   did not touch — so it stays editable.
+4. **Editing has the same reach as reading.** Your own, or an approver's. A row nobody
+   captured (imported, or posted by a scanner) has a null capturer and is therefore an
+   approver's, which falls out rather than being chosen and is right: there is no "person who
+   was there" to defer to.
+
+**The one thing it decides is the consent timestamp, and it is the honest half.**
+`consent_captured_at` answers *when somebody recorded this basis*, and the entire reason it is
+a separate column from `captured_at` is that the two differ. Recording at 4pm what was said at
+10am is the ordinary case; back-dating it to the capture would manufacture evidence that the
+notice was given at the booth, which is the one thing `consent.ts` exists to refuse. So it
+moves when the **claim** moves — the basis or the notice — is **cleared** when the basis
+returns to `unknown` (a timestamp on an absence turns "nobody has said" into a record of an
+event), and is left alone by an edit that only fixes a phone number. Nine tests.
+
+**The pattern across all four:** every one was found by a person using the product, and none
+of them could have been found by `pnpm test`. Three were invisible to the suite because they
+are layout and wording; the fourth was invisible because **a missing feature has no failing
+test** — nothing asserts the absence of a function nobody wrote. The signal that would have
+caught it is cheaper than a test and was sitting on the screen the whole time: **page copy
+telling somebody to do a thing is a claim the product should be checked against.** Grep the
+screens for imperatives — "open the", "record what", "add a" — and confirm each one has a
+control at the other end.
+
+## §17 — `/roi` and `/cost`, and the sweep found a sixth date bug
+
+The same pass as §14 and §16, run over the two money screens and the CRM settings page they
+link to. Most of it was the expected work; three things were not.
+
+**The expected work.** Fifteen `§`/`SCOPE` citations came off the screens — `§8b`, `§8d`,
+`§8e`, `§5a`, `§5g`, `§11.7`, `§11.8`, `§3` twice, and `SCOPE.md §5` — each replaced by the
+sentence it was standing in for, since a reader who cannot open `SCOPE.md` was getting a
+footnote reference instead of a fact. `"Figures that are floors"` was **"a floor" for the
+fourth time** (a stat tile on `/cost`), and `cost is a floor` / `count is a floor` were the
+fifth and sixth, on badges in `roi/_present.tsx`. Four inline `? '' : 's'` plurals became
+`plural()`. Three access refusals stopped citing §3 and just say who can see the page. The
+`ReplayBanner`, the attribution explainer and the CRM page's consent note were rewritten from
+arguments into statements.
+
+**Three things that were not just wording:**
+
+1. **`/roi` was using "withheld" for two different acts at once.** A *figure* we decline to
+   print, and a *lead* we decline to transmit — on the same page, in the same table, in the
+   same sentence at one point. They are unrelated decisions with opposite fixes: one is
+   waiting on more data, the other is waiting on somebody recording what a person was told.
+   Figures are **"not shown"** now and leads are **"not sent"**, and `MatchTable`'s header
+   comment records why the vocabulary split.
+2. **A sixth `toISOString().slice(0, 10)`, live in `src/app`.** The show's ROI tab rendered
+   `as of {roi.asOf.toISOString().slice(0, 10)}` — a *timestamp* printed as a UTC calendar
+   date, so a page read at 5pm Pacific was stamped tomorrow. Finding 2 of this document found
+   four of these and step 22 found a fifth in `scripts/`; this is the sixth, and it survived
+   because `asOf` is a `Date` that nobody thinks of as a due date. It reads
+   `showDate(roi.asOf, detail.show.timezone)` now, which meant the tab had to load the show —
+   worth it, since every other date on every other tab is already rendered in the show's zone
+   and this one was silently not.
+3. **`"Beside the total, not in it"` promised three figures and renders four.** Credits,
+   stock, drayage and attendee-days. The subtitle was written when there were three and the
+   drayage memo was added at step 23 without anybody re-reading the sentence above it. It no
+   longer counts.
+
+**And two tests had to be re-pointed, which is the recurring lesson.** Both asserted on the
+exact wording of a refusal — `toContain('ceiling')` and `toContain('this app refusing, not the
+CRM failing')` — so a copy pass broke them without breaking anything true. §14 hit this and
+fixed it the same way: **assert the thing that must not change.** The first now matches
+`/flatter|too high|overstate/` against the *direction* of the error, which is the half that
+drives a decision. The second is better than what it replaced: it asserts that `12` and `8`
+both appear and that `20` never does, which tests the actual rule — our refusals and the CRM's
+answers are never summed — rather than the sentence that happens to express it.
+
+**Measurement, and it is the one worth keeping.** A scan of every route in the app for `§`,
+`SCOPE.md`, `a floor`, `floors`, `lawful basis`, `reporting artifact`, `fixture` and `x(s)`
+now returns **nothing** — where before these three passes it returned hits on fifteen screens.
+The scan is four lines of shell against a running `pnpm dev` and belongs in the same habit as
+`pnpm smoke`:
+
+```
+curl -s localhost:3000$route | strip-tags | grep -oiE '§[0-9]+|SCOPE\.md|\ba floor\b|lawful basis|[a-z]\(s\)'
+```
+
+**The rule these three sections add up to.** The docs argue in a vocabulary — floors,
+coverage, lawful basis, withheld, fixtures, artifacts — and that vocabulary is *correct*, which
+is exactly why it leaks: the word that ends an argument feels like the word that should go on
+the badge. It is not. **A doc comment is addressed to whoever maintains the decision; page copy
+is addressed to whoever lives with it.** When one sentence does both jobs it is doing the
+second one badly, and the tell is always the same: a term of art on a `Badge`, a `(s)` plural,
+a section number, or a sentence explaining why we chose something rather than what is true and
+what to do about it.
+
+## §18 — The rest of the screens, and the sentence that had been wrong for two steps
+
+The sweep finished across every remaining route. The vocabulary scan was already returning
+nothing after §17, so what this pass was actually looking for was the other two symptoms —
+`x(s)` plurals and copy that explains a decision instead of stating a fact. It found both, and
+one thing that was neither.
+
+**`/alerts` and the overview said there were five engines. There have been seven since step
+19.** The blurb promised *"deadlines, flights, freight, assets and ticket credits"* and
+rendered a **Leads** alert two inches underneath it. Nothing failed and no test could have
+noticed: the sentence was true when it was written and stopped being true two steps later,
+which is the `SOURCE_LABEL` bug in prose rather than in a guard — a hand-written list beside an
+enum that grew.
+
+So the prose is derived now. `feed.ts` exports `EngineSource` (the enum minus `booking` and
+`unknown`, neither of which anything sweeps), `ENGINE_NOUN` as a `Record` over it, and
+`ENGINE_COUNT` / `engineList()`. **Adding an engine to `AlertSource` now fails to compile until
+somebody says what to call it on screen**, and the two pages read the count rather than
+asserting one. Same fix shape as the `SOURCE_LABEL` guard: one exhaustive record, checked by
+the compiler, doing both jobs.
+
+**Seven `in 1 days`.** The overview, the shows list, My Itinerary, the readiness portfolio and
+the show-detail header shared by all ten tabs — `in ${daysUntil(x)} days`, hard-coded, and the
+live show is one day out so five of the seven were visible right now. Plus eleven more `(s)`
+in places the earlier passes could not reach.
+
+**And that is why `plural` moved to `src/lib/text.ts`.** §16 put it in `_components/text.ts`,
+which was right for the screens and useless for the strings that needed it most: a credit
+expiry **alert title**, four **audit-trail notes** on `/travel/[id]`, and seven **sweep summary
+lines** are all composed in `src/lib` and rendered in `src/app`, so the helper the view layer
+owned was unreachable from exactly the code carrying `credit(s)`, `leg(s)` and `offer(s)`.
+`_components/text.ts` re-exports it — one definition, two import paths, and the app-side one
+stays free of React so a server action can still use it.
+
+**Smaller, and each its own kind of wrong:**
+
+- **`"Weather. Nobody needs to do anything."`** on the flight board's *Late, buffer holds*
+  tile. Most delays are not weather, and the tile's actual point is that the buffer survived
+  whatever the cause was. An invented cause on a status board is the fabricated-figure rule
+  with a noun instead of a number.
+- **`"Duffel is not configured. Set DUFFEL_ACCESS_TOKEN, or FLIGHT_PROVIDER=recorded to replay
+  captured payloads instead to enable it."`** Three provider errors build that sentence the
+  same way and only the flights one had `to enable it` welded on after a `join(', ')`, so only
+  it came out ungrammatical.
+- **`"a future claim, a past fact, and nothing else joining them"`** — a stat note on
+  `/assets`. Precisely correct about the design and meaningless to a reader, who needs
+  *"booked to an upcoming show, and last returned damaged."*
+- **Four "lawful basis" strings in `src/lib`** that reach `/alerts` and the leads tab from
+  alert titles and consent verdicts — missed by §14 because they are composed outside `src/app`.
+- **`"Connect a CRM under Settings → CRM"`** promised a control that does not exist; connecting
+  is an environment variable, which that page explains. §16's rule, caught by grepping the
+  screens for imperatives.
+- **`"Open the lead to record it"`** now says **"Edit the lead"**, because §16 built the control
+  and it is called Edit. Copy that asks for an action should name the button.
+
+**One more test asserted on wording** (`batch.notes` had to contain the literal `'lawful
+basis'`) and was re-pointed at the fact. That is the fourth across §14–§18, and the pattern is
+now clear enough to state as a rule: **a test that asserts on a user-facing sentence is testing
+the copy, not the behaviour.** Assert the number, the direction, or the shape.
+
+**Where this leaves things.** The scan across every route and every show tab — `§`, `SCOPE.md`,
+`a floor`, `floors`, `lawful basis`, `reporting artifact`, `fixture`, `x(s)`, `in 1 days` —
+returns nothing. `pnpm smoke`'s `/assets` check moved to a stat label after the blurb it looked
+for was rewritten; that is the **third** smoke expectation a copy pass has invalidated, so the
+standing advice holds and is worth repeating here: **run `pnpm smoke` with `pnpm test`, not
+after somebody notices.** Prefer a heading or a stat label over a sentence, and never a string
+that only renders when the data happens to contain a finding.
+
+## §20 — Two bugs under a red suite, and only the second one mattered
+
+Not a UI finding. `pnpm db:reset && pnpm test` — the ground rule — was leaving nine tests
+red, and `pnpm booking:dry-run` died partway through scenario 2. Both were **pre-existing**
+(reproduced at `6fcd43e`) and had been hidden all session because the suite was running
+against a `.pglite` seeded hours earlier.
+
+**The first bug is a forty-minute hole in the replay.** `recorded/provider.ts` shifts a
+fixture onto the *UTC day* of `earliestDeparture` and keeps its naive local departure time —
+right for durations, overnight arrivals and local clock times, and silent about the resulting
+**instant**. The international fixture leaves SFO at 16:20 local, so it rebases to **23:20Z**;
+`pnpm test` and the dry-run both build their window from `now + 45 days`, so between 23:20Z
+and midnight UTC the offer departs *before* the window opens, is denied on `departure_window`,
+and the request comes back `no_options`. Eight tests fail, every day, for forty minutes — and
+pass the other twenty-three hours, which is how it survived twenty-five steps. **A replay that
+only works at certain times of day is not a replay, and a suite whose colour depends on when
+you run it is worse than one that is red.** `recorded.test.ts` pins the clock across that
+hour, because a test reading the wall clock reproduces this about 3% of the time.
+
+**The second bug is the one worth the evening, and fixing the first is what exposed it.**
+Shifting those offers by a day moved their arrivals inside twelve hours of move-in, and twenty
+inserts failed at once with `invalid input syntax for type integer: "100083278.33333333"`.
+
+`scoreOffer` builds a score in whole cents and then adds
+`(12 - hoursBefore) * 2_500`, where `hoursBefore` is milliseconds over 3,600,000. That term is
+the only fractional one — and `score` is an **`integer` column in both `offer_snapshots` and
+`policy_evaluations`**. So a fractional score is not a ranking nuance: the insert fails, and it
+fails inside `snapshotOffers` while the agent is writing its audit row, which takes down the
+whole run and leaves nothing to read afterwards.
+
+**It fires only when a show has a move-in time and the offer arrives within twelve hours of
+it** — the tight-arrival case the buffer rule exists to reason about. The agent crashed hardest
+on precisely the offers it was built to be careful with. Nothing caught it because the recorded
+fixtures happened to land outside the twelve hours; the one-day shift moved them inside and
+made it unmissable.
+
+Three things worth keeping from how this went:
+
+- **The first fix looked like a regression and was a diagnosis.** Applying it took failures
+  from 9 to 31, and the honest first read — "my change broke twenty-two tests" — was wrong.
+  They were all the same new crash, surfacing a latent defect the old dates had been hiding.
+  Worth remembering before reverting on a count.
+- **`pnpm dev` and `pnpm test` cannot share `.pglite`.** Several runs mid-investigation
+  reported PGlite `Aborted()` failures that were pure contention, and they cost real time by
+  looking exactly like the bug under investigation. `CLAUDE.md` warns about `db:reset` under a
+  running server; the same applies to the suite. **Stop the dev server before trusting a test
+  count.**
+- **The wall clock is an input.** The failure window was 23:20–00:00 UTC and this machine is
+  on `MDT`, so an early misread of the offset made the theory look disproved when it was
+  right. `date -u` first.
+
+## §21 — The first five minutes, which no pass had looked at
+
+§12–§18 were all driven by a reader working *inside* a seeded workspace, on screens that
+already had data. Nothing had looked at the path **before** that: the first screen somebody
+lands on, what an unconfigured workspace tells them, and what the app shows while it is
+thinking or when it breaks. That path decides whether there is a second session, and it had
+never been swept.
+
+**The empty states were fine, which is worth recording.** The survey checked every board and
+every tab expecting the gap to be there, and `Empty`'s doctrine comment — *"an empty state
+says why it is empty and where the thing comes from"* — is honoured throughout. The gaps were
+somewhere else entirely.
+
+### The overview had been wrong since step 9
+
+The first substantive thing a new user read on the home screen was a card headed **"The
+booking spine runs headless"**, saying the travel request form and the approvals queue would
+*"land at step 9"*, and listing `pnpm booking:dry-run`, `pnpm booking:audit` and `pnpm
+credits` as the way to use the product. Step 9 shipped sixteen steps before anybody read that
+sentence again. It is deleted rather than reworded: the thing it describes stopped existing,
+and what replaced it says what is *actually* unfinished about this particular workspace.
+
+Underneath it, **"What you can do here" was a hand-written array of seven capabilities frozen
+at step 8**, beside a nav that had grown to twenty-three entries — no readiness, no deadlines,
+no manual reader, no leads, shipping, drayage, assets, cost, ROI, safety, day-of or assistant.
+This is §18's defect exactly (*"the screens said five engines; there have been seven since step
+19"*), and it gets §18's fix: `_components/nav.ts` now holds the one list of screens, the
+sidebar and the overview both read it, and **`does` is a required field** — a new screen cannot
+be added to the navigation without one sentence saying what a person does there. The compiler
+is what makes that true, as `ENGINE_NOUN` does for the engines.
+
+**The rule, stated once: a hand-written list beside a thing that grows is the `SOURCE_LABEL`
+trap, and prose is not an exception.** It has now appeared three times — a guard, a blurb, and
+a capability list — and each time nothing failed.
+
+### A real organization had no way to know what it had to do first
+
+`CLAUDE.md` has named `/settings/travel-policy`, `/settings/cost-centers` and
+`/settings/profile` as *"the three screens that make a non-seeded org usable at all"* since the
+UX pass built them. **No screen in the app said so.** Until a policy exists the booking agent
+throws `NoPolicyError` and refuses to search; until a cost center exists no financial row can
+be saved at all — and both failed with a message about the missing thing, on the screen where
+somebody was trying to do something else.
+
+`src/lib/setup/` is the answer and it is pure plus a store, like everything else here. Three
+decisions worth carrying:
+
+1. **It is deliberately not an eighth alert engine**, for the reason already written down when
+   drayage rate cards raised the same temptation: *a condition with no clock is not an alert*.
+   "This org has no travel policy" is true from the first minute, never sharpens, and a
+   permanently-true alert that never escalates teaches a team to close the next one unread.
+2. **A step names the consequence, not the chore.** "Set a travel policy" is a task nobody
+   does; "until this is set the booking agent will not search for a fare at all" is a reason.
+3. **A step the reader cannot perform is still listed, and names who can.** Hiding the two
+   admin steps from a Member would leave them meeting `NoPolicyError` with no idea why and
+   nobody to ask — the posture every `access.ts` refusal in this codebase already takes. It is
+   also **not dismissible**: a dismissed setup step is a workspace that silently stays broken,
+   and "configured" and "configured except for the part somebody hid" look identical from every
+   other screen.
+
+### Four boundary files that did not exist
+
+There was no `loading.tsx`, `error.tsx`, `not-found.tsx` or `global-error.tsx` anywhere in
+`src/`. Every page under the shell is `force-dynamic` and reads the database, so clicking a nav
+entry left the **previous page** on screen for as long as the next one's queries took — a board
+that is slow and a board that is broken looked identical. Five call sites already threw
+`notFound()` and every one of them landed on Next's default 404 **outside the shell**: no
+navigation, no theme, no way back. A thrown `NoPolicyError` did the same, discarding the most
+useful sentence in the codebase.
+
+`(app)/error.tsx` **renders `error.message`, which is unusual and is the point** — the config
+and provider errors here are written to be read, and Next already replaces the message with a
+generic string plus a `digest` for anything it did not expect, so an unexpected error still
+cannot leak a stack. `(app)/not-found.tsx` says the same thing for a missing row and a
+forbidden one on purpose, because `assistant/[id]` calls `notFound()` for a `ForbiddenError`
+precisely so a colleague's conversation is indistinguishable from one that does not exist.
+There is a root `not-found.tsx` as well, for a URL matching no route at all — that one is
+reached before the shell exists and can only offer the front door.
+
+### The nav had no alert count
+
+Seven engines write to `/alerts` and the number was legible on exactly one screen. It is a
+badge on the nav entry now, from `feed.summary.outstanding` — **the same derivation the
+overview prints, never a second SQL `count()`**, because what counts as outstanding is
+`standingOf`'s decision and a predicate agreeing with it today is the `SOURCE_LABEL` bug
+waiting. Zero renders nothing rather than a `0`; a badge that is always on is one nobody reads.
+
+`_request.ts` is what makes that affordable: `currentActor` and `currentFeed` are **zero-argument**
+`cache()` wrappers, because `cache()` keys on argument identity and `getAlertFeed(actor)` called
+from a layout and a page is two different `actor` objects and therefore two misses. Rendering
+`/` was already running two actor lookups before this; it now runs one of each.
+
+### `pnpm` on an end-user screen — the symptom the scan never grepped for
+
+§17's vocabulary scan looks for `§`, `SCOPE.md`, `a floor`, `lawful basis` and `x(s)`. It
+never looked for a **command name**, and there were six: `pnpm db:reset` in the `/shows` empty
+state, `pnpm deadlines` on the readiness tab, `pnpm roster` on the team tab, `` `pnpm assets
+--sweep` `` in a card subtitle, and three on the overview. Same rule, new tell: a CLI command
+is the most literal possible case of a doc comment's audience wearing page copy's clothes —
+it asks the reader to open a terminal in a product they reached through a browser.
+
+`layout.tsx`'s `NoDevActor` panel **keeps** its `pnpm db:reset`. It renders only for somebody
+running the app locally with no Clerk keys, and it is addressed to exactly the right reader.
+That is the distinction the rule turns on, and it is why the fix is not a blanket grep-and-delete.
+
+**Add `pnpm [a-z:-]+` to the scan.** Re-run across every route and every show tab, it now
+returns nothing but that one panel — and running it *with* the new pattern turned up a
+seventh hit the three earlier passes had missed: **"lawful basis" was still on
+`/settings/intake`**, the one screen §14 and §15 did not walk.
+
+### Two things reading the rendered page found, as usual
+
+- **`1 flights booked`** on the overview, in the "Where you're going" card. §18 fixed seven
+  `in 1 days` and eleven `(s)` and did not reach this one, because it is not a `(s)` — it is a
+  hard-coded plural noun, which the scan's pattern cannot see. The tell for *that* one is a
+  count interpolated directly next to a word.
+- **The one-word-name hole in the booking agent**, below.
+
+### The defect underneath, which the tidy-up exposed
+
+`missingForTicket` lived in `profile/edit.ts` as a deliberate, commented **mirror** of the
+inline list in `passengers.ts` — and `passengers.ts`'s own doc comment already referred to
+`missingForTicket` as though the throwing path called it. It did not, and **the two had
+already drifted.** `splitName` maps a one-word `fullName` to a given and family name that are
+the same word, so `passengerForUser`'s `!givenName || !familyName` was false and **the agent
+would have ticketed somebody whose legal name cannot match their ID** — the exact failure that
+module's header says it exists to prevent — while the profile screen was correctly refusing.
+The screen was right and the agent was wrong, which is the worse way round.
+
+There is one function now, in `passengers.ts` beside the thing that throws, re-exported from
+`profile/edit.ts` so the two call sites are untouched — the shape `plural` already uses. The
+test asserts it **against `passengerForUser`**, not against the helper, for the reason the
+loyalty-account wiring established: a unit test on the callee passes throughout.
+
+**Two copies of a rule, kept in step by a comment, is a rule with a version that is wrong and
+nothing to say which.** Grep for the word "mirrors" in a doc comment.
+
+## §22 — Eight empty states that said nothing, and the role that explained itself nowhere
+
+Two gaps from the same question as §21 — *what does this screen tell somebody who has no data
+and no context yet* — and a new workspace is made almost entirely of both.
+
+**`Empty`'s own docblock has said this since step 8:** *"an empty state says why it is empty and
+where the thing comes from. 'No data' is indistinguishable from a bug."* Coverage was complete —
+every board and tab has one, which is why §21's survey passed them — but eight said only the
+first half: `Nothing on the calendar yet` · `Nothing in the register yet` · `No collateral items`
+· `Nothing yet` · `None yet` · `Nobody is staffed on this show yet` · `Nothing reserved for this
+show` · `Nothing allocated to this show`. **Coverage is not the same measurement as content**,
+and the survey that graded the first found the second by not looking.
+
+**The fix nearly became a worse defect, which is the part worth keeping.** Three of the eight sit
+above a *gated* form, and the first draft of the copy cheerfully told everybody to use it —
+§16's rule ("copy that asks for an action names the button") inverted into a promise a Member
+cannot keep. Worse, one sentence pointed at the wrong screen entirely: `ReserveForm` renders
+inside the very card whose empty state said *"reserve from the register on Assets"*. Both were
+caught by checking where each control actually lives before writing the sentence, which took
+four greps. So each of the three now branches on the same predicate the form does, and otherwise
+names who can — the setup card's posture, and the collateral one has a **third** branch, because
+its form also requires stock to exist before there is anything to promise.
+
+**And the role that explained itself nowhere.** A Member loses seven nav entries and two show
+tabs with no trace. `/cost` and `/roi` already explain themselves well on arrival — *"a show's
+cost is every colleague's fare, room and freight bill in one figure"* — and nothing in the
+product leads anybody there, so the answer to "why can I not see cost?" was to guess the URL.
+The overview now says it once, derived from `nav.ts` through **`hiddenItems`**, which is
+`visibleItems`' complement over a single `maySee` predicate rather than the filter written twice.
+
+**The tension worth recording, because it is a documented decision this deliberately does not
+overturn.** `shows/[id]/layout.tsx:40` argues that *"a tab that exists and says no is an
+invitation to ask why"*, and hides Cost and ROI from a Member rather than rendering a refusal.
+That argument stands and the tabs are untouched. One explanatory line where somebody is
+orienting is a different act from a locked door drawn on every show, and the sentence it renders
+is the one those two pages already say to anybody who arrives — this closes the *discovery* gap
+and reveals nothing new. If that call is ever revisited, revisit both together.
+
+**One duplicate removed on the way, and it was mine, one session old.** `setup/checklist.ts`
+grew an `andList` in §21 and `src/lib/text.ts` had contained the same three lines inside `names`
+since §18. `andList` is the primitive now and `names` is defined in terms of it — the rule about
+two copies kept in step by a comment, caught before it had a chance to drift.
+
+Verified across all three roles by reading the rendered page: the Member sees seven hidden
+entries and the money clause, the Travel Manager sees four settings and correctly no money
+clause, the Admin sees no line at all. 1,131 tests, 39 routes 200, vocabulary scan clean.

@@ -62,3 +62,11 @@ next-env.d.ts
 # is exactly about a stranger's details not travelling somewhere they were never
 # collected for, and a public git history is the least reversible such place.
 /fixtures/live-salesforce/
+
+# pnpm manual:probe — the capture-equivalent for step 22's extraction. Not
+# committed, and the reason is stronger than for the other two capture
+# directories: a real exhibitor service manual is a third party's copyrighted
+# document, and what lands here is verbatim text out of it. The synthetic corpus
+# in src/lib/manual/fixtures.ts is the committed one, and its header says exactly
+# what it can and cannot prove.
+/fixtures/live-manuals/

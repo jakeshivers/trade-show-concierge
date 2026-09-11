@@ -11,7 +11,7 @@ import {
 } from './consent';
 import { CsvError, inferMapping, parseCsv, planImport, type ColumnMapping } from './parse';
 import { findMatch, findPossiblePairs, isBlocking, type DedupeCandidate } from './dedupe';
-import { assessCoverage, mayQuotePerLead, type CountableLead } from './coverage';
+import { assessCoverage, hasClosed, mayQuotePerLead, type CountableLead } from './coverage';
 import { planLeadAlerts, type AlertableShow } from './alerts';
 import { validateLead, validateMeeting, validateRedactionReason, LeadError } from './edit';
 import { hashToken, issueKey, KEY_PREFIX, readBearer } from './intake';
@@ -311,7 +311,7 @@ describe('duplicate detection', () => {
   });
 
   it('offers nothing where the machine would already have refused the write', () => {
-    // A same-scan or same-email pair cannot exist among stored leads: all three
+    // A same-scan or same-email pair cannot exist among stored leads: all four
     // write paths refuse those before anything is written.
     expect(
       findPossiblePairs([
@@ -422,6 +422,35 @@ describe('capture coverage', () => {
   });
 });
 
+describe('whether capture can still change', () => {
+  // The note under a thin count tells somebody to go and ask two colleagues to
+  // enter their leads. That is the right sentence during a show and the wrong
+  // one afterwards, and it used to be hedged in prose because nothing computed
+  // it. §5a's tense rule, on the return side.
+  it('is closed once the show is past, and open while it is running', () => {
+    expect(hasClosed(show({ status: 'live' }), new Date('2026-08-21T12:00:00Z'))).toBe(false);
+    expect(hasClosed(show({ status: 'live' }), new Date('2026-09-01T12:00:00Z'))).toBe(true);
+  });
+
+  it('lets the status close a show the calendar still calls open', () => {
+    // The mirror of `hasOpened`: somebody marking a show complete is a person
+    // saying so, and it beats the dates in both directions.
+    expect(hasClosed(show({ status: 'complete' }), new Date('2026-08-21T12:00:00Z'))).toBe(true);
+    expect(hasClosed(show({ status: 'cancelled' }), new Date('2026-08-21T12:00:00Z'))).toBe(true);
+  });
+
+  it('carries the answer on the coverage, so both screens read one fact', () => {
+    const running = assessCoverage(
+      { show: show({ status: 'live' }), staff: staff(3), leads: [lead()] },
+      new Date('2026-08-21T12:00:00Z'),
+    );
+    expect(running.hasClosed).toBe(false);
+    expect(assessCoverage({ show: show(), staff: staff(3), leads: [lead()] }, NOW).hasClosed).toBe(
+      true,
+    );
+  });
+});
+
 describe('cost per lead', () => {
   it('is withheld over a thin denominator rather than published with an asterisk', () => {
     const c = assessCoverage({ show: show(), staff: staff(6), leads: [lead()] }, NOW);
@@ -429,7 +458,7 @@ describe('cost per lead', () => {
     expect(verdict.ok).toBe(false);
     // Dividing by an undercount makes cost-per-lead too *high*, which reads as
     // a bad show — so the wrong decision it drives is cutting a show that worked.
-    expect(verdict.reason).toContain('overstates');
+    expect(verdict.reason).toContain('more expensive');
   });
 
   it('is quotable when everybody on the booth contributed', () => {

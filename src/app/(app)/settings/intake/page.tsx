@@ -133,8 +133,9 @@ Content-Type: application/json
           </li>
           <li>
             <span className="font-medium">Omitting <code>consentBasis</code> records none.</span> It
-            is never inferred: a lead marked consented because a field was absent is a lawful basis
-            manufactured out of the absence of one.
+            is never guessed. A lead marked as having consented because the scanner sent no field
+            is a consent record invented out of a missing one, and the lead stays out of anything
+            outbound until somebody records what the person was actually told.
           </li>
         </ul>
       </Card>

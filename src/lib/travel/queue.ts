@@ -215,13 +215,26 @@ export async function costCentersFor(actor: Actor, db: Db = getDb()) {
  * offers.
  */
 export async function travelersFor(actor: Actor, db: Db = getDb()) {
-  if (travelerScope(actor).kind === 'self') {
-    return [{ id: actor.userId, fullName: actor.fullName, email: actor.email }];
-  }
+  // `homeAirport` comes back with each traveler because the request form
+  // prefills "From" with **the traveler's** default rather than the requester's
+  // — a travel manager filing for somebody else is asking where *they* leave
+  // from. It is on this query rather than fetched per selection so switching the
+  // dropdown does not need a round trip.
+  const columns = {
+    id: s.users.id,
+    fullName: s.users.fullName,
+    email: s.users.email,
+    homeAirport: s.users.homeAirport,
+  };
+  const scope = travelerScope(actor);
   return db
-    .select({ id: s.users.id, fullName: s.users.fullName, email: s.users.email })
+    .select(columns)
     .from(s.users)
-    .where(eq(s.users.orgId, actor.orgId))
+    .where(
+      scope.kind === 'self'
+        ? eq(s.users.id, actor.userId)
+        : eq(s.users.orgId, actor.orgId),
+    )
     .orderBy(asc(s.users.fullName));
 }
 

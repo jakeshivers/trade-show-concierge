@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { canApprove } from '@/lib/auth/actor';
 import { canCloneShow, canDecideShow } from '@/lib/shows/visibility';
+import { ProposalNote } from './_proposal-note';
 import { Tabs } from '../../_components/tabs';
 import { loadShow } from './detail';
 import {
@@ -11,6 +12,7 @@ import {
   place,
   statusLabel,
 } from '../../_components/ui';
+import { plural } from '../../_components/text';
 
 /**
  * Show detail — the header and its tabs.
@@ -42,6 +44,12 @@ const TABS = [
   // rendered for a Member for Cost's reason — an ROI figure has a cost figure
   // inside it.
   { segment: 'roi', label: 'ROI', approverOnly: true },
+  // The tenth, and shown to everybody — the loosest gate of any tab here, and
+  // deliberately. Cost and ROI are hidden from a Member because they are every
+  // colleague's fare added up; a roll call is a list of names and whether they
+  // have answered, and the people best placed to find a missing colleague at a
+  // convention centre are the ones standing in it. `lib/safety/access.ts`.
+  { segment: 'safety', label: 'Safety' },
 ];
 
 export default async function ShowLayout({
@@ -65,27 +73,34 @@ export default async function ShowLayout({
         <div className="flex flex-wrap items-baseline gap-3">
           <h1 className="text-2xl font-semibold tracking-tight">{show.name}</h1>
           <Badge tone={STATUS_TONE[show.status]}>{statusLabel(show.status)}</Badge>
-          {canCloneShow(actor) && (
-            <Link
-              href={`/shows/${show.id}/clone`}
-              className="ml-auto text-sm underline hover:no-underline"
+          <span className="ml-auto flex items-baseline gap-3">
+            {/* A plain link, not a form: the route is a GET returning a file, so
+                the browser downloads it with no client JavaScript. Ungated for
+                the reason in `deck/access.ts` — the brief is assembled as the
+                actor and can only hold what they could already read. */}
+            <a
+              href={`/api/shows/${show.id}/deck`}
+              className="text-sm underline hover:no-underline"
             >
-              Clone
-            </Link>
-          )}
+              Download brief
+            </a>
+            {canCloneShow(actor) && (
+              <Link
+                href={`/shows/${show.id}/clone`}
+                className="text-sm underline hover:no-underline"
+              >
+                Clone
+              </Link>
+            )}
+          </span>
         </div>
         <p className="text-sm text-text-muted">
           {dateRange(show.startsOn, show.endsOn, show.timezone)} · {place(show)}
           {show.venueName && ` · ${show.venueName}`}
-          {days > 0 && show.status !== 'cancelled' && ` · in ${days} days`}
+          {days > 0 && show.status !== 'cancelled' && ` · in ${plural(days, 'day', 'days')}`}
         </p>
         {show.status === 'prospect' && (
-          <p className="text-sm text-info">
-            This is a proposal.{' '}
-            {canDecideShow(actor)
-              ? 'Commit or decline it on the Overview tab.'
-              : 'An admin decides whether it goes on the calendar.'}
-          </p>
+          <ProposalNote showId={show.id} canDecide={canDecideShow(actor)} />
         )}
       </header>
 

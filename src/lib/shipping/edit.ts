@@ -70,7 +70,12 @@ export type ValidatedShipment = {
 };
 
 const CARRIERS = new Set(['ups', 'usps', 'fedex', 'dhl', 'other']);
-const CONSIGNMENTS = new Set<Consignment>(['advance_warehouse', 'show_site', 'office']);
+const CONSIGNMENTS = new Set<Consignment>([
+  'advance_warehouse',
+  'show_site',
+  'office',
+  'direct',
+]);
 
 function localOrNull(
   date: string | null | undefined,
@@ -99,16 +104,21 @@ export function validateShipment(draft: ShipmentDraft): ValidatedShipment {
   }
 
   const direction = draft.direction === 'return' ? 'return' : 'outbound';
-  if (direction === 'return' && draft.consignment !== 'office') {
+  // `direct` is deliberately legal in both directions. It is the one consignment
+  // that is not a rule about a show dock — a box to somebody's hotel on the way
+  // in and a box mailed home from the booth are the same kind of thing, and
+  // neither is freight going to or coming off a floor.
+  if (direction === 'return' && draft.consignment !== 'office' && draft.consignment !== 'direct') {
     throw new TeamError(
-      'A return shipment is consigned to the office — it is the crate coming back to us, not ' +
-        'freight going to a floor.',
+      'A return shipment is consigned to the office, or sent direct to a person — it is what is ' +
+        'coming back to us, not freight going to a floor.',
     );
   }
   if (direction === 'outbound' && draft.consignment === 'office') {
     throw new TeamError(
-      'An outbound shipment goes to the advance warehouse or to show-site receiving. Those are ' +
-        'two different rules about what "on time" means, not two addresses.',
+      'An outbound shipment goes to the advance warehouse, to show-site receiving, or direct to ' +
+        'a hotel or a person. The first two are different rules about what "on time" means, not ' +
+        'two addresses.',
     );
   }
 

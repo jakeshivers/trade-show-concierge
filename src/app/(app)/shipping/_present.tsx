@@ -62,6 +62,7 @@ export const CONSIGNMENT_LABEL: Record<string, string> = {
   advance_warehouse: 'advance warehouse',
   show_site: 'show site',
   office: 'office',
+  direct: 'direct — no show dock',
 };
 
 /**

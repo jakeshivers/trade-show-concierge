@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { clone } from '../../actions';
 import { Button } from '../../../_components/ui';
 import type { FormState } from '../../../_components/form';
-import { Message, controlClass } from '../../../_components/form-ui';
+import { Form, Message, controlClass } from '../../../_components/form-ui';
 
 const field = controlClass('comfortable');
 
@@ -22,7 +22,7 @@ export function CloneForm({
   const [state, action, pending] = useActionState<FormState, FormData>(clone, {});
 
   return (
-    <form action={action} className="space-y-5">
+    <Form action={action} state={state} className="space-y-5">
       <input type="hidden" name="sourceId" value={sourceId} />
 
       <label className="block">
@@ -68,6 +68,6 @@ export function CloneForm({
       <Button type="submit" disabled={pending}>
         {pending ? 'Cloning…' : 'Create the clone'}
       </Button>
-    </form>
+    </Form>
   );
 }

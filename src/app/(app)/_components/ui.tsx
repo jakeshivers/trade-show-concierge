@@ -18,12 +18,23 @@ import { cn } from './cn';
 /* --------------------------------- surfaces -------------------------------- */
 
 export function Card({
+  id,
   title,
   action,
   subtitle,
   children,
   className,
 }: {
+  /**
+   * Anchor, so a board's CTA can land on the card holding the form rather than
+   * at the top of a long tab. `GoToShow` has documented a `hash` prop since it
+   * was written and no caller could pass one, because nothing on any
+   * destination had an id — the feature was half-built in the half nobody saw.
+   *
+   * `scroll-mt` because the anchor would otherwise sit under the top of the
+   * viewport with no breathing room, which reads as a mis-scroll.
+   */
+  id?: string;
   title?: string;
   subtitle?: string;
   action?: React.ReactNode;
@@ -32,8 +43,10 @@ export function Card({
 }) {
   return (
     <section
+      id={id}
       className={cn(
         'rounded-xl border border-border bg-panel p-5 shadow-sm shadow-black/[0.02]',
+        id && 'scroll-mt-6',
         className,
       )}
     >
@@ -298,6 +311,32 @@ export function money(cents: number | null | undefined): string {
     style: 'currency',
     currency: 'USD',
     maximumFractionDigits: 0,
+  });
+}
+
+/**
+ * The same figure with its cents, for the places where the cents *are* the
+ * point.
+ *
+ * `money` drops them deliberately: on a board of fares and budgets, two decimals
+ * on every row is noise and nobody is reconciling an invoice from a portfolio
+ * screen. But a **difference** between two fares is often smaller than a dollar
+ * — the travel request page reports a carrier preference that cost $15.55, and
+ * `money` renders that as "$16 more", which overstates it and reads as a figure
+ * somebody rounded rather than a number to check.
+ *
+ * The rule: `money` for an amount, this for a *gap between* amounts, or wherever
+ * the reader is being asked to accept a specific number rather than take in a
+ * magnitude. Deliberately a second function rather than a flag on the first, so
+ * the choice has to be made rather than defaulted.
+ */
+export function moneyExact(cents: number | null | undefined): string {
+  if (cents == null) return '—';
+  return (cents / 100).toLocaleString('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
 }
 

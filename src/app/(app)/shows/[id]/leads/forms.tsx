@@ -3,18 +3,22 @@
 import { useActionState, useState } from 'react';
 import {
   addMeeting,
+  addTargetAccount,
   capture,
   commit,
+  editLead,
   erase,
   markAsDuplicate,
   preview,
+  removeTargetAccount,
   runRetention,
   unmarkAsDuplicate,
   type ImportPreviewState,
 } from './actions';
 import { FIELD_LABEL, type LeadField } from '@/lib/leads/parse';
 import type { FormState } from '../../../_components/form';
-import { Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
+import { plural } from '../../../_components/text';
+import { Form, Message, QuietSubmit, Submit, controlClass } from '../../../_components/form-ui';
 
 const input = controlClass('compact');
 
@@ -30,17 +34,95 @@ const input = controlClass('compact');
  */
 
 const BASIS_OPTIONS = [
-  { value: '', label: 'Lawful basis: not recorded' },
+  { value: '', label: 'Why we may follow up: not recorded' },
   { value: 'legitimate_interest', label: 'Legitimate interest (they gave us the badge)' },
   { value: 'consent', label: 'Consent (they were told, and agreed)' },
 ];
+
+export type EditableLead = {
+  id: string;
+  fullName: string;
+  email: string | null;
+  phone: string | null;
+  company: string | null;
+  title: string | null;
+  notes: string | null;
+  interests: string[] | null;
+  basis: string;
+  consentNotice: string | null;
+};
+
+/**
+ * Correcting a lead.
+ *
+ * The same fields as capture and one behaviour that is not: the consent select
+ * starts on whatever is *recorded*, so opening this on a scanner lead lands on
+ * "not recorded" and the notice box appears the moment somebody picks consent —
+ * which is the edit this form mostly exists for. `consent.ts` withholds those
+ * rows from every outbound path until it happens, and two places on this page
+ * tell the reader to come and do it.
+ *
+ * No `externalRef` control, on purpose. See `updateLead`.
+ */
+export function EditLeadForm({ showId, lead }: { showId: string; lead: EditableLead }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(editLead, {});
+  const [basis, setBasis] = useState(lead.basis === 'unknown' ? '' : lead.basis);
+
+  return (
+    <Form action={action} state={state} className="mt-2 space-y-2">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="leadId" value={lead.id} />
+      <div className="flex flex-wrap items-center gap-2">
+        <input name="fullName" required defaultValue={lead.fullName} placeholder="Name" className={input} />
+        <input name="email" type="email" defaultValue={lead.email ?? ''} placeholder="Email" className={input} />
+        <input name="company" defaultValue={lead.company ?? ''} placeholder="Company" className={input} />
+        <input name="title" defaultValue={lead.title ?? ''} placeholder="Job title" className={input} />
+        <input name="phone" defaultValue={lead.phone ?? ''} placeholder="Phone" className={input} />
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          name="interests"
+          defaultValue={lead.interests?.join(', ') ?? ''}
+          placeholder="Interests, comma separated"
+          className={`${input} min-w-56`}
+        />
+        <input name="notes" defaultValue={lead.notes ?? ''} placeholder="Notes" className={`${input} min-w-64`} />
+        <select
+          name="basis"
+          value={basis}
+          onChange={(e) => setBasis(e.target.value)}
+          className={input}
+        >
+          {BASIS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        {basis === 'consent' && (
+          <input
+            name="consentNotice"
+            required
+            defaultValue={lead.consentNotice ?? ''}
+            placeholder="What they were told"
+            className={`${input} min-w-64`}
+          />
+        )}
+        <Submit pending={pending} busy="Saving…">
+          Save
+        </Submit>
+      </div>
+      <Message state={state} />
+    </Form>
+  );
+}
 
 export function CaptureForm({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(capture, {});
   const [basis, setBasis] = useState('');
 
   return (
-    <form action={action} className="mt-3 space-y-2">
+    <Form action={action} state={state} className="mt-3 space-y-2">
       <input type="hidden" name="showId" value={showId} />
       <div className="flex flex-wrap items-center gap-2">
         <input name="fullName" required placeholder="Name" className={input} />
@@ -73,11 +155,11 @@ export function CaptureForm({ showId }: { showId: string }) {
           />
         )}
         <Submit pending={pending} busy="Saving…">
-          Capture
+          Capture lead
         </Submit>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -92,7 +174,7 @@ export function MeetingForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(addMeeting, {});
   return (
-    <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input name="subject" required placeholder="Who, or what it was about" className={`${input} min-w-64`} />
       <input name="company" placeholder="Company" className={input} />
@@ -127,7 +209,7 @@ export function MeetingForm({
         Record
       </Submit>
       <Message state={state} className="w-full" />
-    </form>
+    </Form>
   );
 }
 
@@ -147,7 +229,7 @@ export function EraseForm({ showId, leadId }: { showId: string; leadId: string }
     );
   }
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <input
@@ -160,7 +242,7 @@ export function EraseForm({ showId, leadId }: { showId: string; leadId: string }
         Erase permanently
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -181,7 +263,7 @@ export function DuplicateForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(markAsDuplicate, {});
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <input type="hidden" name="ofLeadId" value={ofLeadId} />
@@ -189,34 +271,34 @@ export function DuplicateForm({
         Same person — count once
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function UndoDuplicateForm({ showId, leadId }: { showId: string; leadId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(unmarkAsDuplicate, {});
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="leadId" value={leadId} />
       <QuietSubmit pending={pending} busy="Saving…">
         Not a duplicate
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function RetentionButton({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(runRetention, {});
   return (
-    <form action={action} className="flex items-center gap-3">
+    <Form action={action} state={state} className="flex items-center gap-3">
       <input type="hidden" name="showId" value={showId} />
       <Submit pending={pending} busy="Erasing…">
         Erase everything past its date
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -251,24 +333,24 @@ export function ImportForm({ showId }: { showId: string }) {
 
   return (
     <div className="mt-3 space-y-3">
-      <form action={action} className="flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="file" name="file" accept=".csv,text/csv" className="text-xs" />
         <Submit pending={pending} busy="Reading…">
           Read the file
         </Submit>
         <Message state={state} />
-      </form>
+      </Form>
 
       {state.headers && state.counts && (
-        <form action={commitAction} className="space-y-3 rounded-md border border-border p-3">
+        <Form action={commitAction} state={commitState} className="space-y-3 rounded-md border border-border p-3">
           <input type="hidden" name="showId" value={showId} />
           <input type="hidden" name="text" value={state.text ?? ''} />
           <input type="hidden" name="filename" value={state.filename ?? ''} />
 
           <p className="text-xs text-text-muted">
             {state.filename ? <span className="font-medium">{state.filename}</span> : 'File'} ·{' '}
-            {state.counts.rowsRead} row(s) read · {state.counts.accepted} would be imported,{' '}
+            {state.counts.rowsRead} rows read · {state.counts.accepted} would be imported,{' '}
             {state.counts.rejected} rejected, {state.counts.duplicates} already here.
           </p>
 
@@ -294,10 +376,10 @@ export function ImportForm({ showId }: { showId: string }) {
 
           {state.basisUnmapped && (
             <p className="text-xs text-warn">
-              No column is mapped to a lawful basis, so every lead in this file will be recorded
-              with none. That is the honest outcome for a scanner export — they will be counted and
-              followed up, and withheld from anything outbound until somebody records what the booth
-              actually said.
+              No column says why we may follow up, so these leads will be imported without that on
+              record. Scanner exports usually do not carry it. They will still be counted and you can
+              still follow up on the conversation, but they will not go to marketing or a CRM until
+              somebody records what the person was told.
             </p>
           )}
 
@@ -316,15 +398,92 @@ export function ImportForm({ showId }: { showId: string }) {
 
           <div className="flex items-center gap-3">
             <Submit pending={committing} busy="Importing…">
-              Import {state.counts.accepted} lead(s)
+              Import {plural(state.counts.accepted, 'lead', 'leads')}
             </Submit>
             <QuietSubmit formAction={action} pending={pending} busy="Re-reading…">
               Re-check with this mapping
             </QuietSubmit>
             <Message state={commitState} />
           </div>
-        </form>
+        </Form>
       )}
     </div>
+  );
+}
+
+/* ------------------------------ target accounts ----------------------------- */
+
+export function TargetForm({
+  showId,
+  people,
+}: {
+  showId: string;
+  people: { id: string; fullName: string }[];
+}) {
+  const [state, action, pending] = useActionState<FormState, FormData>(addTargetAccount, {});
+  const [priority, setPriority] = useState('target');
+
+  return (
+    <Form action={action} state={state} className="mt-3 space-y-2">
+      <input type="hidden" name="showId" value={showId} />
+      <div className="flex flex-wrap items-center gap-2">
+        <input name="companyName" required placeholder="Company" className={input} />
+        <input
+          name="aliases"
+          placeholder="Other spellings, comma separated"
+          className={`${input} min-w-56`}
+        />
+        <select
+          name="priority"
+          value={priority}
+          onChange={(e) => setPriority(e.target.value)}
+          className={input}
+        >
+          <option value="must_meet">Must meet</option>
+          <option value="target">Target</option>
+          <option value="watch">Watch</option>
+        </select>
+        <select name="ownerId" className={input} defaultValue="">
+          <option value="">Nobody owns it yet</option>
+          {people.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.fullName}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* Required for a must-meet, and the store enforces it: this is the
+            sentence somebody at the booth reads before they walk over. */}
+        <input
+          name="reason"
+          required={priority === 'must_meet'}
+          placeholder={
+            priority === 'must_meet'
+              ? 'Why — the sentence somebody at the booth reads'
+              : 'Why (optional)'
+          }
+          className={`${input} min-w-72`}
+        />
+        <Submit pending={pending} busy="Saving…">
+          Add target
+        </Submit>
+      </div>
+      <Message state={state} />
+    </Form>
+  );
+}
+
+export function RemoveTargetForm({ showId, targetId }: { showId: string; targetId: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(removeTargetAccount, {});
+  return (
+    <Form action={action} state={state} className="inline">
+      <input type="hidden" name="showId" value={showId} />
+      <input type="hidden" name="targetId" value={targetId} />
+      <QuietSubmit pending={pending} busy="…">
+        Remove
+      </QuietSubmit>
+      <Message state={state} />
+    </Form>
   );
 }

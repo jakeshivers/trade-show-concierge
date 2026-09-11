@@ -13,13 +13,7 @@ import { Button } from '../../../_components/ui';
 import { DEFAULT_CHECK_IN, DEFAULT_CHECK_OUT } from '@/lib/lodging/edit';
 import type { LodgingEntry } from '@/lib/lodging/store';
 import type { FormState } from '../../../_components/form';
-import {
-  Message,
-  QuietSubmit,
-  Submit,
-  ZonedDateTime,
-  controlClass,
-} from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, ZonedDateTime, controlClass } from '../../../_components/form-ui';
 
 /**
  * The lodging tab's controls.
@@ -54,7 +48,7 @@ function Fields({
   submitLabel: string;
 }) {
   return (
-    <form action={action} className="mt-3 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-3 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       {lodging && <input type="hidden" name="lodgingId" value={lodging.id} />}
       <input
@@ -130,7 +124,7 @@ function Fields({
         {submitLabel}
       </Button>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -180,14 +174,14 @@ export function EditLodgingForm({
         state={state}
         submitLabel="Save"
       />
-      <form action={dropAction} className="mt-2">
+      <Form action={dropAction} state={dropState} className="mt-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="lodgingId" value={entry.lodging.id} />
         <QuietSubmit pending={dropping}>
           Delete this hotel record
         </QuietSubmit>
         <Message state={dropState} />
-      </form>
+      </Form>
     </details>
   );
 }
@@ -201,7 +195,7 @@ export function RoomGuests({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(addRoomGuest, {});
   return (
-    <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-2 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="lodgingId" value={entry.lodging.id} />
       <select name="userId" required className={inputClass}>
@@ -216,7 +210,7 @@ export function RoomGuests({
         Add
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -231,7 +225,7 @@ export function DropGuestButton({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(dropRoomGuest, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="lodgingId" value={lodgingId} />
       <input type="hidden" name="userId" value={userId} />
@@ -244,7 +238,7 @@ export function DropGuestButton({
         ×
       </button>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -263,7 +257,7 @@ export function CutoffOwnerForm({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(setCutoffOwner, {});
   return (
-    <form action={action} className="mt-1 flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="mt-1 flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="deadlineId" value={deadlineId} />
       <select name="ownerId" defaultValue={ownerId ?? ''} className={inputClass}>
@@ -284,6 +278,6 @@ export function CutoffOwnerForm({
         Save
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

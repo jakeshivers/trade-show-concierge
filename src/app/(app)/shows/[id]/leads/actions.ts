@@ -12,10 +12,13 @@ import {
   markDuplicate,
   recordMeeting,
   redactLead,
+  updateLead,
   sweepLeadRetention,
   unmarkDuplicate,
 } from '@/lib/leads/store';
+import { addTarget, removeTarget, TargetError } from '@/lib/dayof/store';
 import { type FormState, formErrorFrom, optional, str } from '../../../_components/form';
+import { plural } from '../../../_components/text';
 
 /**
  * The Leads tab's writes.
@@ -35,7 +38,7 @@ import { type FormState, formErrorFrom, optional, str } from '../../../_componen
  * "fixing" it.
  */
 
-const EXPECTED = [LeadError, CsvError, ForbiddenError, NotFoundError];
+const EXPECTED = [LeadError, CsvError, TargetError, ForbiddenError, NotFoundError];
 const asFormError = formErrorFrom(EXPECTED);
 
 function refresh(showId: string) {
@@ -43,6 +46,7 @@ function refresh(showId: string) {
   revalidatePath(`/shows/${showId}`);
   revalidatePath('/leads');
   revalidatePath('/alerts');
+  revalidatePath(`/day-of/${showId}`);
 }
 
 export async function capture(_prev: FormState, form: FormData): Promise<FormState> {
@@ -70,7 +74,7 @@ export async function capture(_prev: FormState, form: FormData): Promise<FormSta
     }
     return { ok: 'Captured.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -93,7 +97,7 @@ export async function addMeeting(_prev: FormState, form: FormData): Promise<Form
       notes: optional(form, 'notes'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Recorded.' };
@@ -105,7 +109,7 @@ export async function erase(_prev: FormState, form: FormData): Promise<FormState
   try {
     await redactLead(actor, str(form, 'leadId'), str(form, 'reason'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -122,8 +126,42 @@ export async function runRetention(_prev: FormState, form: FormData): Promise<Fo
     ok:
       result.erased === 0
         ? 'Nothing was past its date. Nothing was erased.'
-        : `${result.erased} lead(s) erased across the workspace. Every lead count is unchanged.`,
+        : `${plural(result.erased, 'lead', 'leads')} erased across the workspace. Every lead ` +
+          'count is unchanged.',
   };
+}
+
+/**
+ * Correcting one already captured.
+ *
+ * `externalRef` is deliberately absent: it is the rail a scanner retries
+ * against, so the store carries the stored one through rather than reading a
+ * field this form does not have.
+ */
+export async function editLead(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    const result = await updateLead(actor, str(form, 'leadId'), {
+      fullName: str(form, 'fullName'),
+      email: optional(form, 'email'),
+      phone: optional(form, 'phone'),
+      company: optional(form, 'company'),
+      title: optional(form, 'title'),
+      notes: optional(form, 'notes'),
+      interests: optional(form, 'interests')?.split(',') ?? null,
+      externalRef: null,
+      basis: optional(form, 'basis'),
+      consentNotice: optional(form, 'consentNotice'),
+    });
+    refresh(showId);
+    if (!result.lead && result.match) {
+      return { ok: `Not saved — ${result.match.reason}` };
+    }
+    return { ok: 'Saved.' };
+  } catch (err) {
+    return asFormError(err, form);
+  }
 }
 
 /**
@@ -140,7 +178,7 @@ export async function markAsDuplicate(_prev: FormState, form: FormData): Promise
   try {
     await markDuplicate(actor, str(form, 'leadId'), str(form, 'ofLeadId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -154,7 +192,7 @@ export async function unmarkAsDuplicate(_prev: FormState, form: FormData): Promi
   try {
     await unmarkDuplicate(actor, str(form, 'leadId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Counted again — two people after all.' };
@@ -239,7 +277,7 @@ export async function preview(
       basisUnmapped: result.plan.basisUnmapped,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -263,13 +301,60 @@ export async function commit(_prev: FormState, form: FormData): Promise<FormStat
     refresh(showId);
     return {
       ok:
-        `${result.written} lead(s) imported. ${planned.plan.rejected.length} rejected, ` +
-        `${planned.plan.duplicates.length} already here — all of them listed on the import record below.` +
+        `${plural(result.written, 'lead', 'leads')} imported. ${planned.plan.rejected.length} ` +
+        `rejected, ${planned.plan.duplicates.length} already here — all of them listed on the ` +
+        'import record below.' +
         (planned.plan.basisUnmapped
-          ? ' No column carried a lawful basis, so every one of these is recorded with none.'
+          ? ' No column said why we may follow up, so these are recorded without that.'
           : ''),
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
+}
+
+/* ------------------------------ target accounts ----------------------------- */
+
+/**
+ * Who we came to this show to meet.
+ *
+ * Editing this list is `canManageTargets` — an approver — for the reason every
+ * other list that moves a denominator is: adding a must-meet account at hour six
+ * of day two changes every "targets met" figure the show will ever report.
+ * Reading it is everybody's, and has to be, because the whole feature is a
+ * sentence a booth staffer reads while a stranger is standing in front of them.
+ *
+ * The list is edited here, on the show's Leads tab, rather than on the day-of
+ * screen — that screen is for people who are standing up, and the decision about
+ * which accounts justify a booth was made months earlier by somebody sitting
+ * down.
+ */
+export async function addTargetAccount(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await addTarget(actor, showId, {
+      companyName: str(form, 'companyName'),
+      aliases: (optional(form, 'aliases') ?? '').split(',').map((a) => a.trim()).filter(Boolean),
+      priority: (optional(form, 'priority') ?? 'target') as 'must_meet' | 'target' | 'watch',
+      reason: optional(form, 'reason'),
+      ownerId: optional(form, 'ownerId'),
+    });
+  } catch (err) {
+    return asFormError(err, form);
+  }
+  refresh(showId);
+  return { ok: 'Target account added.' };
+}
+
+export async function removeTargetAccount(_prev: FormState, form: FormData): Promise<FormState> {
+  const actor = await getActor();
+  const showId = str(form, 'showId');
+  try {
+    await removeTarget(actor, str(form, 'targetId'));
+  } catch (err) {
+    return asFormError(err, form);
+  }
+  refresh(showId);
+  return { ok: 'Removed.' };
 }

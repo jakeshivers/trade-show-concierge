@@ -106,7 +106,7 @@ function planForShow(show: AlertableShow, asOf: Date): PlannedLeadAlert[] {
       severity: 'warning',
       title: `${coverage.basis.unknown} lead${
         coverage.basis.unknown === 1 ? '' : 's'
-      } with no lawful basis recorded`,
+      } with no record of what the person was told`,
       body:
         `${show.showName}. They can be followed up on the conversation the person started, and they cannot be ` +
         'marketed to or pushed to a CRM until somebody records what was said at the booth. Nothing will guess it: ' +

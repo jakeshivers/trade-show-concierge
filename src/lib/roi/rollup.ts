@@ -1,6 +1,7 @@
 import type { ShowCost } from '@/lib/cost/rollup';
 import type { LeadCoverage } from '@/lib/leads/coverage';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
+import { byMostRecentlyOpened } from '@/lib/shows/proximity';
 import type { AttributionSettings, ShowAttribution } from './attribution';
 import { MODEL_LABEL } from './attribution';
 
@@ -84,7 +85,7 @@ export type Maturity =
  */
 export const MATURITY_LABEL: Record<Maturity, string> = {
   future: 'not over yet — nothing to score',
-  immature: 'too recent to score: figures shown, verdict withheld',
+  immature: 'too recent to score: figures shown, no verdict yet',
   maturing: 'old enough to score; revenue still landing',
   mature: 'old enough that closed-won means what it says',
 };
@@ -191,8 +192,8 @@ export function rollUpShowRoi(
     gaps.push({
       kind: 'cost',
       what:
-        `The cost is a floor: ${cost.coverage.verdict === 'empty' ? 'nothing is recorded' : `${cost.coverage.gaps.length} named gap${cost.coverage.gaps.length === 1 ? '' : 's'}`}. ` +
-        'Every per-unit figure below it would come out too low.',
+        `The cost is incomplete: ${cost.coverage.verdict === 'empty' ? 'nothing is recorded' : `${cost.coverage.gaps.length} named gap${cost.coverage.gaps.length === 1 ? '' : 's'}`}. ` +
+        'Everything worked out per lead or per meeting below would come out too low.',
     });
   }
   const perLead = mayQuotePerLead(leads);
@@ -216,8 +217,8 @@ export function rollUpShowRoi(
       what:
         `This show ended ${Math.max(0, Math.round((asOf.getTime() - show.endsOn.getTime()) / DAY))} days ago. ` +
         `Pipeline takes months to appear and revenue 6-12, so figures are shown and no verdict is drawn ` +
-        `before ${MATURITY_DAYS} days — a show scored the week it ends always looks like a loss, and that is ` +
-        'a reporting artifact rather than a finding.',
+        `before ${MATURITY_DAYS} days. A show judged the week it ends always looks like a loss, ` +
+        'which says more about the timing than about the show.',
     });
   }
   if (attribution.undecidable > 0) {
@@ -251,13 +252,13 @@ export function rollUpShowRoi(
   /* --- the ratios, each withheld for its own set of reasons --- */
 
   const costUnusable = cost.isFloor
-    ? 'The cost figure is a floor, so any per-unit number computed from it is too low.'
+    ? 'The cost recorded for this show is incomplete, so anything worked out from it comes out too low.'
     : cost.coverage.verdict === 'empty'
       ? 'Nothing is recorded against this show’s cost, so there is nothing to divide.'
       : null;
 
   const replayUnusable = attribution.replayed
-    ? 'The pipeline behind this is replayed rather than read from a CRM, so the ratio would be a fact about a fixture.'
+    ? 'No CRM is connected, so the pipeline behind this is a general industry pattern rather than this company’s deals. A ratio built on it would describe the pattern, not the show.'
     : null;
 
   const costPerLead: Quotable = !perLead.ok
@@ -287,9 +288,9 @@ export function rollUpShowRoi(
     (cost.totalCents === 0
       ? 'This show has no recorded cost. A multiple over an absence comes out spectacular and means nothing.'
       : cost.isFloor
-        ? 'The cost is a floor, so the multiple over it is a ceiling — it flatters the show by exactly the amount nobody has entered.'
+        ? 'The cost recorded for this show is incomplete, so a multiple over it flatters the show by exactly the amount nobody has entered yet.'
         : maturity === 'immature'
-          ? `Too early. Pipeline from this show is still appearing, and a multiple computed now understates it by an unknown amount (§8e).`
+          ? 'Too early. Pipeline from this show is still arriving, so a multiple worked out now understates it by an unknown amount.'
           : matching.matched === 0
             ? 'No lead from this show is linked to a CRM record, so there is no attributed pipeline to divide.'
             : null);
@@ -350,8 +351,9 @@ export function describeMatching(m: MatchCoverage): RoiGap | null {
   const parts: string[] = [];
   if (m.withheld > 0) {
     parts.push(
-      `${m.withheld} ${m.withheld === 1 ? 'was' : 'were'} never sent, because no lawful basis was recorded at the booth — ` +
-        'that is this app refusing, not the CRM failing, and the fix is on the lead',
+      `${m.withheld} ${m.withheld === 1 ? 'was' : 'were'} never sent, because nobody recorded what those ` +
+        'people were told at the booth. That is this app holding them back rather than the CRM not ' +
+        'knowing them, and it is fixed on the lead',
     );
   }
   if (m.erased > 0) {
@@ -429,7 +431,17 @@ export function summarizeRoiPortfolio(
     // expensive shows are the decisions. Ranking by multiple would put every
     // recent show at the bottom for the reason §8e names, and somebody would
     // cancel one.
-    shows: [...shows].sort((a, b) => b.cost.totalCents - a.cost.totalCents),
+    // Most recent show first — `/leads`' retrospective order, and this page has
+    // the stronger claim to it. §8e already says a show's verdict is not final
+    // for six to twelve months, so this is a report on what has happened and the
+    // nearest thing to now is the show that just closed. Ranking by cost is
+    // still deliberately *not* ranking by multiple (that puts every recent show
+    // at the bottom by construction and somebody cancels one); it is now the
+    // tie-break rather than the key.
+    shows: [...shows].sort(
+      (a, b) =>
+        byMostRecentlyOpened(a, b, asOf) || b.cost.totalCents - a.cost.totalCents,
+    ),
     settings,
     asOf,
     totalCostCents,

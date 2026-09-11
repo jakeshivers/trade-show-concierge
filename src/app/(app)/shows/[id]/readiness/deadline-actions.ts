@@ -49,7 +49,7 @@ export async function createDeadline(_prev: FormState, form: FormData): Promise<
   try {
     await addDeadline(actor, showId, draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Deadline added — unconfirmed until somebody checks it against the manual.' };
@@ -61,7 +61,7 @@ export async function updateDeadline(_prev: FormState, form: FormData): Promise<
   try {
     await editDeadline(actor, String(form.get('deadlineId') ?? ''), draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Deadline updated.' };
@@ -78,7 +78,7 @@ export async function changeDeadlineStatus(_prev: FormState, form: FormData): Pr
       optional(form, 'note'),
     );
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -91,7 +91,7 @@ export async function confirmDeadline(_prev: FormState, form: FormData): Promise
   try {
     await setDeadlineConfirmed(actor, String(form.get('deadlineId') ?? ''), confirmed);
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -107,7 +107,7 @@ export async function removeDeadline(_prev: FormState, form: FormData): Promise<
   try {
     await deleteDeadline(actor, String(form.get('deadlineId') ?? ''));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Deadline deleted.' };

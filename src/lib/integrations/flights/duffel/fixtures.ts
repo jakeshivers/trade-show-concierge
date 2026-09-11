@@ -21,6 +21,8 @@ const airports: Record<string, DuffelAirport> = {
 const delta: DuffelAirline = { id: 'arl_00009VME7D6ivUu8dn35WK', name: 'Delta Air Lines', iata_code: 'DL' };
 const skywest: DuffelAirline = { id: 'arl_00009VME7D6ivUu8dn35WM', name: 'SkyWest Airlines', iata_code: 'OO' };
 const american: DuffelAirline = { id: 'arl_00009VME7D6ivUu8dn35WL', name: 'American Airlines', iata_code: 'AA' };
+const united: DuffelAirline = { id: 'arl_00009VME7D6ivUu8dn35WN', name: 'United Airlines', iata_code: 'UA' };
+const alaska: DuffelAirline = { id: 'arl_00009VME7D6ivUu8dn35WP', name: 'Alaska Airlines', iata_code: 'AS' };
 
 type SegmentOverrides = Omit<Partial<DuffelSegment>, 'origin' | 'destination'> & {
   origin: keyof typeof airports;
@@ -222,6 +224,83 @@ export const internationalOffer: DuffelOffer = {
             },
           ],
         }),
+      ],
+    },
+  ],
+};
+
+/**
+ * The same trip on a different carrier, $22 dearer — and deliberately **not** in
+ * `allOffers`.
+ *
+ * It exists for one scenario: a traveler's own carrier preference breaking a
+ * near-tie. Every other payload here is replayed by the seed and by
+ * `booking:dry-run` on every run, so adding a fifth offer to the default set
+ * would change the offer count in every existing scenario and every assertion
+ * about one. This is opt-in — a caller passes it explicitly — which is also the
+ * honest shape: a near-tie between two carriers is a *constructed* situation,
+ * and pretending the default search happens to produce one would be a fixture
+ * arranged to flatter the feature.
+ *
+ * $22 apart on purpose: inside the seeded $60 allowance, and small enough that
+ * a reader of the dry run can see the preference is buying a preference rather
+ * than a fare.
+ */
+export const unitedNearTieOffer: DuffelOffer = {
+  ...nonstopOffer,
+  id: 'off_00009htYpSCXrwaB9DnUA1',
+  base_amount: '411.00',
+  tax_amount: '41.55',
+  total_amount: '452.55',
+  owner: united,
+  slices: [
+    {
+      ...nonstopOffer.slices[0],
+      id: 'sli_00009htYpSCXrwaB9DnUA1',
+      segments: [
+        {
+          ...nonstopOffer.slices[0].segments[0],
+          id: 'seg_00009htYpSCXrwaB9DnUA1',
+          marketing_carrier: united,
+          operating_carrier: united,
+          marketing_carrier_flight_number: '318',
+        },
+      ],
+    },
+  ],
+};
+
+/**
+ * The same trip again, cheapest of the three, on a carrier **neither** list
+ * names — and, like `unitedNearTieOffer`, deliberately not in `allOffers`.
+ *
+ * It is what makes the carrier-preference scenario legible rather than
+ * circular. With only a preferred fare and a personal one, whichever preference
+ * is worth more wins and the run reads identically to a run with no preferences
+ * at all, because the winner was the cheaper fare anyway. A third fare that is
+ * cheaper than both is the control: now every outcome is a fare being chosen
+ * *over* the cheapest one, which is the only thing an allowance can ever buy and
+ * the only thing worth showing somebody signing it off.
+ */
+export const offListCheapestOffer: DuffelOffer = {
+  ...nonstopOffer,
+  id: 'off_00009htYpSCXrwaB9DnAS1',
+  base_amount: '373.45',
+  tax_amount: '41.55',
+  total_amount: '415.00',
+  owner: alaska,
+  slices: [
+    {
+      ...nonstopOffer.slices[0],
+      id: 'sli_00009htYpSCXrwaB9DnAS1',
+      segments: [
+        {
+          ...nonstopOffer.slices[0].segments[0],
+          id: 'seg_00009htYpSCXrwaB9DnAS1',
+          marketing_carrier: alaska,
+          operating_carrier: alaska,
+          marketing_carrier_flight_number: '1180',
+        },
       ],
     },
   ],

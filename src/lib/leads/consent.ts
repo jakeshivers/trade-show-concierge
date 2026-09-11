@@ -99,22 +99,22 @@ export function marketabilityOf(lead: ConsentFacts): Marketability {
   if (lead.basis === 'unknown') {
     return {
       usable: false,
-      reason: 'No lawful basis was recorded when this lead was captured.',
-      fix: 'Record what the person was told at the booth, or leave it and use the lead only for the follow-up they asked for.',
+      reason: 'Nobody recorded what this person was told about being contacted.',
+      fix: 'Edit this lead to record what they were told, or leave it and use the lead only for the follow-up they asked for.',
     };
   }
   if (lead.basis === 'consent' && !lead.consentCapturedAt) {
     return {
       usable: false,
       reason: 'Consent is claimed with no time it was given.',
-      fix: 'Record when consent was captured, or record legitimate interest instead, which is what a business card actually is.',
+      fix: 'Edit this lead and re-record the consent, or record legitimate interest instead, which is what a business card is.',
     };
   }
   if (lead.basis === 'consent' && !lead.consentNotice) {
     return {
       usable: false,
       reason: 'Consent was recorded with no note of what the person was told.',
-      fix: 'Record the notice they were shown. Consent to an unstated purpose is not consent to any purpose.',
+      fix: 'Edit this lead and record what they were told. Consent to an unstated purpose is not consent to any purpose.',
     };
   }
   return { usable: true };

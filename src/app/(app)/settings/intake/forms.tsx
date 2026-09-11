@@ -3,14 +3,14 @@
 import { useActionState } from 'react';
 import { issue, revoke } from './actions';
 import type { FormState } from '../../_components/form';
-import { Message, QuietSubmit, Submit, controlClass } from '../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, controlClass } from '../../_components/form-ui';
 
 const input = controlClass('compact');
 
 export function IssueForm({ shows }: { shows: { id: string; name: string }[] }) {
   const [state, action, pending] = useActionState<FormState, FormData>(issue, {});
   return (
-    <form action={action} className="mt-3 space-y-2">
+    <Form action={action} state={state} className="mt-3 space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         <input
           name="label"
@@ -36,19 +36,19 @@ export function IssueForm({ shows }: { shows: { id: string; name: string }[] }) 
         </p>
       )}
       {state.error && <Message state={state} />}
-    </form>
+    </Form>
   );
 }
 
 export function RevokeButton({ keyId }: { keyId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(revoke, {});
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="keyId" value={keyId} />
       <QuietSubmit pending={pending} busy="Revoking…">
         Revoke
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

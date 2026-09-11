@@ -102,7 +102,7 @@ function assertRawText(ctx: ToolContext): string {
 export type TravelDraft = {
   travelerEmail?: string;
   showId?: string;
-  originAirport: string;
+  originAirport?: string;
   destinationAirport: string;
   earliestDepartureLocal: string;
   latestArrivalLocal: string;
@@ -128,6 +128,7 @@ export async function draftTravelRequest(
   const raw = assertRawText(ctx);
   const timezone = await resolveZone(ctx, draft.showId, draft.timezone);
   const travelerId = await resolveTraveler(ctx, draft.travelerEmail);
+  const origin = await resolveOrigin(ctx, travelerId, draft.originAirport);
 
   const local = (v: string | undefined): Date | null => {
     if (!v) return null;
@@ -146,7 +147,7 @@ export async function draftTravelRequest(
     {
       travelerId,
       showId: draft.showId ?? null,
-      originAirport: draft.originAirport.trim().toUpperCase(),
+      originAirport: origin.code,
       destinationAirport: draft.destinationAirport.trim().toUpperCase(),
       earliestDeparture: earliest,
       latestArrival: latest,
@@ -168,6 +169,10 @@ export async function draftTravelRequest(
       'constraints, and confirm them — the booking agent will not search until somebody has.',
     summary: {
       origin: row.originAirport,
+      // Said out loud because the person confirming is the only check on it. A
+      // defaulted origin that is silently correct nine times is the one that
+      // gets waved through the tenth.
+      originFromHomeAirport: origin.defaulted,
       destination: row.destinationAirport,
       timezoneUsed: timezone,
       earliestDeparture: row.earliestDeparture,
@@ -270,6 +275,43 @@ async function resolveZone(
     'Which time zone are those times in? Attach the show this trip is for, or give the ' +
       "origin airport's IANA zone. Assuming one would move the window by hours, and a " +
       'departure window is what the policy engine rules against.',
+  );
+}
+
+/**
+ * Which airport the trip leaves from, when the person did not say.
+ *
+ * This is deliberately **not** the refusal `resolveZone` makes one line above,
+ * and the difference is worth stating because they look alike. A time zone the
+ * assistant guesses is an inference from nothing — there is no airport→zone table
+ * here, so any answer is invented, and being wrong moves the window by hours
+ * against the policy engine. A home airport is the opposite: it is a fact the
+ * traveler themselves typed and saved, so using it is *reading a preference*
+ * rather than filling a gap.
+ *
+ * It is still a default on a draft that nobody has confirmed. The request is
+ * filed with `constraints_confirmed_at` null, the agent refuses to search until a
+ * human has read the parse, and the result says `originFromHomeAirport` so the
+ * person confirming sees which of the two it was.
+ */
+async function resolveOrigin(
+  ctx: ToolContext,
+  travelerId: string,
+  explicit: string | undefined,
+): Promise<{ code: string; defaulted: boolean }> {
+  const said = explicit?.trim();
+  if (said) return { code: said.toUpperCase(), defaulted: false };
+
+  const traveler = await ctx.db.query.users.findFirst({
+    where: and(eq(s.users.id, travelerId), eq(s.users.orgId, ctx.actor.orgId)),
+  });
+  if (traveler?.homeAirport) return { code: traveler.homeAirport, defaulted: true };
+
+  throw new Error(
+    'Which airport is this trip leaving from? There is no home airport on file for the ' +
+      'traveler, and an origin is what the search is run from — guessing one would price a ' +
+      'trip from a city nobody is in. Setting a home airport on /settings/profile makes this ' +
+      'the last time it has to be asked.',
   );
 }
 

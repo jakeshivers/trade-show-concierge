@@ -1,7 +1,12 @@
 import Link from 'next/link';
+import { asc, eq } from 'drizzle-orm';
+import { getDb } from '@/db';
+import * as sc from '@/db/schema';
 import { getActor } from '@/lib/auth/actor';
 import { getShipmentBoard, showsMissingReturnLeg } from '@/lib/shipping/store';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
+import { canManageShipments } from '@/lib/shipping/access';
+import { distanceToNow } from '@/lib/shows/proximity';
 import type { ShipmentRow } from '@/lib/shipping/board';
 import {
   Badge,
@@ -13,6 +18,8 @@ import {
   Td,
   Th,
 } from '../_components/ui';
+import { RefreshButton } from '../alerts/forms';
+import { BoardReceiptForm, TrackPackageForm, type PickableShow } from './forms';
 import {
   CONSIGNMENT_LABEL,
   ScanCell,
@@ -23,12 +30,21 @@ import {
 } from './_present';
 
 /**
- * The shipping board — every crate this workspace has, worst first.
+ * The shipping board — every crate still owed to somebody, soonest deadline first.
  *
- * Not sorted by delivery date, which is what a shipping screen does by default
- * and which puts the crate arriving tomorrow above the crate that has not moved
- * in five days. The second one is the emergency; the first is a lorry doing its
- * job. `board.ts` holds the ordering and the argument.
+ * It was worst-first, on the argument that a shipping screen sorted by date puts
+ * the crate arriving tomorrow above the crate that has not moved in five days.
+ * The horizon answered that rather than refuting it: once settled freight stops
+ * appearing, every row is a crate somebody still has to get to a dock, and among
+ * those the deadline is the order the work happens in. It also lands better here
+ * than on the flight board — an overdue crate has the *earliest* deadline on the
+ * page, so ascending order puts the emergency first without any ranking at all.
+ *
+ * The horizon is deliberately not the flight board's clock. A crate whose cutoff
+ * was last Tuesday and which nobody has confirmed is not finished, it is the
+ * most urgent thing here — so a crate leaves when it is **settled**, which means
+ * a person confirmed it at the booth or somebody cancelled the row. Silence and
+ * non-arrival do not expire. `board.ts` and `store.ts` hold the argument.
  *
  * Three things this screen refuses to do. It does not treat `delivered` as done
  * — the carrier signed for a dock, and drayage still has to move it to the booth
@@ -48,6 +64,39 @@ export default async function ShippingBoardPage() {
   const board = await getShipmentBoard(actor, { asOf });
   const gaps = await showsMissingReturnLeg(actor.orgId, asOf);
   const status = selectTrackingProviderOrNull();
+  const mayManage = canManageShipments(actor);
+
+  // The board's own write needs two things the board itself never had: which
+  // shows exist, and the cost centers §4 makes mandatory on every financial row.
+  // Both are loaded only for somebody who may actually add freight.
+  const db = getDb();
+  const [pickable, costCenters] = mayManage
+    ? await Promise.all([
+        db
+          .select({
+            id: sc.shows.id,
+            name: sc.shows.name,
+            timezone: sc.shows.timezone,
+            moveInAt: sc.shows.moveInAt,
+            startsOn: sc.shows.startsOn,
+            endsOn: sc.shows.endsOn,
+          })
+          .from(sc.shows)
+          .where(eq(sc.shows.orgId, actor.orgId))
+          .orderBy(asc(sc.shows.startsOn)),
+        db
+          .select({ id: sc.costCenters.id, code: sc.costCenters.code, name: sc.costCenters.name })
+          .from(sc.costCenters)
+          .where(eq(sc.costCenters.orgId, actor.orgId))
+          .orderBy(asc(sc.costCenters.code)),
+      ])
+    : [[], []];
+
+  // Nearest to now first — /day-of's picker rule. Somebody holding a tracking
+  // number is almost never thinking about next April.
+  const shows: PickableShow[] = [...pickable]
+    .sort((a, b) => distanceToNow(a, asOf) - distanceToNow(b, asOf))
+    .map((s) => ({ id: s.id, name: s.name, timezone: s.timezone, moveInAt: s.moveInAt }));
   const replayed =
     ('choice' in status && status.choice.replayed) ||
     board.rows.some((r) => r.shipment.trackingProvider === 'recorded');
@@ -60,11 +109,19 @@ export default async function ShippingBoardPage() {
         title="Shipping"
         blurb={
           <>
-            Every crate, ordered by what is wrong with it rather than by when it is due. A
-            delivery date only means something against the receiving window it has to land in —
-            and on a show floor that window has two edges, because freight that arrives before
-            the dock opens is refused rather than early.
+            Every crate still owed to somebody, nearest deadline first — which puts anything
+            overdue at the top on its own. A delivery date only means something against the
+            receiving window it has to land in, and on a show floor that window has two edges,
+            because freight that arrives before the dock opens is refused rather than early.
           </>
+        }
+        action={
+          // The board had a write (track a package) and no way to re-ask a
+          // carrier, while rendering a `last scan` age on every row. Same fix as
+          // /flights and the same button, because the sweep behind it asks both
+          // providers at once and reports either being unconfigured in its own
+          // words.
+          <RefreshButton />
         }
       />
 
@@ -82,10 +139,19 @@ export default async function ShippingBoardPage() {
         </p>
       )}
 
+      {mayManage && shows.length > 0 && costCenters.length > 0 && (
+        <Card
+          title="Track a package or a crate"
+          subtitle="A UPS carton to somebody’s hotel and a pallet to the advance warehouse are the same row in this table. Weight, pieces and declared value live on the show’s Logistics tab, because a parcel has none of them."
+        >
+          <TrackPackageForm shows={shows} costCenters={costCenters} />
+        </Card>
+      )}
+
       {board.rows.length === 0 ? (
         <Empty>
-          No shipments. Freight is added on a show’s Logistics tab, which is also where its
-          event timeline lives.
+          No shipments yet. Anything with a tracking number belongs here — a pallet to the
+          advance warehouse, and equally the two boxes somebody FedEx’d to their hotel.
         </Empty>
       ) : (
         <>
@@ -122,6 +188,16 @@ export default async function ShippingBoardPage() {
           </Card>
 
           <Card title="Crates">
+            {/* Said rather than left to be noticed, the way the flight board
+                says it. The rule is different here on purpose and the sentence
+                has to carry the difference: freight leaves when somebody closes
+                it, never because its date went by. */}
+            <p className="mb-3 text-xs text-text-muted">
+              A crate stays here until somebody confirms it reached the booth. Nothing drops off
+              for being old — a crate that missed its window last week is the most urgent row on
+              this page, not a finished one. A show’s own Logistics tab keeps its whole record,
+              arrived freight included.
+            </p>
             <Table>
               <thead>
                 <tr>
@@ -212,8 +288,20 @@ function Crate({ row, asOf }: { row: ShipmentRow; asOf: Date }) {
       <Td>
         <Badge tone={STATUS_TONE[row.status]}>{row.status.replace(/_/g, ' ')}</Badge>
         {/* The distinction this screen exists to make visible. */}
+        {/*
+          The sentence, and now the control that answers it. Rendered whenever
+          the crate has reached a dock and nobody has said it reached the booth —
+          and once somebody has, the row keeps a quiet Withdraw, because a
+          confirmation pressed by mistake is otherwise permanent.
+        */}
         {c.deliveredAt && !c.receivedAt && (
-          <span className="block text-xs text-warn">not confirmed at the booth</span>
+          <>
+            <span className="block text-xs text-warn">not confirmed at the booth</span>
+            <BoardReceiptForm showId={row.showId} shipmentId={c.id} receivedAt={null} />
+          </>
+        )}
+        {c.receivedAt && (
+          <BoardReceiptForm showId={row.showId} shipmentId={c.id} receivedAt={c.receivedAt} />
         )}
       </Td>
       <Td>
@@ -231,3 +319,4 @@ function Crate({ row, asOf }: { row: ShipmentRow; asOf: Date }) {
     </tr>
   );
 }
+

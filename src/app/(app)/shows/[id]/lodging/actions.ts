@@ -65,7 +65,7 @@ export async function createLodging(_prev: FormState, form: FormData): Promise<F
   try {
     await addLodging(actor, showId, draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -81,7 +81,7 @@ export async function updateLodging(_prev: FormState, form: FormData): Promise<F
   try {
     await editLodging(actor, str(form, 'lodgingId'), draftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Updated. Moving a cutoff moves its deadline and withdraws any confirmation on it.' };
@@ -93,7 +93,7 @@ export async function removeLodging(_prev: FormState, form: FormData): Promise<F
   try {
     await deleteLodging(actor, str(form, 'lodgingId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Deleted here — the reservation is still with the hotel.' };
@@ -105,7 +105,7 @@ export async function addRoomGuest(_prev: FormState, form: FormData): Promise<Fo
   try {
     await assignRoom(actor, str(form, 'lodgingId'), str(form, 'userId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -117,7 +117,7 @@ export async function dropRoomGuest(_prev: FormState, form: FormData): Promise<F
   try {
     await unassignRoom(actor, str(form, 'lodgingId'), str(form, 'userId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -133,7 +133,7 @@ export async function setCutoffOwner(_prev: FormState, form: FormData): Promise<
       penaltyEstimate: optional(form, 'penaltyEstimate'),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Saved.' };

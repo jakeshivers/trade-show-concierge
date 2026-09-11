@@ -1,9 +1,12 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
+import { estimateDrayage } from '@/lib/drayage/estimate';
+import { estimable, isDrayable } from '@/lib/drayage/store';
 import { ForbiddenError, type Actor } from '@/lib/auth/actor';
 import { NotFoundError } from '@/lib/shows/store';
-import { canSeeCost } from './access';
+import { canRecordCost, canSeeCost } from './access';
+import { validateExpense } from './edit';
 import {
   rollUpShowCost,
   summarizePortfolio,
@@ -40,13 +43,24 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
       enteredFlights: [],
       lodgings: [],
       shipments: [],
+      drayage: null,
       collateral: [],
       attendees: [],
     });
   }
   if (ids.length === 0) return inputs;
 
-  const [expenses, bookings, flights, lodgings, guests, shipments, allocations, attendees] =
+  const [
+    expenses,
+    bookings,
+    flights,
+    lodgings,
+    guests,
+    shipments,
+    rateCards,
+    allocations,
+    attendees,
+  ] =
     await Promise.all([
       db.select().from(s.expenses).where(inArray(s.expenses.showId, ids)),
 
@@ -86,6 +100,13 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
         .where(inArray(s.lodgings.showId, ids)),
 
       db.select().from(s.shipments).where(inArray(s.shipments.showId, ids)),
+
+      // The drayage estimate is built here, off the shipment rows this query
+      // already returns, rather than by a second caller loading them again. Two
+      // code paths that each compute the largest line on a show is exactly how
+      // the portfolio and the show's own tab end up disagreeing — the reason
+      // this file loads everything at once in the first place.
+      db.select().from(s.drayageRateCards).where(inArray(s.drayageRateCards.showId, ids)),
 
       // Consumption comes off the append-only ledger, not off `quantity_allocated`
       // — promising stock is a claim and issuing it is a movement (§5h), and only
@@ -165,9 +186,42 @@ async function loadCostInputs(shows: (typeof s.shows.$inferSelect)[], db: Db): P
       guests: guestCount.get(l.id) ?? 0,
     });
   }
+  const freightByShow = new Map<string, ReturnType<typeof estimable>[]>();
   for (const sh of shipments) {
+    // The carrier's own charge counts for every row, parcel included: a $180
+    // overnight to a hotel is real freight spend on this show. Only the drayage
+    // estimate excludes parcels, because no contractor lifts one.
     inputs.get(sh.showId)?.shipments.push({ costCents: sh.costCents, direction: sh.direction });
+    if (!isDrayable(sh)) continue;
+    const list = freightByShow.get(sh.showId) ?? [];
+    list.push(estimable(sh));
+    freightByShow.set(sh.showId, list);
   }
+  // Every show gets a drayage estimate, including the ones with no card and the
+  // ones with no freight — `estimateDrayage` answers both with a sentence rather
+  // than a zero, and a null here would put that decision back in the rollup.
+  const cardByShow = new Map(rateCards.map((c) => [c.showId, c] as const));
+  for (const show of shows) {
+    const card = cardByShow.get(show.id);
+    const input = inputs.get(show.id);
+    if (input) {
+      input.drayage = estimateDrayage(
+        card
+          ? {
+              advanceCwtCents: card.advanceCwtCents,
+              showSiteCwtCents: card.showSiteCwtCents,
+              minimumLb: card.minimumLb,
+              basis: card.basis,
+              specialHandlingPct: card.specialHandlingPct,
+              overtimePct: card.overtimePct,
+              confirmedAt: card.confirmedAt,
+            }
+          : null,
+        freightByShow.get(show.id) ?? [],
+      );
+    }
+  }
+
   for (const a of allocations) {
     // `issued` is a negative delta and `returned` a positive one, so what the
     // show actually consumed is the negation of the sum — and an allocation
@@ -246,4 +300,114 @@ export async function getCostPortfolio(
     ...summarizePortfolio(costs),
     statuses: new Map(shows.map((sh) => [sh.id, sh.status])),
   };
+}
+
+/* ------------------------------ filing an invoice --------------------------- */
+
+/**
+ * The write the cost rollup never had.
+ *
+ * Org-scoped through the show, like every other write in this module reads —
+ * the show is fetched under `actor.orgId` and a miss is `NotFoundError` rather
+ * than a permission error, so a wrong id cannot be used to discover that a show
+ * exists in another org.
+ */
+export async function addExpense(
+  actor: Actor,
+  showId: string,
+  input: Parameters<typeof validateExpense>[0],
+  db: Db = getDb(),
+): Promise<string> {
+  if (!canRecordCost(actor)) throw new ForbiddenError('record what a show cost');
+
+  const show = await db.query.shows.findFirst({
+    where: and(eq(s.shows.id, showId), eq(s.shows.orgId, actor.orgId)),
+  });
+  if (!show) throw new NotFoundError();
+
+  const clean = validateExpense(input);
+
+  // The cost center has to belong to this org too. Without this check the
+  // required-cost-center rule above is satisfiable with somebody else's id,
+  // which would file this org's money against another org's budget line.
+  const centre = await db.query.costCenters.findFirst({
+    where: and(
+      eq(s.costCenters.id, clean.costCenterId),
+      eq(s.costCenters.orgId, actor.orgId),
+    ),
+  });
+  if (!centre) throw new NotFoundError();
+
+  const [row] = await db
+    .insert(s.expenses)
+    .values({
+      showId,
+      category: clean.category,
+      description: clean.description,
+      amountCents: clean.amountCents,
+      costCenterId: clean.costCenterId,
+      paid: clean.paid,
+      incurredOn: clean.incurredOn,
+    })
+    .returning({ id: s.expenses.id });
+  return row.id;
+}
+
+/**
+ * Removing a line filed by mistake.
+ *
+ * A hard delete rather than a soft one, and that is a considered difference from
+ * how this codebase treats a lead or a credit. Those are erased or written off
+ * because something downstream counts them and the count must not move
+ * silently. An expense has no such reader: the rollup sums what is there, so a
+ * row removed today simply stops being counted, which is exactly what somebody
+ * who filed $30,400 instead of $3,040 wants. The alternative — a voided row that
+ * still shows on the tab — would make the screen's own argument ("a blank line
+ * is not a zero") harder to read rather than easier.
+ */
+export async function deleteExpense(
+  actor: Actor,
+  expenseId: string,
+  db: Db = getDb(),
+): Promise<string> {
+  if (!canRecordCost(actor)) throw new ForbiddenError('remove a cost line');
+
+  const row = await db
+    .select({ id: s.expenses.id, showId: s.expenses.showId })
+    .from(s.expenses)
+    .innerJoin(s.shows, eq(s.expenses.showId, s.shows.id))
+    .where(and(eq(s.expenses.id, expenseId), eq(s.shows.orgId, actor.orgId)))
+    .limit(1);
+  if (row.length === 0) throw new NotFoundError();
+
+  await db.delete(s.expenses).where(eq(s.expenses.id, expenseId));
+  return row[0].showId;
+}
+
+/** The cost centers a person may file against — this org's, by name. */
+export async function costCentersForExpense(actor: Actor, db: Db = getDb()) {
+  return db
+    .select({ id: s.costCenters.id, name: s.costCenters.name })
+    .from(s.costCenters)
+    .where(eq(s.costCenters.orgId, actor.orgId))
+    .orderBy(s.costCenters.name);
+}
+
+/** The expense rows filed against one show, so they can be read and corrected. */
+export async function listShowExpenses(actor: Actor, showId: string, db: Db = getDb()) {
+  if (!canSeeCost(actor)) throw new ForbiddenError('see what a show cost');
+  return db
+    .select({
+      id: s.expenses.id,
+      category: s.expenses.category,
+      description: s.expenses.description,
+      amountCents: s.expenses.amountCents,
+      paid: s.expenses.paid,
+      costCenterName: s.costCenters.name,
+    })
+    .from(s.expenses)
+    .innerJoin(s.shows, eq(s.expenses.showId, s.shows.id))
+    .leftJoin(s.costCenters, eq(s.expenses.costCenterId, s.costCenters.id))
+    .where(and(eq(s.expenses.showId, showId), eq(s.shows.orgId, actor.orgId)))
+    .orderBy(s.expenses.category);
 }

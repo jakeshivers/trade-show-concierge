@@ -1,12 +1,14 @@
+import { RefreshButton } from '../alerts/forms';
 import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
-import { getFlightBoard } from '@/lib/flights/store';
+import { BOARD_HORIZON_HOURS, getFlightBoard } from '@/lib/flights/store';
 import { selectStatusProviderOrNull } from '@/lib/flights/provider';
 import type { BoardRow } from '@/lib/flights/board';
 import {
   Badge,
   Card,
   Empty,
+  LinkButton,
   PageHeader,
   Stat,
   Table,
@@ -16,12 +18,16 @@ import {
 } from '../_components/ui';
 
 /**
- * The flight board — every leg this actor may see, worst first.
+ * The flight board — every leg still ahead of somebody, soonest first.
  *
- * Not sorted by departure time, which is the one thing an airport board does.
- * This is read by somebody responsible for twenty people across five shows, and
- * the flight that needs them is rarely the next one to leave. `board.ts` holds
- * the ordering and the reasoning.
+ * It was sorted worst-first for twelve steps, and the horizon is what changed
+ * the answer rather than an argument against it: once a landed leg stops
+ * appearing, everything here is a flight somebody still has to catch, and among
+ * those the clock is the order the work happens in. What the old ranking was
+ * protecting is kept and moved to where it belongs — trouble is in the summary
+ * above, in the tone on the row, and in the alerts card, none of which depend on
+ * somebody scanning down a table to find it. `board.ts` holds the ordering and
+ * the full reasoning.
  *
  * Two things this screen refuses to do, both of which a flight board does by
  * default. It does not report delays as such: a delay that does not touch the
@@ -52,10 +58,25 @@ export default async function FlightBoardPage() {
         title="Flight board"
         blurb={
           <>
-            Every tracked leg, ordered by what is wrong with it rather than by when it leaves.
-            A delay only matters here against the show it is flying to — the arrival buffer
-            the trip was approved under is re-checked against live times, not once at purchase.
+            Every leg still ahead of somebody, soonest first. Anything wrong is flagged on the
+            row and counted above. A delay only matters here against the show somebody is flying
+            to: every leg is re-checked against the arrival buffer the trip was approved under,
+            not just once when it was booked.
           </>
+        }
+        action={
+          // Two acts, and the board needed both. "Request travel" is where a leg
+          // comes from — nothing here types a flight in. "Re-check" is the one
+          // this page was missing: it renders `unchecked` on any row nobody has
+          // asked a carrier about recently, and until now the only button that
+          // could clear that lived on /alerts. A screen that reports staleness
+          // and cannot clear it teaches people to stop believing the freshness.
+          <div className="flex flex-wrap items-center gap-2">
+            <RefreshButton />
+            <LinkButton href="/travel/new" variant="primary">
+              Request travel
+            </LinkButton>
+          </div>
         }
       />
 
@@ -100,7 +121,7 @@ export default async function FlightBoardPage() {
               <Stat
                 label="Late, buffer holds"
                 value={board.summary.delayedButClear}
-                note="Weather. Nobody needs to do anything."
+                note="Late, but still landing in time for the show. Nothing to do."
               />
               <Stat
                 label="Status unknown"
@@ -112,6 +133,15 @@ export default async function FlightBoardPage() {
           </Card>
 
           <Card title="Legs">
+            {/* Said rather than left to be noticed. A board is an operations
+                screen and a leg that landed yesterday cannot be acted on, but a
+                screen that quietly drops rows is one nobody can trust the counts
+                on. The record itself is not gone, and this says where it is. */}
+            <p className="mb-3 text-xs text-text-muted">
+              Legs that landed more than {BOARD_HORIZON_HOURS} hours ago are not here — nothing
+              on this page can change how one of those turned out. A show’s own Travel tab keeps
+              its whole history, past shows included.
+            </p>
             <Table>
               <thead>
                 <tr>
@@ -120,7 +150,7 @@ export default async function FlightBoardPage() {
                   <Th>Traveler</Th>
                   <Th>Departs (local)</Th>
                   <Th>Status</Th>
-                  <Th>Against move-in</Th>
+                  <Th>Lands before move-in</Th>
                   <Th>Last checked</Th>
                 </tr>
               </thead>

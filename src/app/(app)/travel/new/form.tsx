@@ -4,7 +4,7 @@ import { useActionState, useState } from 'react';
 import { openRequest } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
-import { Field, controlClass } from '../../_components/form-ui';
+import { Field, Form, controlClass } from '../../_components/form-ui';
 
 /**
  * The request form.
@@ -39,19 +39,26 @@ export function RequestForm({
   shows,
   me,
 }: {
-  travelers: { id: string; fullName: string; email: string }[];
+  travelers: { id: string; fullName: string; email: string; homeAirport: string | null }[];
   costCenters: { id: string; name: string; code: string | null }[];
   shows: Show[];
   me: { id: string; costCenterId: string | null };
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(openRequest, {});
   const [showId, setShowId] = useState('');
+  const [travelerId, setTravelerId] = useState(me.id);
   const [timezone, setTimezone] = useState('America/Chicago');
 
   const chosen = shows.find((s) => s.id === showId);
+  // **Whose** home airport, and it is the traveler's rather than the requester's.
+  // A travel manager filing for a colleague is asking where that colleague leaves
+  // from; prefilling their own would be a wrong answer that looks like a helpful
+  // one, and the field it lands in is the one the policy engine rules against.
+  const traveler = travelers.find((t) => t.id === travelerId);
+  const home = traveler?.homeAirport ?? null;
 
   return (
-    <form action={action} className="space-y-5">
+    <Form action={action} state={state} className="space-y-5">
       {state.error && (
         <p className="rounded-md bg-bad-soft px-3 py-2 text-sm text-bad">
           {state.error}
@@ -67,7 +74,12 @@ export function RequestForm({
               : 'Whose trip this is. The policy that applies is theirs, not yours.'
           }
         >
-          <select name="travelerId" defaultValue={me.id} className={fieldClass}>
+          <select
+            name="travelerId"
+            value={travelerId}
+            onChange={(e) => setTravelerId(e.target.value)}
+            className={fieldClass}
+          >
             {travelers.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.fullName}
@@ -98,11 +110,29 @@ export function RequestForm({
       </div>
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="From" hint="IATA code.">
+        <Field
+          label="From"
+          hint={
+            home
+              ? `IATA code. Prefilled from ${traveler?.id === me.id ? 'your' : `${traveler?.fullName.split(' ')[0]}’s`} home airport — type over it for this trip.`
+              : 'IATA code. Set a home airport in your profile and this fills itself in.'
+          }
+        >
+          {/*
+            A default, not a lock. `key` remounts the input when the traveler
+            changes so the prefill follows the person — the pattern the
+            destination field already uses for the show. Typing over it is the
+            whole override mechanism, and what gets stored is what was typed:
+            `travel_requests.origin_airport` records the question this request
+            actually asked, so changing a home airport next month never moves an
+            open request or an offer that was priced from it.
+          */}
           <input
             name="originAirport"
             required
             maxLength={3}
+            defaultValue={home ?? ''}
+            key={`origin-${travelerId}-${home ?? 'none'}`}
             className={`${fieldClass} uppercase`}
             placeholder="ORD"
           />
@@ -196,7 +226,7 @@ export function RequestForm({
           This opens the request. Searching is the next step, and it is deliberate.
         </span>
       </div>
-    </form>
+    </Form>
   );
 }
 

@@ -2,8 +2,9 @@
 
 import { useActionState, useState } from 'react';
 import type { ShipmentRow } from '@/lib/shipping/board';
+import { CarrierAndTracking } from '../../../shipping/_carrier-field';
 import { Badge } from '../../../_components/ui';
-import { Field, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../../../_components/form-ui';
+import { Field, Form, Input, Message, QuietSubmit, Select, Submit, Textarea, ZonedDateTime } from '../../../_components/form-ui';
 import {
   addTimelineEntry,
   confirmArrival,
@@ -16,14 +17,6 @@ import {
 export type Person = { id: string; fullName: string };
 export type CostCenter = { id: string; code: string; name: string };
 
-const CARRIERS = [
-  ['fedex', 'FedEx'],
-  ['ups', 'UPS'],
-  ['usps', 'USPS'],
-  ['dhl', 'DHL'],
-  ['other', 'Other / freight forwarder'],
-] as const;
-
 /**
  * The consignment control, with its meaning on the label rather than in a doc.
  *
@@ -32,7 +25,7 @@ const CARRIERS = [
  * Naming them "advance warehouse" and "show site" and leaving it there would be
  * a dropdown nobody could answer correctly without already knowing the answer.
  */
-type Consignment = 'advance_warehouse' | 'show_site' | 'office';
+type Consignment = 'advance_warehouse' | 'show_site' | 'office' | 'direct';
 
 function ConsignmentField({
   value,
@@ -56,6 +49,9 @@ function ConsignmentField({
           Show-site receiving — dock opens with move-in; early freight is refused
         </option>
         <option value="office">Office — the crate coming back to us</option>
+        <option value="direct">
+          Direct — to a hotel, an office or a person; no show dock, no drayage
+        </option>
       </Select>
     </Field>
   );
@@ -104,21 +100,15 @@ function Fields({
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Carrier">
-          <Select name="carrier" density="comfortable" defaultValue={c?.carrier ?? 'fedex'}>
-            {CARRIERS.map(([v, label]) => (
-              <option key={v} value={v}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field
-          label="Tracking number"
-          hint="Blank is fine. Until there is one this row is a plan, not a crate."
-        >
-          <Input name="trackingNumber" density="comfortable" defaultValue={c?.trackingNumber ?? ''} />
-        </Field>
+        {/* The board's control, not a second copy of it. Two screens each
+            reading a tracking number their own way can disagree about what it
+            says, and nothing would catch it — `_present.tsx`'s argument, applied
+            to a form rather than to a badge. */}
+        <CarrierAndTracking
+          defaultCarrier={c?.carrier ?? 'fedex'}
+          defaultTracking={c?.trackingNumber ?? ''}
+          trackingHint="Blank is fine. Until there is one this row is a plan, not a crate."
+        />
       </div>
 
       <Field
@@ -126,7 +116,9 @@ function Fields({
         hint={
           consignment === 'advance_warehouse'
             ? 'The advance warehouse cutoff from the service manual — usually one to three weeks before move-in, not move-in itself. Left blank if it has not been read off the manual yet.'
-            : 'The end of show-site receiving, usually the close of move-in.'
+            : consignment === 'direct'
+              ? 'When it has to be there — the day somebody checks in, usually. Blank is fine; nothing here is a dock, so there is no cutoff to miss.'
+              : 'The end of show-site receiving, usually the close of move-in.'
         }
       >
         <ZonedDateTime
@@ -237,7 +229,7 @@ export function NewShipmentForm(props: {
   }
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <Fields {...props} />
       <div className="flex items-center gap-3">
         <Submit pending={pending} busy="Adding…">
@@ -248,7 +240,7 @@ export function NewShipmentForm(props: {
         </QuietSubmit>
         <Message state={state} />
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -274,7 +266,7 @@ export function EditShipmentForm(props: {
   }
 
   return (
-    <form action={action} className="mt-3 space-y-3 rounded-lg border border-border p-3">
+    <Form action={action} state={state} className="mt-3 space-y-3 rounded-lg border border-border p-3">
       <Fields {...props} />
       <div className="flex items-center gap-3">
         <Submit pending={pending} busy="Saving…">
@@ -285,7 +277,7 @@ export function EditShipmentForm(props: {
         </QuietSubmit>
         <Message state={state} />
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -300,7 +292,7 @@ export function EditShipmentForm(props: {
 export function DeleteShipmentForm({ showId, shipmentId }: { showId: string; shipmentId: string }) {
   const [state, action, pending] = useActionState(removeShipment, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       {state.error && <input type="hidden" name="acknowledged" value="yes" />}
@@ -308,7 +300,7 @@ export function DeleteShipmentForm({ showId, shipmentId }: { showId: string; shi
         {state.error ? 'Delete anyway' : 'Delete'}
       </QuietSubmit>
       <Message state={state} className="mt-1" />
-    </form>
+    </Form>
   );
 }
 
@@ -332,7 +324,7 @@ export function ReceiptForm({
     {},
   );
   return (
-    <form action={action} className="flex flex-wrap items-center gap-2">
+    <Form action={action} state={state} className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={row.shipment.id} />
       {row.shipment.receivedAt ? (
@@ -348,7 +340,7 @@ export function ReceiptForm({
         </Submit>
       )}
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -366,7 +358,7 @@ export function ManualScanForm({ showId, shipmentId }: { showId: string; shipmen
   }
 
   return (
-    <form action={action} className="mt-2 space-y-2 rounded-lg border border-border p-3">
+    <Form action={action} state={state} className="mt-2 space-y-2 rounded-lg border border-border p-3">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shipmentId" value={shipmentId} />
       <div className="flex flex-wrap items-center gap-2">
@@ -396,6 +388,6 @@ export function ManualScanForm({ showId, shipmentId }: { showId: string; shipmen
         way a real scan is, so if a tracker is configured later the same event does not appear
         twice.
       </p>
-    </form>
+    </Form>
   );
 }

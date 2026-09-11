@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { proposeShow } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
-import { Field, Message, controlClass } from '../../_components/form-ui';
+import { Field, Form, Message, controlClass } from '../../_components/form-ui';
 
 /**
  * The intake form.
@@ -21,7 +21,7 @@ export function IntakeForm({ defaultTimezone }: { defaultTimezone: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(proposeShow, {});
 
   return (
-    <form action={action} className="space-y-5">
+    <Form action={action} state={state} className="space-y-5">
       <Field label="Show name" hint="As the organizer publishes it, with the year.">
         <input name="name" required minLength={2} className={fieldClass} placeholder="PACK EXPO International 2027" />
       </Field>
@@ -98,7 +98,7 @@ export function IntakeForm({ defaultTimezone }: { defaultTimezone: string }) {
       <Button type="submit" disabled={pending}>
         {pending ? 'Proposing…' : 'Propose this show'}
       </Button>
-    </form>
+    </Form>
   );
 }
 

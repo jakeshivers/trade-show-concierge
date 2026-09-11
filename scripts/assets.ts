@@ -1,7 +1,7 @@
 /**
  * The asset register and its engine, without a screen. SCOPE.md §5h.
  *
- *   pnpm assets              # every asset, worst first, and what would be said
+ *   pnpm assets              # every asset, nearest obligation first, and what would be said
  *   pnpm assets <show id>    # one show's reservations and allocations
  *   pnpm assets --sweep      # write tonight's alerts
  *

@@ -14,6 +14,7 @@ import {
   Th,
   money,
 } from '../_components/ui';
+import { plural } from '../_components/text';
 import { MATURITY_LABEL, MATURITY_TONE, ReplayBanner } from './_present';
 
 /**
@@ -39,10 +40,10 @@ export default async function RoiPortfolioPage() {
       <div className="space-y-6">
         <PageHeader title="ROI" />
         <Empty>
-          An ROI figure has a cost figure inside it, and a show’s cost is every colleague’s fare
-          in one number — so this is Travel Manager and Admin only, the same audience §3 gives
-          “see all users’ travel”. The lead count behind it is not restricted: it is on every
-          show’s Leads tab, because a thin count has to be visible to the person who could fix it.
+          An ROI figure has a show’s cost inside it, and that is every colleague’s fare in one
+          number — so only a Travel Manager or an Admin can see this. The lead count behind it is
+          not restricted: it is on every show’s Leads tab, where the people who can improve it
+          will see it.
         </Empty>
       </div>
     );
@@ -57,9 +58,9 @@ export default async function RoiPortfolioPage() {
         title="ROI"
         blurb={
           <>
-            Cost against pipeline, per show. The cost half is ours and needs nobody to assemble
-            it; the return half needs a CRM. Every figure carries its attribution window, and a
-            figure that cannot honestly be quoted says so instead of appearing anyway.{' '}
+            What each show cost, against the pipeline it produced, most recently closed first.
+            The cost side is recorded here already; the pipeline side comes from a connected CRM.
+            Where a figure would be misleading it says why instead of appearing anyway.{' '}
             <span className="text-text-muted">{figureLabel(portfolio.settings)}.</span>
           </>
         }
@@ -69,11 +70,10 @@ export default async function RoiPortfolioPage() {
 
       {!lastRun && (
         <Empty>
-          No CRM sync has ever run in this workspace, so no lead has been offered to a CRM and
-          every pipeline figure below is an <strong>absence</strong> rather than a finding. That
-          distinction is the point: “this show produced no pipeline” and “nobody has looked” are
-          opposite answers, and only one of them is a reason to stop doing a show. Connect a CRM
-          under <Link href="/settings/crm" className="underline">Settings → CRM</Link>.
+          No CRM sync has ever run here, so no lead has been offered to a CRM and every pipeline
+          figure below is empty because <strong>nobody has looked</strong> — not because these
+          shows produced nothing. <Link href="/settings/crm" className="underline">Settings → CRM</Link> says what
+          connecting one takes.
         </Empty>
       )}
 
@@ -83,25 +83,25 @@ export default async function RoiPortfolioPage() {
           <Stat
             label="Sourced pipeline"
             value={money(portfolio.sourcedPipelineCents)}
-            note="One opportunity, one show. This figure sums honestly."
+            note="Each deal is credited to one show only, so these add up to a real total."
           />
           <Stat
             label="Influenced (distinct)"
             value={money(portfolio.distinctInfluencedCents)}
-            note="The per-show influenced figures deliberately do not add up to this — the same deal is influenced by several shows."
+            note="The per-show figures will not add up to this, because one deal can be influenced by several shows. This counts each deal once."
           />
           <Stat
             label="Too recent to score"
             value={`${portfolio.immature} of ${portfolio.shows.length}`}
             tone={portfolio.immature > 0 ? 'info' : 'neutral'}
-            note="Figures shown, verdicts withheld. A show scored the week it ends always looks like a loss."
+            note="Their figures are shown; their verdicts are not. A show judged the week it ends always looks like a loss."
           />
           <Stat
             label="Portfolio multiple"
             value={
               portfolio.portfolioMultiple.ok
                 ? `${portfolio.portfolioMultiple.multiple.toFixed(1)}×`
-                : 'Withheld'
+                : 'Not shown'
             }
             tone={portfolio.portfolioMultiple.ok ? 'good' : 'warn'}
             note={
@@ -115,13 +115,13 @@ export default async function RoiPortfolioPage() {
 
       {portfolio.shows.length === 0 ? (
         <Empty>
-          No committed shows. Prospects are absent rather than shown at zero, for the reason a
-          cost table omits them: a zero reads as a result instead of as an absence.
+          No committed shows yet. Shows still being considered are left out rather than listed
+          at zero, because a zero would read as a result rather than as an absence.
         </Empty>
       ) : (
         <Card
           title="By show"
-          subtitle="Biggest cost first. Ranking by multiple would put every recent show last, which is a reporting artifact rather than a finding — and somebody would cancel one over it."
+          subtitle="Biggest cost first. Sorting by multiple would put the most recent shows at the bottom every time, purely because their pipeline has not appeared yet."
         >
           <Table>
             <thead>
@@ -143,8 +143,7 @@ export default async function RoiPortfolioPage() {
                     </Link>
                     {roi.gaps.length > 0 && (
                       <span className="block text-xs text-text-muted">
-                        {roi.gaps.length} thing{roi.gaps.length === 1 ? '' : 's'} the figures are
-                        missing
+                        {plural(roi.gaps.length, 'thing', 'things')} the figures are missing
                       </span>
                     )}
                   </Td>
@@ -162,7 +161,7 @@ export default async function RoiPortfolioPage() {
                       `${roi.pipelineMultiple.multiple.toFixed(1)}×`
                     ) : (
                       <span className="text-text-muted" title={roi.pipelineMultiple.reason}>
-                        withheld
+                        not shown
                       </span>
                     )}
                   </Td>
@@ -174,10 +173,10 @@ export default async function RoiPortfolioPage() {
             </tbody>
           </Table>
           <p className="mt-3 text-xs text-text-muted">
-            A “withheld” multiple is not a missing feature. Every one of them has a reason on the
-            show’s own tab — a cost that is a floor, a lead count that is a floor, a pipeline that
-            was replayed rather than read, or a show that has not been closed long enough for its
-            pipeline to have appeared. §8e: a show’s ROI is not final for six to twelve months.
+            “Not shown” is a decision, not a missing feature — open the show and it says which
+            one: an incomplete cost, an incomplete lead count, a pipeline that was replayed rather
+            than read from a CRM, or a show too recent to judge. A show’s real return takes six to
+            twelve months to arrive, so one scored the week it ends always looks like a loss.
           </p>
         </Card>
       )}
@@ -187,17 +186,17 @@ export default async function RoiPortfolioPage() {
           <p className="text-sm">
             {lastRun.provider}
             {lastRun.replayed && ' (replayed)'} · {lastRun.matched} matched, {lastRun.unmatched}{' '}
-            not found, {lastRun.withheld} withheld · {lastRun.opportunitiesRead} opportunities
+            not found, {lastRun.withheld} not sent · {lastRun.opportunitiesRead} opportunities
             read · {lastRun.attributionsWritten} attributions written back
           </p>
           {lastRun.failedReason && (
             <p className="mt-1 text-sm text-bad">The run failed: {lastRun.failedReason}</p>
           )}
           <p className="mt-2 text-xs text-text-muted">
-            Matched + not found + withheld always equals the leads considered. “Withheld” is this
-            app refusing — no lawful basis was recorded at the booth, so nothing about that person
-            is sent anywhere — and it is kept apart from “not found”, which is the CRM’s answer.
-            Collapsing the two would make a deliberate refusal look like a vendor’s data problem.{' '}
+            Matched, not found and not sent always add up to the leads considered. “Not sent” is
+            this app holding a lead back because nobody recorded what the person was told at the
+            booth; “not found” is the CRM answering that it does not know them. They are counted
+            separately because only one of them is fixable here.{' '}
             <Link href="/settings/crm" className="underline">
               Settings → CRM
             </Link>

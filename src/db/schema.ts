@@ -37,6 +37,17 @@ export const showDecisionEnum = pgEnum('show_decision', [
   'declined',
 ]);
 
+/**
+ * How much it costs to walk past this account. Three levels rather than two,
+ * because "would be nice" and "the reason we bought the booth" are different
+ * sentences to put in front of somebody at hour six of day two.
+ */
+export const targetPriorityEnum = pgEnum('target_priority', [
+  'must_meet',
+  'target',
+  'watch',
+]);
+
 export const taskStatusEnum = pgEnum('task_status', [
   'not_started',
   'in_progress',
@@ -134,7 +145,50 @@ export const shipmentConsignmentEnum = pgEnum('shipment_consignment', [
   'show_site',
   /** A return leg: the crate is coming back to us, not going to a floor. */
   'office',
+  /**
+   * Straight to a hotel, an office or a person — nothing here goes through a
+   * show dock or through the general contractor.
+   *
+   * This is the value that lets the table hold a **parcel**: the two boxes of
+   * datasheets somebody UPS'd to their hotel, the replacement monitor FedEx'd
+   * overnight, the badge printer that went by USPS. Those are most of the
+   * tracking numbers a show generates and none of them fit the three above.
+   *
+   * The distinction that matters is deliberately **the dock, not the size of the
+   * box**. A FedEx carton addressed to show-site receiving is `show_site`, gets
+   * the two-edged window, and is drayed like anything else the contractor lifts
+   * — general contractors bill small packages too, and a parcel exemption keyed
+   * on weight would quietly delete that line. What `direct` means is that no
+   * contractor ever touches it, which is why `drayage/store.ts` leaves these
+   * rows out of the estimate entirely rather than reporting them as freight it
+   * could not price.
+   */
+  'direct',
 ]);
+
+/**
+ * How a piece of freight is packed, which is a *price*.
+ *
+ * The general contractor surcharges anything that is not crated — loose,
+ * pad-wrapped, shrink-wrapped, on a skid without a top — by 25–35%, and nothing
+ * in this app has ever recorded which a crate is. `unknown` is therefore a real
+ * recorded answer and is the default, which is deliberately **not** the §5j trap
+ * it resembles: that rule forbids defaulting to a *substantive* value (a lawful
+ * basis manufactured out of a blank column). Defaulting to "nobody has said" is
+ * the honest half of the same rule. `lib/drayage/estimate.ts` never applies the
+ * surcharge to it and always names how many there were.
+ */
+export const shipmentHandlingEnum = pgEnum('shipment_handling', [
+  'crated',
+  'uncrated',
+  'unknown',
+]);
+
+/** Charged once on the way in, or separately each way. Typed, never guessed. */
+export const drayageBasisEnum = pgEnum('drayage_basis', ['round_trip', 'each_way']);
+
+/** What somebody said when asked. There is deliberately no "assumed" value. */
+export const safetyStandingEnum = pgEnum('safety_standing', ['ok', 'needs_help']);
 
 export const carrierEnum = pgEnum('carrier', ['ups', 'usps', 'fedex', 'dhl', 'other']);
 
@@ -316,6 +370,36 @@ export const users = pgTable(
     knownTravelerNumber: text('known_traveler_number'),
     seatPreference: text('seat_preference'),
     /**
+     * The airport this person departs from unless they say otherwise — an IATA
+     * code, uppercase.
+     *
+     * It is a **default at the point of entry and never a fact about a request**.
+     * `travel_requests.origin_airport` stays `notNull` and records what was
+     * actually asked for, because that origin is a constraint the policy engine
+     * ruled against and the offers were priced from: re-deriving it later from
+     * whatever this column happens to say would silently re-write the question a
+     * booked ticket answered. Changing this moves the *next* form, not an open
+     * request.
+     */
+    homeAirport: text('home_airport'),
+    /**
+     * Carriers this person prefers — theirs, and deliberately not the org's.
+     *
+     * It **ranks and never rules**. `travel_policies.preferred_airlines` is an
+     * input to the policy engine; this is not, and there is no rule that reads
+     * it. It moves an offer's position among the ones already allowed, by an
+     * amount an admin prices in `personal_carrier_allowance_cents`, and it can
+     * never promote an offer across a decision tier — `rank.ts` clamps that
+     * structurally rather than relying on the number being small.
+     *
+     * An unordered set. A ranked list would invite "first choice beats second
+     * choice", which is a second preference model to keep consistent with this
+     * one, and nobody's answer to "which do you prefer" survives a $200 gap
+     * anyway. Holding a loyalty account is deliberately not the same fact — a
+     * person can hold five and fly one.
+     */
+    preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
+    /**
      * Passenger identity, required by the airline to issue a ticket — not by us.
      * Nullable because most of the app never needs it, and because a missing
      * date of birth must fail a live purchase loudly rather than be invented.
@@ -331,6 +415,42 @@ export const users = pgTable(
     index('users_org_idx').on(t.orgId),
     uniqueIndex('users_org_email_idx').on(t.orgId, t.email),
   ],
+);
+
+/**
+ * A person's frequent-flyer numbers, one per carrier.
+ *
+ * This is a **preference the carrier is told about, not a fact this app can
+ * verify.** We pass the number through at search (where it can surface a member
+ * fare) and again on order create (where the miles actually credit); the airline
+ * either recognises it or silently ignores it, and there is no response field
+ * that tells us which. So nothing in this product may ever say miles *were*
+ * credited — the profile screen says so on the page, because the failure mode of
+ * a mistyped number is a year of trips that quietly earned nothing.
+ *
+ * One row per `(user, airline)` on purpose. Two numbers for the same carrier
+ * would make something downstream choose between them, and the only honest
+ * choice is "ask the person" — which is what the unique index does at the point
+ * they type it, rather than at the point a ticket is issued.
+ *
+ * Deliberately a table rather than a JSONB column on `users`: the ticketing path
+ * reads it per traveler through a relation, and the unique rail above is not
+ * expressible in JSON.
+ */
+export const userLoyaltyAccounts = pgTable(
+  'user_loyalty_accounts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** IATA airline designator — two characters, and alphanumeric: `B6`, `9W`. */
+    airlineCode: text('airline_code').notNull(),
+    /** Kept exactly as typed. Carriers vary wildly and we never reformat one. */
+    accountNumber: text('account_number').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('user_loyalty_user_airline_idx').on(t.userId, t.airlineCode)],
 );
 
 /* ------------------------------ login methods ------------------------------ */
@@ -667,8 +787,26 @@ export const flights = pgTable(
      * see a single thing the product's own booking spine had purchased. These
      * two columns are what makes materialization idempotent: re-running it after
      * a retry updates the same rows instead of filing the itinerary twice.
+     *
+     * **`cascade`, and it was `set null` until 2026-09-02.** A materialized leg
+     * is a *projection* of the booking, the way a credit balance is a projection
+     * of its entries — the order is the record and the itinerary is what it
+     * looks like to a person. So a booking that goes away takes its legs with
+     * it, and a hand-entered flight (`booking_id` null) is untouched, because
+     * nothing derived it from anything.
+     *
+     * `set null` was worse than untidy: it **silently disabled the idempotency
+     * rail**. Postgres treats NULLs as distinct in a unique index, so the moment
+     * `booking_id` was nulled the `(booking_id, segment_index)` constraint
+     * stopped applying to that row, and no future materialization could ever
+     * reconcile it. The orphans accumulated forever, un-deduplicatable, with
+     * nothing in the product able to see or remove them — and the flight board
+     * rendered every one of them as a real leg somebody was on. It surfaced as
+     * fifty-two identical DL 1422 rows on `/flights`, put there thirty at a time
+     * by `pnpm test`, whose `beforeEach` deletes travel requests and had no idea
+     * it was leaving itineraries behind.
      */
-    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'set null' }),
+    bookingId: uuid('booking_id').references(() => bookings.id, { onDelete: 'cascade' }),
     segmentIndex: integer('segment_index'),
     bookingProvider: text('booking_provider'),
     bookingReference: text('booking_reference'),
@@ -693,6 +831,57 @@ export const flights = pgTable(
 );
 
 /* -------------------------------- shipments -------------------------------- */
+
+/**
+ * One show's drayage rate card, as published in its exhibitor service manual.
+ *
+ * **One row per show, and it is typed rather than derived.** Drayage is priced by
+ * the general contractor per show — Freeman and GES re-price annually and each
+ * venue negotiates its own — so there is no rate to inherit, no rate to default,
+ * and no rate to guess. A missing card produces a *sentence* rather than a zero:
+ * a $0 drayage line on a show carrying six crates reads as "drayage was free",
+ * which is §5a's fabricated bill with the sign flipped.
+ *
+ * `basis` has **no default**, and that is the whole of a 100% error. Most cards
+ * charge round trip on the way in, so estimating over the outbound crate *and*
+ * the return crate doubles the largest line in the show; a card that really does
+ * charge each way and is read as round trip halves it. Which one it is, is a
+ * sentence in the manual, so it is read and typed.
+ *
+ * `confirmed_at` is `show_deadlines`' rule reaching a rate: last year's card is
+ * the likeliest thing to be sitting in this row, so a figure built on an
+ * unchecked one is introduced as an estimate from an unchecked card. Unlike a
+ * deadline the figure is still produced, because silence on the biggest line in
+ * the show is the worse failure — confirmation changes the words around the
+ * number rather than whether there is one.
+ */
+export const drayageRateCards = pgTable(
+  'drayage_rate_cards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    /** Freeman, GES, or whoever the show appointed. Recorded, never inferred. */
+    contractor: text('contractor'),
+    /** Per hundredweight. Nullable: a card may price only one consignment. */
+    advanceCwtCents: integer('advance_cwt_cents'),
+    showSiteCwtCents: integer('show_site_cwt_cents'),
+    /** Pounds. Almost always 200, and typed from the manual all the same. */
+    minimumLb: integer('minimum_lb').notNull().default(200),
+    basis: drayageBasisEnum('basis').notNull(),
+    /** Percent. Null means the card is silent, which is not the same as zero. */
+    specialHandlingPct: integer('special_handling_pct'),
+    overtimePct: integer('overtime_pct'),
+    /** Where in the manual this was read, so the next person can check it. */
+    sourceNote: text('source_note'),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('drayage_rate_cards_show_unique').on(t.showId)],
+);
 
 export const shipments = pgTable(
   'shipments',
@@ -764,6 +953,8 @@ export const shipments = pgTable(
 
     pieces: integer('pieces').notNull().default(1),
     weightLb: numeric('weight_lb', { precision: 8, scale: 2 }),
+    /** Crated or not — a 25–35% difference in the drayage bill. See the enum. */
+    handling: shipmentHandlingEnum('handling').notNull().default('unknown'),
     declaredValueCents: integer('declared_value_cents'),
     costCents: integer('cost_cents'),
     labelUrl: text('label_url'),
@@ -899,6 +1090,187 @@ export const alerts = pgTable(
   ],
 );
 
+/* ------------------------------ notifications ------------------------------ */
+
+/**
+ * Where one person is reachable outside this app. Step 21.
+ *
+ * For twenty steps seven engines wrote `alerts` rows and nothing carried one
+ * anywhere: an alert was exactly as fresh as the last time somebody opened
+ * `/alerts` and pressed *Re-check everything*. This table is the address book
+ * that makes a transport possible, and almost everything interesting about it
+ * is a refusal.
+ *
+ * **A person owns their own destination.** `access.ts` does not let an admin set
+ * somebody else's, and that is not politeness — every engine addresses its rows
+ * to a *person*, and `alerts/access.ts` refuses an org-wide read precisely so a
+ * Travel Manager never sees the delay alert on a Member's personal flight home.
+ * An admin who could point that Member's alerts at a channel they read would
+ * have re-opened the same door from the transport side, where nothing on the
+ * alerts screen would show it.
+ *
+ * **`kind` exists so the planner can refuse.** A `channel` destination is a
+ * legitimate thing to want — a shared #trade-show room for alerts that belong to
+ * nobody in particular — and it is also the exact shape of the leak above. So
+ * the column can hold one, `notify/plan.ts` will only route an alert whose
+ * `user_id` is null to it, and no engine writes such an alert today. The rule is
+ * enforced in a pure function with a test rather than described in a comment.
+ *
+ * **`verified_at` is the transport's answer, not ours.** A Slack member id typed
+ * into a form is a claim; the workspace resolving it is a fact. An unverified
+ * row is not used, because a message sent to a mistyped id fails silently at
+ * Slack's end and looks exactly like a quiet night.
+ */
+export const notificationChannels = pgTable(
+  'notification_channels',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** Whose alerts go here. Null is an org destination — see `kind`. */
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'cascade' }),
+    /** `slack` today. The column exists so a second transport is a row. */
+    transport: text('transport').notNull(),
+    /** `dm` or `channel`. A personal alert may only ever go to a `dm`. */
+    kind: text('kind').notNull().default('dm'),
+    /** The Slack member id (`U…`) or channel id (`C…`). Never an email. */
+    address: text('address').notNull(),
+    /** What to call it on a screen. The transport's own label where it has one. */
+    label: text('label'),
+    /** When the transport confirmed this address exists. Null means unusable. */
+    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    /**
+     * Turned off, and by whom. A destination is disabled rather than deleted so
+     * "why did these forty messages stop" stays answerable — the intake key's
+     * rule, and the declined show's.
+     */
+    disabledAt: timestamp('disabled_at', { withTimezone: true }),
+    disabledReason: text('disabled_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('notification_channels_user_idx').on(t.orgId, t.userId, t.transport),
+    index('notification_channels_org_idx').on(t.orgId, t.transport),
+  ],
+);
+
+/**
+ * What was actually carried, where, and what happened. Append-only.
+ *
+ * **Why a log rather than a flag on the alert.** An alert is a durable record
+ * that a notification was *owed*; a delivery is a claim that somebody's phone
+ * buzzed. Those are different facts with different lifetimes, and a
+ * `notified_at` column on `alerts` would have collapsed them — after which a
+ * transport that was never configured, one that failed, and one that succeeded
+ * are indistinguishable, and the honest sentence "no message has ever left this
+ * workspace" becomes unsayable.
+ *
+ * **The idempotency rail is `(alert, channel, phase, alert_created_at)`, and the
+ * last segment is the whole design.** A condition that holds for nine nights is
+ * one alert row whose `occurrences` climbs and whose `created_at` never moves —
+ * so it is sent once. A condition that *resolved and came back* is a recurrence,
+ * and `alerts/store.ts` marks that by restarting `created_at` — so it is sent
+ * again, because it is news again. The transport therefore inherits the
+ * recurrence decision the alert store already argued about instead of inventing
+ * a second, quietly different one beside it. That second copy is the bug
+ * `SOURCE_LABEL` was rewritten to prevent.
+ *
+ * **`outcome` distinguishes four things that a boolean would flatten.** `sent`
+ * is a transport reporting success. `rendered` is the zero-key console
+ * transport, which composed the message and delivered it to nobody — it must
+ * never be recorded as `sent`, for the same reason the `recorded` flight
+ * provider may not report a purchase. `undeliverable` is us having no address
+ * for somebody. `suppressed` is a deliberate refusal to send, carrying its
+ * reason: the alert is below the interruption floor, or it predates the day this
+ * transport was switched on.
+ */
+export const notificationDeliveries = pgTable(
+  'notification_deliveries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    alertId: uuid('alert_id')
+      .notNull()
+      .references(() => alerts.id, { onDelete: 'cascade' }),
+    /** Null when there was nowhere to send it — the `undeliverable` case. */
+    channelId: uuid('channel_id').references(() => notificationChannels.id, {
+      onDelete: 'set null',
+    }),
+    transport: text('transport').notNull(),
+    /** `raised` or `resolved`. Only somebody who was told is told it ended. */
+    phase: text('phase').notNull().default('raised'),
+    /**
+     * The alert's `created_at` at the moment this was planned. Restarted by a
+     * recurrence, which is exactly what makes a recurrence sendable again.
+     */
+    alertCreatedAt: timestamp('alert_created_at', { withTimezone: true }).notNull(),
+    /** `sent` · `rendered` · `undeliverable` · `suppressed` · `failed`. */
+    outcome: text('outcome').notNull(),
+    /** Why it was suppressed, or how it failed. Always present for both. */
+    detail: text('detail'),
+    /** One buzz can cover several alerts; this is what ties them together. */
+    messageRef: text('message_ref'),
+    /** The transport's own id for the message, where it returns one. */
+    providerMessageId: text('provider_message_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('notification_deliveries_rail_idx').on(
+      t.alertId,
+      t.channelId,
+      t.phase,
+      t.alertCreatedAt,
+    ),
+    index('notification_deliveries_org_idx').on(t.orgId, t.createdAt),
+  ],
+);
+
+/* -------------------------------- scheduling ------------------------------- */
+
+/**
+ * Every time the nightly job ran, whether it finished, and what it did.
+ * Append-only. Step 21.
+ *
+ * The reason this table exists rather than a `last_run_at` setting: **a job that
+ * did not run is not a quiet night.** `alerts/feed.ts` already has the sentence
+ * — an alert nobody has re-checked is not a current alert, which is why
+ * `unchecked` is a standing — but until now the only evidence of a sweep was the
+ * `last_seen_at` on rows that happened to be raised, so an org whose scheduler
+ * had been broken for a week and an org with nothing wrong looked identical on
+ * screen: no alerts, both.
+ *
+ * `trigger` separates a real schedule from somebody pressing a button, because
+ * "it ran last night" and "somebody ran it last night" are different assurances
+ * and only one of them will still be true next week.
+ *
+ * A run that throws still writes its row, with `ok` false and the error on it.
+ * A half-failed sweep that reported success is how a board goes quiet.
+ */
+export const scheduledRuns = pgTable(
+  'scheduled_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    /** `nightly` today. */
+    job: text('job').notNull(),
+    /** `schedule` (an external caller with the secret) or `manual`. */
+    trigger: text('trigger').notNull(),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+    ok: boolean('ok').notNull().default(false),
+    /** Human-readable, one line per stage, in the words the CLI prints. */
+    summary: text('summary'),
+    error: text('error'),
+  },
+  (t) => [index('scheduled_runs_job_idx').on(t.orgId, t.job, t.startedAt)],
+);
+
 /* -------------------------------- expenses --------------------------------- */
 
 export const expenses = pgTable(
@@ -982,6 +1354,36 @@ export const travelPolicies = pgTable(
     maxAcceptableRefundPenaltyCents: integer('max_acceptable_refund_penalty_cents'),
     preferredAirlines: jsonb('preferred_airlines').$type<string[]>(),
     blockedAirlines: jsonb('blocked_airlines').$type<string[]>(),
+    /**
+     * What the org's *own* carrier preference is worth, in cents — how much more
+     * the agent may pay to stay on a carrier the company has an agreement with.
+     *
+     * Higher cap than the personal allowance below, and the difference is the
+     * argument: this is a contract term (volume on a negotiated carrier, often
+     * paying for itself in discounts this app cannot see) while the personal one
+     * is somebody's convenience. Both are still bounded, both are still
+     * ranking-only, and `airlineRules` still cannot deny a fare for being off
+     * the list.
+     *
+     * Null is a tie-break only, for the same reason as below.
+     */
+    preferredCarrierAllowanceCents: integer('preferred_carrier_allowance_cents'),
+    /**
+     * What a traveler's own carrier preference is worth, in cents of the
+     * company's money — the ceiling on how much more the agent may pay to put
+     * somebody on the airline they asked for.
+     *
+     * **Absolute cents and never a percentage.** A percentage scales up exactly
+     * where the exposure is worst: 3% of a $6,000 international fare is $180 of
+     * somebody's personal preference, spent on the fare nobody audits.
+     *
+     * Null means the preference is a **tie-break only** — it is not a default we
+     * guessed, it is the app declining to spend money nobody has authorized. The
+     * feature is inert until an admin says what it is worth, which is the right
+     * way round: this is the one field here that converts a person's convenience
+     * directly into spend.
+     */
+    personalCarrierAllowanceCents: integer('personal_carrier_allowance_cents'),
 
     maxHotelNightlyRateCents: integer('max_hotel_nightly_rate_cents'),
     perShowTravelBudgetCents: integer('per_show_travel_budget_cents'),
@@ -1102,6 +1504,25 @@ export const offerSnapshots = pgTable(
     selected: boolean('selected').notNull().default(false),
     rank: integer('rank'),
     score: integer('score'),
+    /**
+     * How much carrier preference took off this offer's score, split by whose
+     * preference it was.
+     *
+     * Stored **beside the score rather than derived later**, and stored at all
+     * for the reason this whole table exists: a score is the number that decided
+     * the purchase, and a score whose largest term is invisible is a figure
+     * nobody can argue with. The org's allowance and the traveler's are separate
+     * columns because they are answerable by different people — one is a
+     * contract term an admin set, the other a line on somebody's own profile —
+     * and a single blended figure sends whoever disagrees to the wrong screen.
+     *
+     * They are a **record of what was applied**, never re-derived on read. The
+     * allowances are policy values that change; re-deriving would silently
+     * restate last quarter's purchase in this quarter's numbers, which is the
+     * same rule `policy_evaluations` follows by recording the resolved policy.
+     */
+    preferenceOrgCents: integer('preference_org_cents').notNull().default(0),
+    preferenceTravelerCents: integer('preference_traveler_cents').notNull().default(0),
 
     rawPayload: jsonb('raw_payload').notNull(),
     capturedAt: timestamp('captured_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1313,6 +1734,61 @@ export const bookingControls = pgTable(
  * `penaltyEstimateCents` is what makes this a decision rather than a nag.
  * See SCOPE.md §5a.
  */
+/**
+ * One reading of one exhibitor service manual. Append-only, and it keeps every
+ * refusal.
+ *
+ * Same shape and the same reason as `lead_imports`: **an extraction that cannot
+ * account for what it read reports a smaller register with exactly the
+ * confidence of a complete one.** `proposed` is what the model offered,
+ * `accepted + rejected + duplicates` always equals it, and `problems` keeps each
+ * rejection with the page it was on and the reason — never summarized to a count.
+ *
+ * The row is written even when nothing was accepted, because "I uploaded the
+ * manual and nothing happened" and "the manual was read and held no deadlines we
+ * could verify" are different facts and only one of them is a problem with the
+ * document.
+ *
+ * `unreadablePages` is deliberately not folded into a coverage percentage. A
+ * scanned page is not a page with no deadlines on it; it is a page nobody has
+ * read, and it is the one thing here that a person can act on immediately.
+ */
+export const manualExtractions = pgTable(
+  'manual_extractions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    extractedById: uuid('extracted_by_id').references(() => users.id, { onDelete: 'set null' }),
+    filename: text('filename').notNull(),
+    /** Bytes, so an obviously truncated upload is visible after the fact. */
+    fileBytes: integer('file_bytes').notNull().default(0),
+    pageCount: integer('page_count').notNull().default(0),
+    /** Pages with no text layer. Not read, which is not the same as empty. */
+    unreadablePages: jsonb('unreadable_pages').$type<number[]>(),
+    provider: text('provider').notNull(),
+    model: text('model').notNull(),
+    proposed: integer('proposed').notNull().default(0),
+    accepted: integer('accepted').notNull().default(0),
+    rejected: integer('rejected').notNull().default(0),
+    duplicates: integer('duplicates').notNull().default(0),
+    /**
+     * True when the model ran out of output room. A half-read manual yields
+     * fewer deadlines with the confidence of a full read, so this is carried on
+     * the record rather than inferred later from a suspiciously round number.
+     */
+    truncated: boolean('truncated').notNull().default(false),
+    /** Every rejection, with the page it was on. Never summarized away. */
+    problems: jsonb('problems').$type<{ page: number; title: string; reason: string; detail: string }[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('manual_extractions_show_idx').on(t.showId, t.createdAt)],
+);
+
 export const showDeadlines = pgTable(
   'show_deadlines',
   {
@@ -1334,6 +1810,33 @@ export const showDeadlines = pgTable(
     sourceUrl: text('source_url'),
     // Set when extracted from a manual PDF; a human must confirm before it alerts.
     extractedFromDocument: boolean('extracted_from_document').notNull().default(false),
+    /** Which run proposed it. Null for every hand-typed and derived row. */
+    extractionId: uuid('extraction_id').references(() => manualExtractions.id, {
+      onDelete: 'set null',
+    }),
+    /**
+     * Where in the document this was read, and the words it was read from.
+     *
+     * These two are what make confirming an extracted row mean anything. A
+     * person cannot confirm a date against a model's assertion that it read one;
+     * they confirm it against a page number and a quote, and the quote was
+     * checked against text *we* extracted before this row existed
+     * (`lib/manual/anchor.ts`). A snippet that did not occur on the page it
+     * claimed never became a row at all.
+     */
+    sourcePage: integer('source_page'),
+    sourceSnippet: text('source_snippet'),
+    /**
+     * True when the manual printed no time of day and 23:59 was filled in.
+     *
+     * §5a requires a time on every row because a 4:00pm warehouse cutoff rounded
+     * to 5pm is a drayage penalty — a rule about not *rounding* a printed hour.
+     * Most manuals print no hour at all, so an extracted row would otherwise file
+     * an assumption in exactly the column that rule protects. Confirmation is
+     * refused while this is set: reading the hour off the manual is part of
+     * reading the deadline off the manual.
+     */
+    dueTimeAssumed: boolean('due_time_assumed').notNull().default(false),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
     confirmedById: uuid('confirmed_by_id').references(() => users.id, { onDelete: 'set null' }),
     /**
@@ -1391,6 +1894,74 @@ export const shiftAssignments = pgTable(
  * Who was *actually* at the booth. Deliberately separate from shiftAssignments:
  * rostered is not present, and the gap between them is the staffing insight.
  */
+/**
+ * A roll call: somebody asked everybody at a show whether they are all right.
+ *
+ * It exists as a row because **a response is a response to a request**. Without
+ * it, "checked in safe" recorded at a show last March would mark somebody
+ * accounted for during this morning's evacuation — silently, in the flattering
+ * direction, on the headcount that gets read aloud. Responses carry the check
+ * they answer and `lib/safety/rollcall.ts` discards any that predate it.
+ *
+ * Append-only, and never deleted: "was a roll call run, and what did it find" is
+ * a question somebody may be asked about by a regulator or an insurer long after
+ * everybody involved has forgotten. `closed_at` records that whoever started it
+ * considered it finished, which is deliberately **not** the same as everybody
+ * having answered.
+ */
+export const safetyChecks = pgTable(
+  'safety_checks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    orgId: uuid('org_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    startedById: uuid('started_by_id').references(() => users.id, { onDelete: 'set null' }),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    /** What happened, in the words of whoever started it. */
+    note: text('note'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    closedById: uuid('closed_by_id').references(() => users.id, { onDelete: 'set null' }),
+  },
+  (t) => [index('safety_checks_show_idx').on(t.showId, t.startedAt)],
+);
+
+/**
+ * One person's answer to one roll call.
+ *
+ * `recorded_by_id` is the interesting column and it inverts §5e. Booth coverage
+ * refuses a `confirmed` typed by somebody else, because hearsay inside a
+ * staffing number is a hole that renders as a filled slot. Here the same shape
+ * gets the opposite decision: a colleague saying "I have her on the phone, she
+ * is fine" is exactly the information a roll call needs, so it **counts** — and
+ * it is labelled, because "she told us" and "he told us about her" are still
+ * different sentences and the second is worth a follow-up call.
+ *
+ * Append-only. A person who says they need help and later says they are fine has
+ * said two things, and the first one is part of the record.
+ */
+export const safetyResponses = pgTable(
+  'safety_responses',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    checkId: uuid('check_id')
+      .notNull()
+      .references(() => safetyChecks.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    standing: safetyStandingEnum('standing').notNull(),
+    respondedAt: timestamp('responded_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Who typed it. Equal to `user_id` when the person answered for themselves. */
+    recordedById: uuid('recorded_by_id').references(() => users.id, { onDelete: 'set null' }),
+    note: text('note'),
+  },
+  (t) => [index('safety_responses_check_idx').on(t.checkId, t.respondedAt)],
+);
+
 export const shiftPresence = pgTable(
   'shift_presence',
   {
@@ -1949,10 +2520,82 @@ export const meetings = pgTable(
     leadId: uuid('lead_id').references(() => leads.id, { onDelete: 'set null' }),
     notes: text('notes'),
     createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    /**
+     * The device's own id for this record, when it was written offline.
+     *
+     * `leads.external_ref` earns its unique index because a badge scanner
+     * retries a request it never saw the answer to. A phone in a hall with no
+     * signal is the same machine with a longer gap: the outbox re-sends on
+     * reconnect, and without a rail the second send is a second meeting. The
+     * ref is minted on the device at the moment the person types, so it
+     * survives the app being closed, the battery dying, and the sync being
+     * attempted from a different network an hour later.
+     */
+    externalRef: text('external_ref'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('meetings_show_idx').on(t.showId)],
+  (t) => [
+    index('meetings_show_idx').on(t.showId),
+    uniqueIndex('meetings_external_ref_idx').on(t.showId, t.externalRef),
+  ],
+);
+
+/**
+ * The accounts this show exists to meet.
+ *
+ * SCOPE.md §10 step 20 asks for "target-company alerts", and the reason they
+ * belong to the day-of PWA rather than to a planning screen is a matter of
+ * timing: the alert is worth something for the ninety seconds somebody is
+ * standing in front of the person, and nothing at all afterwards. A nightly
+ * engine cannot deliver it. It has to fire on the device, from cached rows,
+ * while the name is still being typed — which is why `dayof/targets.ts` is pure
+ * and shipped to the client, and why this table is small enough to cache whole.
+ *
+ * **Whether a target was met is derived, never stored.** There is no `met_at`
+ * column, and adding one would be the mistake the credit ledger and the ROI
+ * attribution both refused: a target is met because a lead exists on this show
+ * whose company matches, so the answer changes when the lead does. A stored
+ * flag would be set by whoever remembered to press the button, would survive an
+ * erasure that removed the only evidence, and would let "we met 6 of 9 targets"
+ * disagree with the lead list it is supposedly counting.
+ *
+ * `aliases` exists because a company is a string typed at a booth. "Lakeside
+ * Manufacturing", "Lakeside Mfg" and "Lakeside" are one account, and
+ * `matchTarget` deliberately will not guess that — it matches the name and the
+ * aliases exactly, after normalising legal suffixes, and nothing else. A fuzzy
+ * match here does not produce a wrong row; it produces somebody at a booth
+ * telling a stranger they are an important account.
+ */
+export const showTargets = pgTable(
+  'show_targets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    showId: uuid('show_id')
+      .notNull()
+      .references(() => shows.id, { onDelete: 'cascade' }),
+    companyName: text('company_name').notNull(),
+    /** Other spellings of the same account. Matched exactly, like the name. */
+    aliases: jsonb('aliases').$type<string[]>(),
+    /** `must_meet` | `target` | `watch`. What it costs to walk past them. */
+    priority: targetPriorityEnum('priority').notNull().default('target'),
+    /** Why this account is on the list — the sentence a booth staffer reads. */
+    reason: text('reason'),
+    /**
+     * Who owns the relationship. Nullable, and the nullability is load-bearing
+     * in the same way `show_deadlines.owner_id`'s is: an unowned must-meet is
+     * the one most likely to be walked past, and an alert addressed to its owner
+     * would reach nobody. It escalates instead.
+     */
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    createdById: uuid('created_by_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('show_targets_show_idx').on(t.showId),
+    uniqueIndex('show_targets_company_idx').on(t.showId, t.companyName),
+  ],
 );
 
 /**
@@ -2294,6 +2937,11 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   flights: many(flights),
   shiftAssignments: many(shiftAssignments),
   ticketCredits: many(ticketCredits),
+  loyaltyAccounts: many(userLoyaltyAccounts),
+}));
+
+export const userLoyaltyAccountsRelations = relations(userLoyaltyAccounts, ({ one }) => ({
+  user: one(users, { fields: [userLoyaltyAccounts.userId], references: [users.id] }),
 }));
 
 export const orgLoginPoliciesRelations = relations(orgLoginPolicies, ({ one }) => ({
@@ -2345,6 +2993,14 @@ export const flightsRelations = relations(flights, ({ one }) => ({
   booking: one(bookings, { fields: [flights.bookingId], references: [bookings.id] }),
 }));
 
+export const drayageRateCardsRelations = relations(drayageRateCards, ({ one }) => ({
+  show: one(shows, { fields: [drayageRateCards.showId], references: [shows.id] }),
+  confirmedBy: one(users, {
+    fields: [drayageRateCards.confirmedById],
+    references: [users.id],
+  }),
+}));
+
 export const shipmentsRelations = relations(shipments, ({ one, many }) => ({
   show: one(shows, { fields: [shipments.showId], references: [shows.id] }),
   events: many(shipmentEvents),
@@ -2375,6 +3031,18 @@ export const shiftAssignmentsRelations = relations(shiftAssignments, ({ one }) =
     references: [boothShifts.id],
   }),
   user: one(users, { fields: [shiftAssignments.userId], references: [users.id] }),
+}));
+
+export const safetyChecksRelations = relations(safetyChecks, ({ one, many }) => ({
+  org: one(organizations, { fields: [safetyChecks.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [safetyChecks.showId], references: [shows.id] }),
+  startedBy: one(users, { fields: [safetyChecks.startedById], references: [users.id] }),
+  responses: many(safetyResponses),
+}));
+
+export const safetyResponsesRelations = relations(safetyResponses, ({ one }) => ({
+  check: one(safetyChecks, { fields: [safetyResponses.checkId], references: [safetyChecks.id] }),
+  user: one(users, { fields: [safetyResponses.userId], references: [users.id] }),
 }));
 
 export const shiftPresenceRelations = relations(shiftPresence, ({ one }) => ({
@@ -2498,6 +3166,16 @@ export const meetingsRelations = relations(meetings, ({ one }) => ({
   show: one(shows, { fields: [meetings.showId], references: [shows.id] }),
   owner: one(users, { fields: [meetings.ownerId], references: [users.id] }),
   lead: one(leads, { fields: [meetings.leadId], references: [leads.id] }),
+}));
+
+export const manualExtractionsRelations = relations(manualExtractions, ({ one, many }) => ({
+  org: one(organizations, { fields: [manualExtractions.orgId], references: [organizations.id] }),
+  show: one(shows, { fields: [manualExtractions.showId], references: [shows.id] }),
+  extractedBy: one(users, {
+    fields: [manualExtractions.extractedById],
+    references: [users.id],
+  }),
+  deadlines: many(showDeadlines),
 }));
 
 export const leadImportsRelations = relations(leadImports, ({ one, many }) => ({

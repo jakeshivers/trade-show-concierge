@@ -12,6 +12,8 @@ import {
   readinessTone,
   type Tone,
 } from '../_components/ui';
+import { GoToShow } from '../_components/go-to-show';
+import { plural } from '../_components/text';
 
 /**
  * The portfolio rollup — every show being run, ranked by how much trouble it is in.
@@ -39,10 +41,22 @@ export default async function ReadinessPortfolio() {
         title="Readiness"
         blurb={
           <>
-            Every committed show, worst first. Ranked by how far behind pace each one is —
-          not by its score, because a low score a long way out is not a problem and a high
-          score next week can be.
+            Every committed show, soonest first. What is wrong with one is the sentence beside
+            it, judged against pace rather than against its score — a low score a long way out
+            is not a problem and a high score next week can be.
           </>
+        }
+        action={
+          <GoToShow
+            actor={actor}
+            tab="readiness"
+            label="Open a checklist"
+            hint={
+              <>
+                Tasks, templates and the deadline register all live on one show’s Readiness tab.
+              </>
+            }
+          />
         }
       />
 
@@ -111,7 +125,7 @@ function ShowRow({ row }: { row: PortfolioRow }) {
         )}
         <span className="text-xs text-text-muted">
           {row.daysUntil > 0
-            ? `opens in ${row.daysUntil} days`
+            ? `opens in ${plural(row.daysUntil, 'day', 'days')}`
             : row.daysUntil === 0
               ? 'opens today'
               : `opened ${-row.daysUntil} days ago`}

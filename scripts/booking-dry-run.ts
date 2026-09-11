@@ -12,11 +12,16 @@
  * This script is the step-4 deliverable: proof that the spine works before a
  * single screen exists to look at it.
  */
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { getDb } from '../src/db';
 import * as s from '../src/db/schema';
 import { getActor, type Actor } from '../src/lib/auth/actor';
 import { RecordedFlightProvider } from '../src/lib/integrations/flights/recorded/provider';
+import {
+  nonstopOffer,
+  offListCheapestOffer,
+  unitedNearTieOffer,
+} from '../src/lib/integrations/flights/duffel/fixtures';
 import {
   submitTravelRequest,
   runAgent,
@@ -401,8 +406,107 @@ async function scenarioCreditExpiry() {
   console.log('\n    (the whole ledger: pnpm credits · one credit: pnpm credits <id>)');
 }
 
+/**
+ * Carrier preference — the org's and the traveler's — and what neither is
+ * allowed to do.
+ *
+ * Three fares, and the third is the one that makes the other two readable:
+ * Alaska at **$415.00** on neither list, Delta at $430.55 which the *org*
+ * prefers, and United at $452.55 which *Priya* prefers. Without a cheapest fare
+ * that nobody prefers, every run picks the cheaper of two and reads exactly like
+ * a run with no preferences at all — the first draft of this scenario did, and
+ * printing it side by side is what showed it.
+ *
+ *   1. Both priced. The org's $150 buys Delta over the $415 Alaska.
+ *   2. The org's withdrawn. Priya's $60 buys United over the same $415.
+ *   3. Neither priced — what this workspace did for twenty-four steps. Alaska
+ *      wins, and both lists are sentences nobody paid for.
+ *
+ * Every outcome is now a fare chosen *over the cheapest one*, which is the only
+ * thing an allowance can ever buy and the only thing worth signing off on.
+ */
+async function scenarioCarrierPreference() {
+  console.log('\n━━ 8. Carrier preference — priced, bounded, and it never rules ━━\n');
+  const show = await db.query.shows.findFirst({ where: eq(s.shows.name, 'Automate 2026') });
+  if (!show?.moveInAt) throw new Error('Seed is missing Automate 2026 move-in time');
+  const day = 86_400_000;
+
+  const run = async (key: string, orgCents: number | null, personalCents: number | null) => {
+    // Both allowances are org policy values, so this moves the *policy* rather
+    // than the person — which is the honest way round: a traveler cannot change
+    // what their own preference is worth.
+    await db
+      .update(s.travelPolicies)
+      .set({
+        preferredCarrierAllowanceCents: orgCents,
+        personalCarrierAllowanceCents: personalCents,
+      })
+      .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
+
+    const clock = new Clock(new Date());
+    const d: AgentDeps = {
+      db,
+      provider: new RecordedFlightProvider({
+        now: clock.now,
+        payloads: [nonstopOffer, unitedNearTieOffer, offListCheapestOffer],
+      }),
+      now: clock.now,
+      live: false,
+    };
+    const priya = await actorFor('priya@northwindrobotics.test');
+    const request = await submitTravelRequest(
+      {
+        showId: show.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(show.moveInAt!.getTime() - day),
+        latestArrival: show.moveInAt!,
+        idempotencyKey: key,
+      },
+      priya,
+      d,
+    );
+    await runAgent(request.id, d, priya);
+    return request.id;
+  };
+
+  console.log('    Alaska $415.00 — on nobody’s list. The cheapest fare, and the control.');
+  console.log('    Delta  $430.55 — the org prefers DL/AA, and pays up to $150 to stay on one.');
+  console.log('    United $452.55 — Priya prefers UA, and the org pays up to $60 for that.\n');
+
+  console.log('    Both priced — the org’s $150 buys Delta over the cheaper Alaska:\n');
+  const both = await run('demo-carrier-preference', 15_000, 6_000);
+  await offerTable(both);
+  console.log();
+  await trace(both);
+
+  console.log('\n    The org allowance withdrawn — now Priya’s $60 buys United instead:\n');
+  const personalOnly = await run('demo-carrier-preference-personal', null, 6_000);
+  await offerTable(personalOnly);
+  console.log();
+  await trace(personalOnly);
+
+  console.log('\n    Neither priced — what this workspace did for twenty-four steps:\n');
+  const neither = await run('demo-carrier-preference-unpriced', null, null);
+  await offerTable(neither);
+  console.log();
+  await trace(neither);
+
+  // Leave the seeded policy as the seed wrote it.
+  await db
+    .update(s.travelPolicies)
+    .set({ preferredCarrierAllowanceCents: 15_000, personalCarrierAllowanceCents: 6_000 })
+    .where(and(eq(s.travelPolicies.scope, 'org'), isNull(s.travelPolicies.supersededAt)));
+
+  console.log(
+    '\n    Neither denies, neither escalates, and neither can cross a decision tier —\n' +
+      '    `rank.ts` clamps the discounted score to the tier floor rather than trusting\n' +
+      '    the numbers. They stack when both apply, and the audit names which one paid.',
+  );
+}
+
 async function scenarioAuditTrail() {
-  console.log('\n━━ 8. The audit trail, as a person reads it ━━');
+  console.log('\n━━ 9. The audit trail, as a person reads it ━━');
   const request = await db.query.travelRequests.findFirst({
     where: eq(s.travelRequests.idempotencyKey, 'demo-approval'),
   });
@@ -433,6 +537,7 @@ async function main() {
   await scenarioKillSwitch();
   await scenarioCreditFirst();
   await scenarioCreditExpiry();
+  await scenarioCarrierPreference();
   await scenarioAuditTrail();
 
   const bookings = await db.select().from(s.bookings);

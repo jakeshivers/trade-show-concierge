@@ -7,6 +7,7 @@ import {
   Badge,
   Card,
   Empty,
+  LinkButton,
   PageHeader,
   dateRange,
   daysUntil,
@@ -14,6 +15,7 @@ import {
   place,
   showDateTime,
 } from '../_components/ui';
+import { plural } from '../_components/text';
 
 /**
  * My Itinerary — the Member's home screen.
@@ -48,6 +50,7 @@ export default async function ItineraryPage() {
             Every show you are staffed on, with your flights, your room, and your shifts.
           </>
         }
+        action={<LinkButton href="/travel/new" variant="primary">Request travel</LinkButton>}
       />
 
       {upcoming.length === 0 && (
@@ -88,7 +91,11 @@ function Trip({ trip, legs }: { trip: Trip; legs: Map<string, BoardRow> }) {
         </Link>
         <Badge tone={attendee.status === 'confirmed' ? 'good' : 'info'}>{attendee.status}</Badge>
         <span className="text-text-muted">{attendee.role}</span>
-        {days > 0 && <span className="ml-auto text-xs text-text-muted">in {days} days</span>}
+        {days > 0 && (
+          <span className="ml-auto text-xs text-text-muted">
+            in {plural(days, 'day', 'days')}
+          </span>
+        )}
       </div>
       <p className="mt-1 text-sm text-text-muted">
         {dateRange(show.startsOn, show.endsOn, tz)} · {place(show)}

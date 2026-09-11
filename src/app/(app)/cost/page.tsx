@@ -13,6 +13,7 @@ import {
   Th,
   money,
 } from '../_components/ui';
+import { plural } from '../_components/text';
 import { COVERAGE_LABEL, COVERAGE_TONE } from './_present';
 
 /**
@@ -42,9 +43,9 @@ export default async function CostPortfolioPage() {
       <div className="space-y-6">
         <PageHeader title="True cost" />
         <Empty>
-          A show’s cost is every colleague’s fare, room and freight bill in one figure, so it
-          is Travel Manager and Admin only — the same audience that can see all users’ travel.
-          Your own spend is on your itinerary and your own travel requests.
+          A show’s cost is every colleague’s fare, room and freight bill in one figure, so only
+          a Travel Manager or an Admin can see it. Your own spend is on your itinerary and your
+          own travel requests.
         </Empty>
       </div>
     );
@@ -58,19 +59,20 @@ export default async function CostPortfolioPage() {
         title="True cost"
         blurb={
           <>
-            Every committed show, biggest first. Assembled by nobody: the flights were bought
-            here, the hotel rows are here and the crates were tracked here, so this is a query.
-            What takes the work is the last column — a cost figure that does not say what it is
-            missing is a bill somebody made up.
+            Every committed show, nearest first. Most of a show’s spend is committed before it
+            opens and its invoices land after it closes, so the show you are spending on now is
+            the one nearest today, either side. Nobody assembles these figures — the flights,
+            hotels and crates were all recorded here. The last two columns say what each total
+            is still missing.
           </>
         }
       />
 
       {portfolio.shows.length === 0 ? (
         <Empty>
-          No committed shows. Prospects are deliberately absent rather than shown at $0: a show
-          nobody has decided to do has not cost anything, and a zero in a cost table reads as a
-          bargain instead of as an absence.
+          No committed shows yet. Shows still being considered are left out rather than listed
+          at $0, because a zero here would read as a cheap show rather than as one nobody has
+          committed to.
         </Empty>
       ) : (
         <>
@@ -82,7 +84,7 @@ export default async function CostPortfolioPage() {
                 note={`${money(portfolio.paidCents)} of it actually paid.`}
               />
               <Stat
-                label="Figures that are floors"
+                label="Totals with something missing"
                 value={`${portfolio.incomplete} of ${portfolio.shows.length}`}
                 tone={portfolio.incomplete > 0 ? 'warn' : 'good'}
                 note="Something is missing from these, and the row says what."
@@ -110,7 +112,7 @@ export default async function CostPortfolioPage() {
                   <Th numeric>Paid</Th>
                   <Th numeric>Committed</Th>
                   <Th>Coverage</Th>
-                  <Th>Silent lines</Th>
+                  <Th>Nothing recorded for</Th>
                 </tr>
               </thead>
               <tbody>
@@ -139,8 +141,7 @@ export default async function CostPortfolioPage() {
                       </Badge>
                       {cost.coverage.gaps.length > 0 && (
                         <span className="block text-xs text-text-muted">
-                          {cost.coverage.gaps.length} named gap
-                          {cost.coverage.gaps.length === 1 ? '' : 's'}
+                          {plural(cost.coverage.gaps.length, 'named gap', 'named gaps')}
                         </span>
                       )}
                     </Td>
@@ -156,10 +157,9 @@ export default async function CostPortfolioPage() {
               </tbody>
             </Table>
             <p className="mt-3 text-xs text-text-muted">
-              “Committed” is money recorded and not yet paid, which before a show is most of it —
-              §5a’s distinction between what is at risk and what has been incurred, one table
-              over. Staff time is counted in attendee-days on each show’s own tab and never
-              priced: SCOPE §11.8 is open, and there is no loaded rate here to price it with.
+              “Committed” is money recorded and not yet paid, which before a show is most of it.
+              Staff time is counted in days on each show’s own tab and never given a dollar
+              value, because no hourly cost for anybody is recorded in this workspace.
             </p>
           </Card>
         </>

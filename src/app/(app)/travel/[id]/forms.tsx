@@ -4,6 +4,7 @@ import { useActionState } from 'react';
 import { approve, cancel, confirm, reject, search } from '../actions';
 import { Button, money } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
+import { Form } from '../../_components/form-ui';
 
 /**
  * The action controls on a request.
@@ -49,7 +50,7 @@ export function Search({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(search, {});
   return (
-    <form action={action} className="min-w-56">
+    <Form action={action} state={state} className="min-w-56">
       <input type="hidden" name="requestId" value={requestId} />
       <Button type="submit" disabled={pending || disabled}>
         {pending ? 'Searching…' : 'Search and evaluate'}
@@ -60,14 +61,14 @@ export function Search({
           : 'Searches, ranks against your policy, then books it or sends it for approval.'}
       </p>
       <Result state={state} />
-    </form>
+    </Form>
   );
 }
 
 export function Confirm({ requestId }: { requestId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(confirm, {});
   return (
-    <form action={action} className="min-w-56">
+    <Form action={action} state={state} className="min-w-56">
       <input type="hidden" name="requestId" value={requestId} />
       <Button type="submit" disabled={pending}>
         Confirm these constraints
@@ -76,7 +77,7 @@ export function Confirm({ requestId }: { requestId: string }) {
         Nothing is searched until a person signs off on what the parser read.
       </p>
       <Result state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -101,7 +102,7 @@ export function Decide({
 
   return (
     <div className="w-full space-y-4">
-      <form action={approveAction} className="space-y-2">
+      <Form action={approveAction} state={aState} className="space-y-2">
         <input type="hidden" name="requestId" value={requestId} />
         <input name="reason" className={field} placeholder="Note for the record (optional)" />
         {needsBreakGlass && (
@@ -126,9 +127,9 @@ export function Decide({
               : `Approve up to ${money(amountCents)}`}
         </Button>
         <Result state={aState} />
-      </form>
+      </Form>
 
-      <form action={rejectAction} className="space-y-2">
+      <Form action={rejectAction} state={rState} className="space-y-2">
         <input type="hidden" name="requestId" value={requestId} />
         <input
           name="reason"
@@ -140,7 +141,7 @@ export function Decide({
           {rejecting ? 'Rejecting…' : 'Reject'}
         </Button>
         <Result state={rState} />
-      </form>
+      </Form>
     </div>
   );
 }
@@ -161,7 +162,7 @@ export function Decide({
 export function Cancel({ requestId, ticketed }: { requestId: string; ticketed: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(cancel, {});
   return (
-    <form action={action} className="min-w-56 space-y-2">
+    <Form action={action} state={state} className="min-w-56 space-y-2">
       <input type="hidden" name="requestId" value={requestId} />
       <input name="reason" className={field} placeholder="Reason (optional)" />
       <Button type="submit" variant="secondary" disabled={pending}>
@@ -179,6 +180,6 @@ export function Cancel({ requestId, ticketed }: { requestId: string; ticketed: b
         </p>
       )}
       <Result state={state} />
-    </form>
+    </Form>
   );
 }

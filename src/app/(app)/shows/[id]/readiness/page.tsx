@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
 import { getChecklist } from '@/lib/readiness/store';
 import { getRegister } from '@/lib/deadlines/store';
+import { standingOf, type DeadlineStanding } from '@/lib/deadlines/present';
 import { TEMPLATES } from '@/lib/readiness/templates';
 import { TASK_CATEGORIES } from '@/lib/readiness/edit';
 import {
@@ -18,6 +19,24 @@ import {
 import { loadShow } from '../detail';
 import { AddTaskForm, EditTaskForm, StatusControl, TemplateForm } from './forms';
 import { AddDeadlineForm, DeadlineRow } from './deadline-forms';
+
+/**
+ * One tone per standing, in one place. The row shows exactly one of these, so a
+ * reader's eye lands on the clock rather than on whichever chip happened to be
+ * reddest.
+ */
+const STANDING_TONE: Record<DeadlineStanding, 'good' | 'bad' | 'warn' | 'info' | 'neutral'> = {
+  missed: 'bad',
+  today: 'bad',
+  soon: 'warn',
+  ahead: 'neutral',
+  done: 'good',
+  waived: 'neutral',
+};
+import { ExtractionHistory, ReadManualForm } from './manual-forms';
+import { canExtractManual } from '@/lib/manual/access';
+import { extractorIsConfigured } from '@/lib/manual/provider';
+import { listExtractions } from '@/lib/manual/store';
 
 /**
  * Readiness — the checklist, writable as of step 10, and the deadline register.
@@ -39,9 +58,10 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
   const now = new Date();
-  const [checklist, register] = await Promise.all([
+  const [checklist, register, extractions] = await Promise.all([
     getChecklist(actor, id, now),
     getRegister(actor, id, now),
+    listExtractions(actor, id),
   ]);
   const { show } = detail;
   const { readiness, entries, may, people } = checklist;
@@ -140,38 +160,63 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
             {register.entries.map((entry) => {
               const d = entry.deadline;
               const missed = d.status === 'open' && entry.daysUntil < 0;
+              const standing = standingOf({
+                status: d.status,
+                daysUntil: entry.daysUntil,
+                ownerId: d.ownerId,
+                ownerName: entry.owner?.fullName ?? null,
+                confirmedAt: d.confirmedAt,
+                penaltyEstimateCents: d.penaltyEstimateCents,
+                lodgingId: d.lodgingId,
+                extractedFromDocument: Boolean(d.extractedFromDocument),
+                dueTimeAssumed: Boolean(d.dueTimeAssumed),
+              });
               return (
                 <li
                   key={d.id}
                   className="border-b border-border pb-3 last:border-0"
                 >
+                  {/*
+                    One badge, and the rest as sentences.
+
+                    This row used to carry up to four chips at equal weight —
+                    `sponsorship artwork`, `missed`, `unowned`, `from a room
+                    block` — and a reader could not tell which was the problem or
+                    what to do about any of them. The kind chip was the clearest
+                    tell: it repeated words already in the title next to it.
+
+                    So the badge is the one thing a register is for — where this
+                    stands against its own date — the kind is quiet text, and
+                    every other state is a line in `standing.todo` saying what is
+                    true *and* what fixing it looks like. `UI-REWORK.md` §19.
+                  */}
                   <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                     <span className={d.status === 'not_applicable' ? 'font-medium line-through' : 'font-medium'}>
                       {d.title}
                     </span>
-                    <Badge>{d.kind.replace(/_/g, ' ')}</Badge>
-                    {d.status === 'complete' && <Badge tone="good">ordered</Badge>}
-                    {d.status === 'not_applicable' && <Badge>does not apply</Badge>}
-                    {d.lodgingId && <Badge tone="info">from a room block</Badge>}
-                    {d.status === 'open' && (
-                      <>
-                        {missed && <Badge tone="bad">missed</Badge>}
-                        {!d.confirmedAt && <Badge tone="warn">unconfirmed</Badge>}
-                        {!d.ownerId && <Badge tone="warn">unowned</Badge>}
-                      </>
-                    )}
+                    <Badge tone={STANDING_TONE[standing.standing]}>{standing.label}</Badge>
                     <span className="text-text-muted">{showDateTime(d.dueAt, show.timezone)}</span>
                     {d.penaltyEstimateCents != null && d.status === 'open' && (
                       <span className="text-bad">
                         {/* The tense is the product. Past the date it is not at risk. */}
                         {money(d.penaltyEstimateCents)}{' '}
-                        {missed ? 'already incurred' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
+                        {missed ? 'already spent' : d.confirmedAt ? 'at risk' : 'at risk if the date is right'}
                       </span>
                     )}
                     <span className="ml-auto text-xs text-text-muted">
-                      {entry.owner?.fullName ?? 'Unowned'}
+                      {d.kind.replace(/_/g, ' ')} · {entry.owner?.fullName ?? 'nobody owns this'}
                     </span>
                   </div>
+
+                  {standing.todo.length > 0 && (
+                    <ul className="mt-1.5 space-y-1">
+                      {standing.todo.map((line) => (
+                        <li key={line} className="text-xs text-text-muted">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {d.lodgingId && (
                     <p className="mt-1 text-xs text-text-muted">
@@ -198,6 +243,28 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
                     </p>
                   )}
 
+                  {/*
+                    The evidence, on the row, next to the control that confirms
+                    it. Confirming is what promotes this date into a figure the
+                    engine quotes in dollars, and a person can only confirm
+                    against something — so the page and the quote are here rather
+                    than a screen away. Both were checked against text we
+                    extracted before the row existed; a quote that was not on the
+                    page it claimed never became a row at all.
+                  */}
+                  {d.extractedFromDocument && d.sourceSnippet && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      <span className="font-medium">Read from p{d.sourcePage}:</span>{' '}
+                      <q className="italic">{d.sourceSnippet}</q>
+                    </p>
+                  )}
+                  {d.dueTimeAssumed && (
+                    <p className="mt-1 text-xs text-text-muted">
+                      The manual printed no time of day, so this is filed at end of day. Set
+                      the time before confirming — a warehouse that shuts at 4:00pm and a
+                      register that says 5pm differ by a drayage charge.
+                    </p>
+                  )}
                   {entry.pending && (
                     <p className="mt-1 text-xs text-text-muted">
                       <span className="font-medium">Alert:</span> {entry.pending.title} — to{' '}
@@ -220,6 +287,19 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
           </ul>
         )}
 
+        {canExtractManual(actor) && (
+          <div className="mt-4 border-t border-border pt-4">
+            <h3 className="text-sm font-medium">Read the exhibitor service manual</h3>
+            <p className="mt-1 mb-3 text-xs text-text-muted">
+              Every deadline it finds arrives <strong>unconfirmed</strong>, which is not a
+              formality: until somebody checks a row against the page it came from, the engine
+              chases it as a <em>date</em> and never quotes its penalty as an amount.
+            </p>
+            <ReadManualForm showId={id} configured={extractorIsConfigured()} />
+            <ExtractionHistory runs={extractions} />
+          </div>
+        )}
+
         {register.may.edit ? (
           <div className="mt-4 border-t border-border pt-4">
             <AddDeadlineForm showId={id} timezone={show.timezone} people={register.people} />
@@ -235,10 +315,12 @@ export default async function ReadinessTab({ params }: { params: Promise<{ id: s
         <p className="mt-3 text-xs text-text-muted">
           Alerts escalate at 30, 14 and 3 days out and on the day. A date nobody has confirmed
           against this year&rsquo;s manual is chased as a <em>date</em> rather than quoted as an
-          amount, because a penalty figure behind a guessed date is a fabricated bill. Run{' '}
-          <code>pnpm deadlines</code> to see what the engine would send tonight, or read what it
-          has already said on the <a className="underline hover:no-underline" href="/alerts">alerts
-          feed</a>.
+          amount, because a penalty figure behind a guessed date is a fabricated bill. What it
+          has already said is on the{' '}
+          <a className="underline hover:no-underline" href="/alerts">
+            alerts feed
+          </a>
+          .
         </p>
       </Card>
 

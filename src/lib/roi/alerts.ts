@@ -124,7 +124,7 @@ export function planRoiAlerts(
         severity: 'info',
         title: `${show.matching.withheld} lead${show.matching.withheld === 1 ? '' : 's'} from ${show.showName} will never appear in a pipeline figure`,
         body:
-          'No lawful basis was recorded when they were captured, so nothing about them is sent to a CRM — ' +
+          'Nobody recorded what those people were told at the booth, so nothing about them is sent to a CRM — ' +
           'they are lawfully held and still counted, and they are permanently outside every ROI figure this ' +
           'show will produce. Past tense on purpose: the moment to record what the booth said was at the ' +
           'booth. It is worth knowing when reading this show’s cost per opportunity.',

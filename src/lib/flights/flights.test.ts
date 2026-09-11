@@ -352,15 +352,36 @@ describe('board', () => {
       NOW,
     );
 
-  it('puts trouble above the next departure', () => {
+  /**
+   * Soonest first, and this assertion is the inverse of the one it replaces.
+   *
+   * Trouble used to sort to the top. It stopped once the board grew a horizon:
+   * every row on it is now a flight somebody still has to catch, and among those
+   * the clock is the order the work happens in — a table where next Tuesday sits
+   * above tomorrow is one a reader re-sorts in their head until they stop
+   * reading it. Trouble did not become invisible; it moved to the summary, the
+   * row's own tone, and the alerts card, none of which need to be scanned for.
+   */
+  it('puts the next departure first, whatever is wrong further down the list', () => {
     const soonAndFine = row({ flight: flight({ id: 'soon', scheduledDeparture: hours(2), scheduledArrival: hours(7) }) });
     const laterAndBroken = row({
       flight: flight({ id: 'broken', status: 'delayed', estimatedArrival: hours(31) }),
     });
     expect(orderBoard([soonAndFine, laterAndBroken]).map((r) => r.flight.id)).toEqual([
-      'broken',
       'soon',
+      'broken',
     ]);
+  });
+
+  // Severity is still what breaks a tie, so two legs leaving in the same minute
+  // put the cancelled one first.
+  it('breaks a tie on severity', () => {
+    const at = hours(2);
+    const fine = row({ flight: flight({ id: 'fine', scheduledDeparture: at, scheduledArrival: hours(7) }) });
+    const dead = row({
+      flight: flight({ id: 'dead', status: 'cancelled', scheduledDeparture: at, scheduledArrival: hours(7) }),
+    });
+    expect(orderBoard([fine, dead]).map((r) => r.flight.id)).toEqual(['dead', 'fine']);
   });
 
   it('counts a costless delay apart from a costly one', () => {

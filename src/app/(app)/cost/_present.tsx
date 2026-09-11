@@ -20,10 +20,13 @@ export const COVERAGE_TONE: Record<string, Tone> = {
   empty: 'neutral',
 };
 
+/* "a floor" and "thin" were the docs' words for these, on a badge read by
+ * somebody deciding whether to trust the number beside it. What they need to
+ * know is how much of the bill is missing. See `leads/_present.tsx`. */
 export const COVERAGE_LABEL: Record<string, string> = {
   complete: 'complete',
-  partial: 'a floor',
-  thin: 'thin',
+  partial: 'some costs missing',
+  thin: 'most costs missing',
   empty: 'nothing recorded',
 };
 
@@ -127,14 +130,49 @@ export function CostMemos({ cost }: { cost: ShowCost }) {
           </dd>
         </div>
       )}
+      {/*
+        Drayage: the fourth memo, and the only one whose figure is a *prediction*
+        rather than real money in the wrong period. Which is why it is here and
+        not in the total, and why it says so in the first clause rather than a
+        footnote — the number beside it is somebody else's future invoice.
+      */}
+      <div>
+        {cost.drayage.estimate.ok ? (
+          <>
+            <dt className="font-medium">
+              {cost.drayage.isFloor ? 'At least ' : ''}
+              {money(cost.drayage.estimate.cents)} of drayage, estimated
+            </dt>
+            <dd className="text-text-muted">
+              Not added — nobody has been billed this yet. It is the general contractor’s
+              charge for moving freight between the dock and the booth, computed from this
+              show’s rate card and the weight of its crates
+              {cost.drayage.confirmed
+                ? '.'
+                : ', from a card nobody has checked against this year’s manual — contractors re-price annually.'}
+              {cost.drayage.billedCents !== null && (
+                <>
+                  {' '}
+                  The real bill came to <strong>{money(cost.drayage.billedCents)}</strong> and{' '}
+                  <em>is</em> in the total above. A gap between the two is usually freight that
+                  went in loose.
+                </>
+              )}
+            </dd>
+          </>
+        ) : (
+          <>
+            <dt className="font-medium">Drayage is not in this figure</dt>
+            <dd className="text-text-muted">{cost.drayage.estimate.reason}</dd>
+          </>
+        )}
+      </div>
       {cost.attendeeDays !== null && (
         <div>
           <dt className="font-medium">{cost.attendeeDays} attendee-days on site</dt>
           <dd className="text-text-muted">
-            Deliberately not priced. Whether staff time belongs in a show’s cost is an open
-            decision (SCOPE §11.8), and there is no loaded rate recorded anywhere in this
-            workspace — so a dollar figure here would be a number we invented, which is the one
-            thing this page exists not to do.
+            Counted, not priced. Nobody’s hourly cost is recorded in this workspace, so any
+            dollar figure here would be one we made up.
           </dd>
         </div>
       )}

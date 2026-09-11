@@ -71,6 +71,16 @@ export type LeadCoverage = {
   standing: CoverageStanding;
   /** True when the count must be introduced with "at least". */
   isFloor: boolean;
+  /**
+   * Whether the show is over.
+   *
+   * Here for the tense, which is §5a's rule on the return side. "Ask them to
+   * add what they have" is the right sentence while a show is running and the
+   * wrong one a year after it closed — and the note used to hedge it in prose
+   * ("if the show is still on") because it did not have this. A hedge is what a
+   * sentence does when the code has not been asked the question.
+   */
+  hasClosed: boolean;
   /** One sentence, in the tense the standing deserves. */
   headline: string;
   basis: Record<LawfulBasis, number>;
@@ -94,6 +104,19 @@ export function hasOpened(
 ): boolean {
   if (show.status === 'live' || show.status === 'complete') return true;
   return asOf.getTime() >= show.startsOn.getTime();
+}
+
+/**
+ * Whether capture can still change. `hasOpened`'s mirror, and the status
+ * overrides the calendar for the same reason: a show somebody has marked
+ * complete is over whatever the dates say.
+ */
+export function hasClosed(
+  show: { endsOn: Date; status: string },
+  asOf: Date,
+): boolean {
+  if (show.status === 'complete' || show.status === 'cancelled') return true;
+  return asOf.getTime() > show.endsOn.getTime();
 }
 
 export function assessCoverage(
@@ -128,6 +151,7 @@ export function assessCoverage(
   }
 
   const opened = hasOpened(show, asOf);
+  const closed = hasClosed(show, asOf);
   const capturingStaff = boothStaff.filter((s) => capturedBy.has(s.userId)).length;
 
   // Order matters, and the third line is the one worth arguing about. "Nobody
@@ -154,6 +178,7 @@ export function assessCoverage(
     silent,
     standing,
     isFloor,
+    hasClosed: closed,
     headline: headlineFor(counted.length, capturingStaff, boothStaff.length, standing),
     basis,
     retentionOverdue,
@@ -196,18 +221,24 @@ function headlineFor(
  */
 export function mayQuotePerLead(coverage: LeadCoverage): { ok: boolean; reason?: string } {
   if (coverage.leadCount === 0) {
-    return { ok: false, reason: 'No leads are recorded, so there is nothing to divide by.' };
+    return { ok: false, reason: 'No leads are recorded yet, so there is nothing to divide the cost by.' };
   }
   if (coverage.standing === 'none' || coverage.standing === 'unknown') {
     return {
       ok: false,
-      reason: 'Capture coverage is unknown, so a per-lead figure would be a guess with a decimal point.',
+      reason:
+        'Nobody is scheduled on a booth shift, so there is no way to tell how many leads were ' +
+        'missed. A cost-per-lead figure here would be a guess with a decimal point on it.',
     };
   }
   if (coverage.standing === 'partial') {
     return {
       ok: false,
-      reason: `${coverage.silent.length} of ${coverage.boothStaff} people on the booth recorded nothing. Dividing by an undercount overstates cost per lead, which reads as a bad show.`,
+      reason:
+        `${coverage.silent.length} of ${coverage.boothStaff} people on the booth entered no ` +
+        'leads, so the real count is higher than this. Dividing the cost by too few leads ' +
+        'makes each one look more expensive than it was — and that is the number people cut ' +
+        'a show over. It will appear once everyone has entered theirs.',
     };
   }
   return { ok: true };

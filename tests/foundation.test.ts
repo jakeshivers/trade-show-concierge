@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import {
@@ -38,7 +38,18 @@ describe('seed', () => {
     const deadlines = await db
       .select()
       .from(s.showDeadlines)
-      .where(eq(s.showDeadlines.kind, 'advance_order'));
+      .where(
+        and(
+          eq(s.showDeadlines.kind, 'advance_order'),
+          // Seeded rows only. This is an assertion about what `scripts/seed.ts`
+          // writes, and it used to read every row in the table — so the moment
+          // somebody actually used the product it started failing on their data.
+          // Step 22 made that concrete: an extracted deadline legitimately has no
+          // dollar figure, because a manual that says "surcharged 30%" printed a
+          // percentage and `lib/manual/candidates.ts` refuses to compute one.
+          eq(s.showDeadlines.extractedFromDocument, false),
+        ),
+      );
 
     expect(deadlines.length).toBeGreaterThan(0);
     // A deadline without a dollar figure is a nag, not a decision. SCOPE.md §5a.

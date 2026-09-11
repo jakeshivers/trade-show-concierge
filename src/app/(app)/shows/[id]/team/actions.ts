@@ -66,7 +66,7 @@ export async function inviteAttendee(_prev: FormState, form: FormData): Promise<
       ...windowFrom(form),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {
@@ -85,7 +85,7 @@ export async function updateAttendee(_prev: FormState, form: FormData): Promise<
       ...windowFrom(form),
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Roster updated.' };
@@ -97,7 +97,7 @@ export async function answerInvitation(_prev: FormState, form: FormData): Promis
   try {
     await respondToInvitation(actor, str(form, 'attendeeId'), str(form, 'status'), windowFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Answered.' };
@@ -109,7 +109,7 @@ export async function unstaffAttendee(_prev: FormState, form: FormData): Promise
   try {
     await removeAttendee(actor, str(form, 'attendeeId'), form.get('acknowledged') === 'true');
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Taken off this show. Nothing outside this app was cancelled.' };
@@ -134,7 +134,7 @@ export async function createShift(_prev: FormState, form: FormData): Promise<For
   try {
     await addShift(actor, showId, shiftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Shift added.' };
@@ -146,7 +146,7 @@ export async function updateShift(_prev: FormState, form: FormData): Promise<For
   try {
     await editShift(actor, str(form, 'shiftId'), shiftFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Shift updated.' };
@@ -158,7 +158,7 @@ export async function removeShift(_prev: FormState, form: FormData): Promise<For
   try {
     await deleteShift(actor, str(form, 'shiftId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Shift deleted.' };
@@ -170,7 +170,7 @@ export async function assignShift(_prev: FormState, form: FormData): Promise<For
   try {
     await assignToShift(actor, str(form, 'shiftId'), str(form, 'userId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -182,7 +182,7 @@ export async function unassignShift(_prev: FormState, form: FormData): Promise<F
   try {
     await unassignFromShift(actor, str(form, 'shiftId'), str(form, 'userId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -196,7 +196,7 @@ export async function togglePresence(_prev: FormState, form: FormData): Promise<
     if (present) await recordPresence(actor, str(form, 'shiftId'), str(form, 'userId'));
     else await clearPresence(actor, str(form, 'shiftId'), str(form, 'userId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -227,7 +227,7 @@ export async function createSideEvent(_prev: FormState, form: FormData): Promise
   try {
     await addSideEvent(actor, showId, sideEventFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Side event added.' };
@@ -239,7 +239,7 @@ export async function updateSideEvent(_prev: FormState, form: FormData): Promise
   try {
     await editSideEvent(actor, str(form, 'eventId'), sideEventFrom(form));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Side event updated.' };
@@ -251,7 +251,7 @@ export async function removeSideEvent(_prev: FormState, form: FormData): Promise
   try {
     await deleteSideEvent(actor, str(form, 'eventId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Side event deleted.' };
@@ -269,7 +269,7 @@ export async function inviteToSideEvent(_prev: FormState, form: FormData): Promi
       status: 'invited',
     });
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return { ok: 'Added to the guest list.' };
@@ -281,7 +281,7 @@ export async function answerRsvp(_prev: FormState, form: FormData): Promise<Form
   try {
     await setRsvpStatus(actor, str(form, 'rsvpId'), str(form, 'status'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};
@@ -293,7 +293,7 @@ export async function dropRsvp(_prev: FormState, form: FormData): Promise<FormSt
   try {
     await removeRsvp(actor, str(form, 'rsvpId'));
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
   refresh(showId);
   return {};

@@ -1,4 +1,5 @@
 import { TeamError } from '@/lib/team/edit';
+import { plural } from '@/lib/text';
 import type { AssetCondition, AssetKind } from './custody';
 import type { EntryKind } from './inventory';
 
@@ -219,7 +220,7 @@ export function describeReservationRelease(d: ReservationDetachment): string | n
   }
   if (d.shipmentCount > 0) {
     parts.push(
-      `${d.shipmentCount} shipment${d.shipmentCount === 1 ? '' : 's'} for this show ${
+      `${plural(d.shipmentCount, 'shipment', 'shipments')} for this show ${
         d.shipmentCount === 1 ? 'is' : 'are'
       } booked with a carrier and will still run`,
     );

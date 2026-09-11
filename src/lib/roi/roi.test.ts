@@ -293,7 +293,9 @@ describe('the ratios, and what they refuse', () => {
       NOW,
     );
     expect(roi.costPerLead.ok).toBe(false);
-    expect((roi.costPerLead as { reason: string }).reason).toContain('overstates cost per lead');
+    // The reason must name the *direction* of the error — too few leads makes each
+    // one look dearer — because that is the half that drives the wrong decision.
+    expect((roi.costPerLead as { reason: string }).reason).toContain('more expensive');
   });
 
   it('withholds cost per lead over a cost floor too, in the opposite direction', () => {
@@ -307,9 +309,13 @@ describe('the ratios, and what they refuse', () => {
       NOW,
     );
     expect(roi.costPerLead.ok).toBe(false);
-    expect((roi.costPerLead as { reason: string }).reason).toContain('too low');
+    // Both reasons have to carry the *direction* of the error, because that is
+    // the half that drives a decision — and both were asserting on one exact
+    // phrasing, so a copy pass broke them without breaking anything true.
+    // `UI-REWORK.md` §14's rule: assert the thing that must not change.
+    expect((roi.costPerLead as { reason: string }).reason).toMatch(/too low|understate/i);
     expect(roi.pipelineMultiple.ok).toBe(false);
-    expect((roi.pipelineMultiple as { reason: string }).reason).toContain('ceiling');
+    expect((roi.pipelineMultiple as { reason: string }).reason).toMatch(/flatter|too high|overstate/i);
   });
 
   it('withholds every ratio derived from a replayed pipeline', () => {
@@ -377,8 +383,12 @@ describe('match coverage — our refusals and the CRM’s answers stay apart', (
   it('never adds withheld to unmatched', () => {
     const gap = describeMatching(matching({ matched: 30, withheld: 12, unmatched: 8 }))!;
     expect(gap.what).toContain('30 of 50');
-    expect(gap.what).toContain('this app refusing, not the CRM failing');
-    expect(gap.what).toContain('8 are in no CRM record');
+    // The rule is that the two counts are reported separately and never summed.
+    // Asserting on the sentence tested the phrasing; asserting on the numbers
+    // tests the refusal — 12 and 8 both appear and 20 never does.
+    expect(gap.what).toContain('12');
+    expect(gap.what).toContain('8');
+    expect(gap.what).not.toContain('20');
   });
 
   it('says nothing when everything matched', () => {
@@ -409,11 +419,35 @@ describe('the portfolio', () => {
     expect(p.portfolioMultiple).toEqual({ ok: true, multiple: 4 });
   });
 
-  it('orders by cost rather than by multiple', () => {
-    // Ranking by multiple puts every recent show last for §8e's reason, and
-    // somebody cancels one.
-    const p = summarizeRoiPortfolio([immature, mature], DEFAULT_SETTINGS, 0, NOW);
-    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-a', 'show-b']);
+  /**
+   * Most recent show first, and cost — never the multiple — breaks the tie.
+   *
+   * The ordering moved to the clock on 2026-09-02 with every other board, and
+   * this page has the strongest claim to the *retrospective* direction of it:
+   * §8e says a verdict is not final for six to twelve months, so this is a
+   * report on what already happened and the nearest thing to now is the show
+   * that just closed. What has not changed is the refusal underneath: ranking by
+   * multiple puts every recent show last by construction, and somebody cancels
+   * one.
+   */
+  it('orders by how recently a show closed, not by its multiple', () => {
+    const p = summarizeRoiPortfolio([mature, immature], DEFAULT_SETTINGS, 0, NOW);
+    // show-b ended two days ago; show-a sixty. The four-times multiple on show-a
+    // does not lift it, and neither does its cost.
+    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-b', 'show-a']);
+  });
+
+  it('breaks a tie between two shows of the same age on cost', () => {
+    const cheap = rollUpShowRoi(
+      roiInputs({
+        show: { id: 'cheap', name: 'Cheap', status: 'complete', startsOn: d(-4), endsOn: d(-2) },
+        cost: cost({ showId: 'cheap', totalCents: 10_000_00 }),
+      }),
+      DEFAULT_SETTINGS,
+      NOW,
+    );
+    const p = summarizeRoiPortfolio([cheap, immature], DEFAULT_SETTINGS, 0, NOW);
+    expect(p.shows.map((sh) => sh.showId)).toEqual(['show-b', 'cheap']);
   });
 
   it('refuses a portfolio multiple when nothing is old enough to score', () => {

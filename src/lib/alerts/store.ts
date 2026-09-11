@@ -6,6 +6,7 @@ import { canAcknowledge } from './access';
 import {
   SOURCE_LABEL,
   orderFeed,
+  resolveAndForget,
   summarizeFeed,
   type AlertKind,
   type AlertSeverity,
@@ -251,6 +252,7 @@ export async function getAlertFeed(
     body: r.alert.body,
     showId: r.alert.showId,
     showName: r.showName ?? null,
+    userId: r.alert.userId,
     dedupeKey: r.alert.dedupeKey,
     createdAt: r.alert.createdAt,
     lastSeenAt: r.alert.lastSeenAt,
@@ -260,7 +262,12 @@ export async function getAlertFeed(
     acknowledgedByName: r.ackName ?? null,
   }));
 
-  return { alerts: orderFeed(alerts, asOf), summary: summarizeFeed(alerts, asOf) };
+  // The horizon, applied before ordering *and* before summarizing, so the counts
+  // on the page describe the rows under them. A resolved alert is history after
+  // a week; nothing unacknowledged or still-true is ever dropped, however old,
+  // because age is the reason to look at those.
+  const live = resolveAndForget(alerts, asOf);
+  return { alerts: orderFeed(live, asOf), summary: summarizeFeed(live, asOf) };
 }
 
 /**

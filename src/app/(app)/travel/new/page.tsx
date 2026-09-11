@@ -1,4 +1,7 @@
+import Link from 'next/link';
 import { getActor } from '@/lib/auth/actor';
+import { missingForTicket } from '@/lib/profile/edit';
+import { getMyProfile } from '@/lib/profile/store';
 import { costCentersFor, showsForRequest, travelersFor } from '@/lib/travel/queue';
 import {
   Card,
@@ -23,11 +26,13 @@ import { RequestForm } from './form';
  */
 export default async function NewTravelRequestPage() {
   const actor = await getActor();
-  const [travelers, costCenters, shows] = await Promise.all([
+  const [travelers, costCenters, shows, me] = await Promise.all([
     travelersFor(actor),
     costCentersFor(actor),
     showsForRequest(actor),
+    getMyProfile(actor),
   ]);
+  const missing = missingForTicket(me);
 
   return (
     <div className="space-y-6">
@@ -40,6 +45,26 @@ export default async function NewTravelRequestPage() {
           </>
         }
       />
+
+      {/*
+        Said here rather than at the point of purchase. The agent will happily
+        search and price an itinerary for somebody with no date of birth on file
+        and then refuse to ticket it — a correct refusal (`passengers.ts`: a
+        plausible placeholder buys a real ticket that fails at the gate) arriving
+        at the worst possible moment, on a held offer with a clock on it. The
+        gaps are read from `missingForTicket`, which mirrors the agent's own
+        checks rather than guessing at them a second time.
+      */}
+      {missing.length > 0 && (
+        <p className="rounded-md bg-warn-soft px-3 py-2 text-sm text-warn">
+          Your travel profile is incomplete — we still need {missing.join(', ')}. You can file
+          this request now, but no ticket can be issued until it is filled in.{' '}
+          <Link href="/settings/profile" className="underline hover:no-underline">
+            Add your details
+          </Link>
+          .
+        </p>
+      )}
 
       <Card>
         <RequestForm

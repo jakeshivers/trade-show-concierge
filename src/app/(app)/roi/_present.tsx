@@ -38,9 +38,11 @@ const GAP_TONE: Record<RoiGap['kind'], Tone> = {
   disagreement: 'warn',
 };
 
+/* `UI-REWORK.md` §14, a third time: "a floor" is the docs' word for these and
+ * says nothing to somebody deciding whether to trust the number above them. */
 const GAP_LABEL: Record<RoiGap['kind'], string> = {
-  cost: 'cost is a floor',
-  leads: 'count is a floor',
+  cost: 'cost incomplete',
+  leads: 'count incomplete',
   matching: 'matching',
   maturity: 'too early',
   replay: 'replayed',
@@ -80,7 +82,7 @@ export function Figure({
         </>
       ) : (
         <>
-          <p className="text-sm font-medium text-warn">Withheld</p>
+          <p className="text-sm font-medium text-warn">Not shown</p>
           <p className="text-xs text-text-muted">{(value as { reason: string }).reason}</p>
         </>
       )}
@@ -94,11 +96,10 @@ export function ReplayBanner() {
     <div className="rounded-lg border border-bad/40 bg-bad-soft p-3 text-sm">
       <p className="font-medium">These pipeline figures are replayed, not read from a CRM.</p>
       <p className="mt-1 text-text-muted">
-        No CRM is connected, so the opportunities below come from a recorded conversion shape —
-        how booth conversations convert in general. It asserts nothing about this company’s
-        pipeline. A banner is enough for a replayed flight or crate; money gets more than a
-        banner, so <strong>every ratio derived from these figures is withheld</strong> rather
-        than printed with a caveat.
+        No CRM is connected, so the numbers below are a general pattern for how booth
+        conversations convert — they say nothing about this company. Because a warning on a
+        money figure is easy to read past, <strong>every ratio built on them is left
+        blank</strong> rather than printed with a note attached.
       </p>
     </div>
   );
@@ -129,18 +130,21 @@ export function RoiGaps({ gaps }: { gaps: RoiGap[] }) {
  * Where the matching went — and the one table on this page whose columns must
  * never be summed into a single "match rate".
  *
- * `Withheld` is this product refusing on a stranger's behalf; `Not in the CRM`
- * is the customer's CRM answering. A single percentage would make the first look
- * like the second, which is the misreading that gets step 18's refusal removed.
+ * `Not sent by us` is this product refusing on a stranger's behalf; `Not in the
+ * CRM` is the customer's CRM answering. A single percentage would make the first
+ * look like the second, which is the misreading that gets step 18's refusal
+ * removed. On screen the word is "not sent" rather than "withheld", because
+ * `/roi` was using that one word for two different acts at once — a figure we
+ * decline to print and a lead we decline to transmit.
  */
 export function MatchTable({ roi }: { roi: ShowRoi }) {
   const m = roi.matching;
   const rows: { label: string; n: number; why: string }[] = [
     { label: 'Linked to a CRM record', n: m.matched, why: 'These are what pipeline is attributed through.' },
     {
-      label: 'Withheld by us',
+      label: 'Not sent by us',
       n: m.withheld,
-      why: 'No lawful basis was recorded at the booth, so nothing about them is sent to a third party. They are lawfully held and still counted — they simply cannot appear in a pipeline figure.',
+      why: 'Nobody recorded what these people were told at the booth, so nothing about them is sent to a third party. They are still held and still counted — they just cannot appear in a pipeline figure. Recording it on the Leads tab is what changes that.',
     },
     {
       label: 'Not in the CRM',
@@ -155,7 +159,7 @@ export function MatchTable({ roi }: { roi: ShowRoi }) {
     {
       label: 'Never offered to a CRM',
       n: m.unsynced,
-      why: 'No sync has looked at them yet. Different from “not found”: one is fixable by pressing a button.',
+      why: 'No sync has looked at them yet — which is different from the CRM not knowing them, and is fixed by running one.',
     },
   ];
   return (

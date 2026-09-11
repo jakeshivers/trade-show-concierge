@@ -35,8 +35,8 @@ export default async function LodgingTab({ params }: { params: Promise<{ id: str
       <Card title="Hotels">
         {entries.length === 0 ? (
           <Empty>
-            No lodging recorded. Hotels are entered by hand — booking them is out of scope for v1
-            (§5); tracking them is not.
+            No lodging recorded. Hotels are entered by hand: this app tracks rooms and room-block
+            cutoffs, but it does not book them.
           </Empty>
         ) : (
           <ul className="space-y-4">

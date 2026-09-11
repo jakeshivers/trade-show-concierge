@@ -65,7 +65,10 @@ export default async function AssistantPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Your conversations" subtitle="Private to you — see below.">
           {conversations.length === 0 ? (
-            <Empty>Nothing yet.</Empty>
+            <Empty>
+              No conversations yet. Ask something above — the answers are built from the same
+              records the screens use, narrowed to what you can see.
+            </Empty>
           ) : (
             <ul className="divide-y divide-border">
               {conversations.map((c) => (

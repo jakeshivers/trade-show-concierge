@@ -54,6 +54,14 @@ export type FeedAlert = {
   body: string | null;
   showId: string | null;
   showName: string | null;
+  /**
+   * Who it was addressed to; null means the whole org. Carried on the feed
+   * because step 21's transport has to refuse to route a *personal* alert to a
+   * shared channel, and that refusal has to be a pure function it can test
+   * rather than a column comment. Nothing on the screen renders it: a person's
+   * own feed is already narrowed to them.
+   */
+  userId: string | null;
   dedupeKey: string;
   createdAt: Date;
   lastSeenAt: Date;
@@ -144,7 +152,66 @@ export const SOURCE_LABEL: Record<AlertSource, string> = {
   unknown: 'Other',
 };
 
-/** Live work, worst first, oldest first within a severity. */
+/**
+ * How many engines write to this feed, and what to call them in a sentence.
+ *
+ * This exists because the screens said **five** and listed five, and there have
+ * been seven since step 19 — so `/alerts` carried a blurb promising deadlines,
+ * flights, freight, assets and credits directly above a Leads alert. Nothing
+ * failed; the sentence simply stopped being true two steps after it was written,
+ * which is the exact shape of the `SOURCE_LABEL` bug this file already carries a
+ * scar from, in prose rather than in a guard.
+ *
+ * So the prose is derived. `EngineSource` is the enum minus the two sources
+ * nothing sweeps — a booking alert is written by the agent as it works, and
+ * `unknown` is what the guard answers for a row it cannot classify — and
+ * `ENGINE_NOUN` is a `Record` over it, so adding an engine to `AlertSource`
+ * fails to compile until somebody says what to call it on screen.
+ */
+const NOT_AN_ENGINE = ['booking', 'unknown'] as const;
+export type EngineSource = Exclude<AlertSource, (typeof NOT_AN_ENGINE)[number]>;
+
+const ENGINE_NOUN: Record<EngineSource, string> = {
+  deadline: 'deadlines',
+  flight: 'flights',
+  shipping: 'freight',
+  asset: 'assets',
+  lead: 'leads',
+  roi: 'ROI',
+  credit: 'ticket credits',
+};
+
+export const ENGINE_SOURCES = (Object.keys(SOURCE_LABEL) as AlertSource[]).filter(
+  (a): a is EngineSource => !(NOT_AN_ENGINE as readonly string[]).includes(a),
+);
+
+export const ENGINE_COUNT = ENGINE_SOURCES.length;
+
+/** "deadlines, flights, freight, assets, leads, ROI and ticket credits" */
+export function engineList(): string {
+  const nouns = ENGINE_SOURCES.map((e) => ENGINE_NOUN[e]);
+  return `${nouns.slice(0, -1).join(', ')} and ${nouns[nouns.length - 1]}`;
+}
+
+/**
+ * Live work, worst first, oldest first within a severity — and the one list in
+ * this product that deliberately did **not** move to the clock on 2026-09-02.
+ *
+ * Every other board here lists dated obligations, so the soonest one is the most
+ * urgent and ordering by severity meant a reader re-sorting the page in their
+ * head. A feed is a different object. Its rows are *sentences*, not work items,
+ * and the only clock on one is `created_at` — the night an engine first said it,
+ * which is a fact about our sweep schedule rather than about the thing. Ordering
+ * on it puts an `info` raised last night above a `critical` raised last week,
+ * which is the failure the severity model exists to prevent, and the due dates
+ * that would make a clock meaningful live on the rows the alerts are *about* —
+ * on `/shipping` and `/flights`, now sorted by exactly those dates.
+ *
+ * What the feed does take from that day is the other half: settled rows sink,
+ * and `resolveAndForget` takes long-resolved ones off entirely. Oldest-first
+ * *within* a severity is itself a clock, and the right one — a critical standing
+ * for nine nights is more neglected than one raised tonight.
+ */
 export function orderFeed(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
   return [...alerts].sort((a, b) => {
     const aStanding = standingOf(a, asOf);
@@ -156,6 +223,31 @@ export function orderFeed(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
     if (bySeverity !== 0) return bySeverity;
     return a.createdAt.getTime() - b.createdAt.getTime();
   });
+}
+
+/**
+ * How long a resolved alert stays in the feed.
+ *
+ * `resolved` means the condition stopped being true, which the engine decided by
+ * not planning it again — nobody dismissed anything. Keeping those rows for a
+ * while is the point: *"the crate arrived"* is worth seeing the morning after,
+ * and it is the only evidence on the page that the sweep is closing things
+ * rather than only opening them. Past a few days it is filing, and it competes
+ * with live work for the top of a list somebody reads under pressure.
+ */
+export const FEED_RESOLVED_DAYS = 7;
+
+/**
+ * Drop what has been resolved long enough to be history.
+ *
+ * The horizon every board grew on 2026-09-02, in the form a feed can take. It
+ * only ever removes rows the engines have already closed: an alert nobody has
+ * acknowledged, or one acknowledged and still true, stays however old it is —
+ * age is the *reason* to look at those, not a reason to hide them.
+ */
+export function resolveAndForget(alerts: FeedAlert[], asOf: Date): FeedAlert[] {
+  const cutoff = asOf.getTime() - FEED_RESOLVED_DAYS * 86_400_000;
+  return alerts.filter((a) => !a.resolvedAt || a.resolvedAt.getTime() >= cutoff);
 }
 
 export type FeedSummary = {

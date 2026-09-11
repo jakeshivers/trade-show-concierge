@@ -6,6 +6,7 @@ import { NotFoundError } from '@/lib/shows/store';
 import { syncConditionAlerts, type AlertSyncResult, type AlertWrite } from '@/lib/alerts/store';
 import {
   canCaptureLead,
+  canEditLead,
   canManageIntakeKeys,
   canManageLeads,
   canRedactLead,
@@ -362,20 +363,41 @@ export async function getLeadPortfolio(
     });
   }
 
-  const rank: Record<string, number> = {
-    none: 0,
-    unknown: 1,
-    partial: 2,
-    sound: 3,
-    not_yet: 4,
-  };
+  /**
+   * Most recent show first, and a show that has not opened sorts after all of
+   * them.
+   *
+   * The flight, shipping and asset boards all went from worst-first to
+   * clock-first, and this one inverts the *direction* rather than copying it —
+   * which is the whole reason it is worth stating rather than doing quietly.
+   * Those three are prospective: they list obligations, and the soonest is the
+   * most urgent. Capture is **retrospective**. A lead count is a fact about a
+   * show that has already happened, so the nearest thing to now is the show that
+   * just ended, and the clock runs backwards from there. Ascending here would
+   * open the page on 2024.
+   *
+   * The one piece of the old ranking that survives is `not_yet`, and it survives
+   * as a *segment* rather than as a severity: a show that has not opened has
+   * recorded nothing because there was nothing to record, so it is not a finding
+   * and does not belong among the shows being judged. Within that tail the order
+   * flips back to soonest-first, because those rows are prospective again — they
+   * are the shows somebody is about to need a target list for.
+   *
+   * There is deliberately **no horizon here**, unlike the other three. A crate
+   * that arrived is finished and a landed flight is over, but an old show's
+   * capture is exactly what this year's is judged against — that is what the
+   * page is for. One row per show and five shows a year (§11.5) means the list
+   * stays readable without hiding anything.
+   */
+  const opened = (e: (typeof entries)[number]) => e.coverage.standing !== 'not_yet';
   return entries.sort((a, b) => {
-    const d = rank[a.coverage.standing] - rank[b.coverage.standing];
-    if (d !== 0) return d;
-    if (a.coverage.retentionOverdue !== b.coverage.retentionOverdue) {
-      return b.coverage.retentionOverdue - a.coverage.retentionOverdue;
-    }
-    return b.startsOn.getTime() - a.startsOn.getTime();
+    if (opened(a) !== opened(b)) return opened(a) ? -1 : 1;
+    const byTime = opened(a)
+      ? b.startsOn.getTime() - a.startsOn.getTime()
+      : a.startsOn.getTime() - b.startsOn.getTime();
+    if (byTime !== 0) return byTime;
+    // Two shows opening the same day: our own non-compliance first.
+    return b.coverage.retentionOverdue - a.coverage.retentionOverdue;
   });
 }
 
@@ -591,6 +613,112 @@ export async function captureLead(
 }
 
 /**
+ * Correcting a lead that is already recorded.
+ *
+ * The fourth write path, and it had to be written the moment anything told
+ * somebody to use it: `consent.ts`'s fix line and the coverage note both say
+ * "record what the person was told" / "open the lead to record it", and until
+ * now there was nowhere to do either. An instruction with no control behind it
+ * is the dead control this project keeps refusing to ship.
+ *
+ * Three things it inherits rather than decides:
+ *
+ * 1. **It re-checks identity, because `dedupe.ts` claims it can.** That file
+ *    says a `same_scan` or `same_email` pair "cannot exist among stored leads,
+ *    because all four write paths refuse those before they are written" — and it
+ *    said *three* until this function existed. An edit that skipped the check
+ *    would have falsified that sentence quietly — type a colleague's address into the email field and the
+ *    show has two rows for one person, which is the inflation §5j names as
+ *    running in the flattering direction. The candidate list excludes this row,
+ *    or every lead would collide with itself.
+ * 2. **`external_ref` is not editable and is not in the form.** It is the
+ *    idempotency rail a scanner retries against (`leads_show_ref_idx`), so a
+ *    person editing it either collides with a real row or orphans the retry that
+ *    a badge scanner is going to make on bad wifi in ten minutes.
+ * 3. **A redacted lead is refused.** Erasure nulled those columns on purpose and
+ *    an edit would write personal data back into the row that proves it was
+ *    honoured. A *duplicate* is editable: it keeps its own consent record and
+ *    its own retention clock, which is exactly what marking it did not touch.
+ *
+ * The one thing it does decide is the consent timestamp — see `planConsent`.
+ */
+export async function updateLead(
+  actor: Actor,
+  leadId: string,
+  input: Parameters<typeof validateLead>[0],
+  now: Date = new Date(),
+  db: Db = getDb(),
+): Promise<CaptureResult> {
+  const rows = await db
+    .select({ lead: s.leads })
+    .from(s.leads)
+    .innerJoin(s.shows, eq(s.leads.showId, s.shows.id))
+    .where(and(eq(s.leads.id, leadId), eq(s.shows.orgId, actor.orgId)));
+  if (rows.length === 0) throw new NotFoundError('lead');
+  const before = rows[0].lead;
+
+  if (!canEditLead(actor, before.capturedById)) {
+    throw new ForbiddenError('edit a lead somebody else captured');
+  }
+  if (before.redactedAt) {
+    throw new LeadError(
+      'This lead was erased. Editing it would put personal details back into the row that records the erasure was honoured.',
+    );
+  }
+
+  // The rail is not editable, so it is carried rather than read from the form.
+  const draft = validateLead({ ...input, externalRef: before.externalRef });
+
+  const others = (await dedupeCandidates(before.showId, db)).filter((c) => c.id !== leadId);
+  const match = findMatch(draft, others);
+  if (isBlocking(match)) return { lead: null, match };
+
+  const [lead] = await db
+    .update(s.leads)
+    .set({
+      fullName: draft.fullName,
+      email: draft.email,
+      phone: draft.phone,
+      company: draft.company,
+      title: draft.title,
+      notes: draft.notes,
+      interests: draft.interests,
+      consentBasis: draft.basis,
+      consentNotice: draft.consentNotice,
+      ...planConsentTimestamp(before, draft, now),
+      updatedAt: now,
+    })
+    .where(eq(s.leads.id, leadId))
+    .returning();
+  return { lead, match };
+}
+
+/**
+ * When the consent record was made — which is never when the conversation was.
+ *
+ * `consent_captured_at` answers "when did somebody record this basis", and the
+ * whole reason it is a separate column from `captured_at` is that the two can
+ * differ. Recording at 4pm what was said at 10am is honest and is the ordinary
+ * case; back-dating it to the capture would manufacture evidence that the notice
+ * was given at the booth, which is the one thing `consent.ts` exists to refuse.
+ *
+ * So it moves whenever the *claim* moves — the basis or the notice — and is
+ * cleared when the basis goes back to `unknown`, because a timestamp on an
+ * absence turns "nobody has said" into a record of an event. An edit that
+ * touches only the phone number leaves it exactly where it was.
+ */
+function planConsentTimestamp(
+  before: { consentBasis: string | null; consentNotice: string | null; consentCapturedAt: Date | null },
+  draft: { basis: string; consentNotice: string | null },
+  now: Date,
+): { consentCapturedAt: Date | null } {
+  if (draft.basis === 'unknown') return { consentCapturedAt: null };
+  const changed =
+    before.consentBasis !== draft.basis || (before.consentNotice ?? null) !== draft.consentNotice;
+  return { consentCapturedAt: changed ? now : (before.consentCapturedAt ?? now) };
+}
+
+/**
  * Parse and plan a file without writing anything.
  *
  * The import is two steps because of `parse.ts`'s third rule: a mapping is
@@ -672,7 +800,7 @@ export async function commitImport(
       duplicates: plan.duplicates.length,
       problems: [...plan.rejected, ...plan.duplicates],
       notes: plan.basisUnmapped
-        ? 'No column was mapped to a lawful basis, so every lead in this file was recorded with none.'
+        ? 'No column said why we may follow up, so every lead in this file was imported without that on record.'
         : null,
       createdAt: now,
     })

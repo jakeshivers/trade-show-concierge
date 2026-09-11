@@ -129,8 +129,10 @@ export function isBlocking(match: Match | null): match is Match {
  * Every pair on one show that *might* be the same person.
  *
  * Only the `possible` rule fires here, and deliberately: a `same_scan` or
- * `same_email` pair cannot exist among stored leads, because all three write
- * paths refuse those before they are written. What can exist is two rows with
+ * `same_email` pair cannot exist among stored leads, because all four write
+ * paths — capture, import, intake and edit — refuse those before they are
+ * written. It said *three* until `updateLead` existed, and the fourth had to
+ * re-check identity precisely so this sentence stayed true. What can exist is two rows with
  * the same name at the same company, admitted on purpose, waiting for somebody
  * who was at the booth to say whether that is one buyer or two.
  *

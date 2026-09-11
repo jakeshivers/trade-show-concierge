@@ -23,8 +23,16 @@ import { type FormState, formErrorFrom, str } from '../_components/form';
 
 const asFormError = formErrorFrom([ForbiddenError]);
 
+// The sweep asks both providers and re-plans every engine, so it moves rows on
+// the two boards that render provider data as well as on the feed. `RefreshButton`
+// is now on all three, deliberately as one action rather than three narrower ones:
+// a flights-only sync would be a second provider-selection path beside this one,
+// with its own idea of what "could not run" means — the `SOURCE_LABEL` trap in
+// another costume.
 function refresh() {
   revalidatePath('/alerts');
+  revalidatePath('/flights');
+  revalidatePath('/shipping');
   revalidatePath('/');
 }
 
@@ -35,7 +43,7 @@ export async function markSeen(_prev: FormState, form: FormData): Promise<FormSt
     refresh();
     return { ok: 'Marked as seen.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 
@@ -46,7 +54,7 @@ export async function markUnseen(_prev: FormState, form: FormData): Promise<Form
     refresh();
     return { ok: 'Back on the list.' };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }
 

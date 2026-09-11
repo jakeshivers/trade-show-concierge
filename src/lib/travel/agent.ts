@@ -1,4 +1,5 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
+import { plural } from '@/lib/text';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import {
@@ -23,7 +24,11 @@ import { resolveTravelPolicy, type PolicyResolution } from './policy-store';
 import { assertTransition, type RequestStatus } from './machine';
 import { offerStanding } from './review';
 import { assertPurchasingAllowed, purchasingStatus } from './kill-switch';
-import { passengerForUser, type Passenger } from './passengers';
+import {
+  loyaltyAccountsForTraveler,
+  preferredAirlinesForTraveler,
+} from '@/lib/profile/store';
+import { passengerForUser, searchPassengerForUser, type Passenger } from './passengers';
 import { notifyTicketed, notifyUnreachableCredit } from './notify';
 import { materializeFlights } from '@/lib/flights/store';
 import {
@@ -398,6 +403,12 @@ async function buildContext(
       now: deps.now(),
       moveInAt: show?.moveInAt ?? undefined,
       showTravelSpentCents: await showTravelSpent(deps, request.showId),
+      // The **traveler's** carriers, never the requester's, and on the context
+      // rather than on the policy: it is a fact about a person, and putting it
+      // on `TravelPolicy` would put it within reach of `evaluate()`, where the
+      // first reasonable-looking change turns a preference into a constraint.
+      // `rank.ts` is its only reader; no rule sees it.
+      travelerPreferredAirlines: await preferredAirlinesForTraveler(request.travelerId, deps.db),
     },
     resolution,
     // The ledger decides what is spendable; this file only sequences it.
@@ -429,7 +440,7 @@ async function snapshotOffers(
   const byOfferId = new Map<string, OfferSnapshotRow>();
 
   for (const [index, entry] of ranked.entries()) {
-    const { offer, verdict, score } = entry;
+    const { offer, verdict, score, preference } = entry;
     const [snapshot] = await deps.db
       .insert(s.offerSnapshots)
       .values({
@@ -458,6 +469,8 @@ async function snapshotOffers(
         selected: offer.id === bestOfferId,
         rank: index,
         score,
+        preferenceOrgCents: preference.orgCents,
+        preferenceTravelerCents: preference.travelerCents,
         rawPayload: offer as never,
         capturedAt: deps.now(),
       })
@@ -521,11 +534,15 @@ async function searchAndEvaluate(
   const traveler = await deps.db.query.users.findFirst({
     where: eq(s.users.id, request.travelerId),
   });
-  const [givenName, ...rest] = (traveler?.fullName ?? 'Unknown Traveler').split(' ');
+  // The traveler's own frequent-flyer numbers, so the offers this is ruled
+  // against are the ones they can actually be sold. `loyaltyAccountsForTraveler`
+  // takes no actor because the narrowing already happened: this is a row on a
+  // request whose traveler `travelersFor` resolved.
+  const loyalty = await loyaltyAccountsForTraveler(request.travelerId, deps.db);
 
   const result = await deps.provider.search({
     constraints: base.constraints,
-    passengers: [{ givenName, familyName: rest.join(' ') || givenName }],
+    passengers: [searchPassengerForUser({ fullName: traveler?.fullName ?? 'Unknown Traveler' }, loyalty)],
     cabinClass: base.constraints.cabinPreference,
     maxConnections: base.policy.maxStops,
   });
@@ -559,18 +576,33 @@ async function searchAndEvaluate(
     travelRequestId: request.id,
     step: 'search',
     summary:
-      `${deps.provider.name} returned ${result.offers.length} offer(s); ` +
+      `${deps.provider.name} returned ${plural(result.offers.length, 'offer', 'offers')}; ` +
       (best
-        ? `best is ${best.offer.id} at ${usd(best.offer.totalCents)} → ${best.verdict.decision}`
+        ? `best is ${best.offer.id} at ${usd(best.offer.totalCents)} → ${best.verdict.decision}` +
+          // Only when it *changed* the answer. Saying "the preference applied"
+          // on every search is noise; saying it on the one search where a
+          // cheaper offer lost is the sentence somebody needs.
+          (best.preference.totalCents > 0 && cheapestBookable(scored) !== best
+            ? ` (chosen over ${usd(cheapestBookable(scored)!.offer.totalCents)} within ` +
+              `${describePreference(best.preference)})`
+            : '')
         : 'none were bookable'),
     detail: {
       searchId: result.searchId,
       policyLayers: resolution.layers,
+      travelerPreferredAirlines: base.travelerPreferredAirlines ?? [],
       offers: scored.map((r) => ({
         id: r.offer.id,
         totalCents: r.offer.totalCents,
         decision: r.verdict.decision,
         score: r.score,
+        // Recorded per offer so "why the $412 United over the $408 Delta" has an
+        // answer six months later. Offers vanish from the provider within the
+        // hour; a score with no explanation beside it is a number nobody can
+        // argue with, which is the shape of audit trail this file exists to
+        // avoid.
+        preferenceCreditCents: r.preference.totalCents,
+        preferenceCredit: r.preference,
         blockers: r.verdict.blockers.map((b) => b.ruleId),
       })),
     },
@@ -612,7 +644,7 @@ export async function runAgent(
       step: 'no_options',
       actor,
       summary: ranked.length
-        ? `${ranked.length} offer(s) found, none bookable`
+        ? `${plural(ranked.length, 'offer', 'offers')} found, none bookable`
         : 'No offers matched the request',
       detail: { reasons },
     });
@@ -670,6 +702,37 @@ export async function runAgent(
   return { request, status: 'pending_approval', ranked, selected, policy: resolution };
 }
 
+/**
+ * Which preference paid for a choice, in the words somebody would argue with.
+ *
+ * Names both halves when both applied, because they are answerable by different
+ * people: the org's allowance is a contract term an admin set, and the
+ * traveler's is a line on their own profile. A single blended figure would send
+ * whoever disagrees to the wrong screen.
+ */
+function describePreference(p: RankedOffer['preference']): string {
+  const parts: string[] = [];
+  if (p.orgCents > 0) parts.push(`${usd(p.orgCents)} for a preferred carrier`);
+  if (p.travelerCents > 0) parts.push(`${usd(p.travelerCents)} for the traveler's own`);
+  // The sum only when there is something to sum. "$60.00 for the traveler's own
+  // = $60.00" is the arithmetic showing its working on a one-term expression.
+  return parts.length > 1 ? `${parts.join(' + ')} = ${usd(p.totalCents)}` : parts[0];
+}
+
+/**
+ * The cheapest offer the agent could have taken, ignoring preference entirely.
+ *
+ * Only ever used to *describe* a choice, never to make one — it exists so the
+ * audit line can name the fare that lost. Same decision tier as `selectBest`, by
+ * construction: a preference cannot cross a tier, so the runner-up it beat is
+ * always one `selectBest` would also have accepted.
+ */
+function cheapestBookable(ranked: RankedOffer[]): RankedOffer | null {
+  const bookable = ranked.filter((r) => r.verdict.decision !== 'deny');
+  if (bookable.length === 0) return null;
+  return bookable.reduce((a, b) => (b.offer.totalCents < a.offer.totalCents ? b : a));
+}
+
 /** What to tell the user to relax, drawn from what actually blocked. */
 function uniqueReasons(ranked: RankedOffer[]): string[] {
   const seen = new Set<string>();
@@ -691,7 +754,8 @@ async function passengersFor(deps: AgentDeps, request: TravelRequestRow): Promis
     where: eq(s.users.id, request.travelerId),
   });
   if (!traveler) throw new Error(`Traveler ${request.travelerId} not found`);
-  return [passengerForUser(traveler)];
+  const loyalty = await loyaltyAccountsForTraveler(request.travelerId, deps.db);
+  return [passengerForUser(traveler, '', loyalty)];
 }
 
 /* ---------------------------------- holds ---------------------------------- */
@@ -818,7 +882,7 @@ async function purchaseOrFail(
       step: 'credit_blocked_by_hold',
       actor,
       summary:
-        `${creditIds.length} redeemable credit(s) cannot be applied: this seat is already held as ` +
+        `${plural(creditIds.length, 'redeemable credit', 'redeemable credits')} cannot be applied: this seat is already held as ` +
         `order ${existing.providerOrderId}, and a credit attaches when an order is created, not ` +
         'when it is paid for. Paying full fare and leaving the credit intact.',
       detail: { orderId: existing.providerOrderId, creditIds },
@@ -886,7 +950,7 @@ async function reportCreditPosition(
     actor,
     summary:
       match.chosen.length === 0
-        ? `No credit applies to ${best.offer.id}; ${match.rejected.length} held credit(s) considered`
+        ? `No credit applies to ${best.offer.id}; ${plural(match.rejected.length, 'held credit', 'held credits')} considered`
         : `${usd(here + elsewhere)} of credit matches ${best.offer.id}` +
           (elsewhere > 0
             ? ` — but ${usd(elsewhere)} of it is not redeemable through ${deps.provider.name} ` +

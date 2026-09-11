@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull, or } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import type { Actor } from '@/lib/auth/actor';
@@ -89,8 +89,29 @@ type LoadedFlight = {
   show: { id: string; name: string; timezone: string; moveInAt: Date | null; endsOn: Date } | null;
 };
 
-async function loadFlights(actor: Actor, db: Db, showId?: string): Promise<LoadedFlight[]> {
+/**
+ * How long a landed flight stays on the board.
+ *
+ * A leg that has arrived is not a thing anybody can act on: the traveler is in
+ * the terminal, the buffer either held or it did not, and no alert this engine
+ * writes about it can change an outcome. But cutting at the arrival instant is
+ * too sharp — somebody reading the board at 4pm about a flight that landed at
+ * 11am is asking a live question, and a row that vanished at 11:01 makes the
+ * board look like it lost the flight rather than finished with it. Twelve hours
+ * keeps the working day and drops the archive.
+ */
+export const BOARD_HORIZON_HOURS = 12;
+
+async function loadFlights(
+  actor: Actor,
+  db: Db,
+  showId?: string,
+  /** Everything, including legs that have long since landed. */
+  includePast = false,
+  asOf: Date = new Date(),
+): Promise<LoadedFlight[]> {
   const scope = travelerScope(actor);
+  const since = new Date(asOf.getTime() - BOARD_HORIZON_HOURS * 3_600_000);
 
   const rows = await db
     .select({ flight: s.flights, traveler: s.users, show: s.shows })
@@ -105,6 +126,20 @@ async function loadFlights(actor: Actor, db: Db, showId?: string): Promise<Loade
         eq(s.users.orgId, actor.orgId),
         scope.kind === 'self' ? eq(s.flights.userId, scope.userId) : undefined,
         showId ? eq(s.flights.showId, showId) : undefined,
+        // Judged on the *scheduled* arrival rather than on an estimate. An
+        // estimate moves every time anybody asks, so a board keyed on it would
+        // drop and restore rows as a carrier revises — and a cancelled flight,
+        // whose estimate is nothing at all, is exactly the row that must not
+        // disappear. `scheduled_*` is immutable by this app's own rule, which is
+        // what makes it the right column to cut on.
+        includePast
+          ? undefined
+          : or(
+              gte(s.flights.scheduledArrival, since),
+              // A leg with no arrival time on it has nothing to age out on, and
+              // silence is not a reason to hide a flight somebody is on.
+              isNull(s.flights.scheduledArrival),
+            ),
       ),
     )
     .orderBy(asc(s.flights.scheduledDeparture));
@@ -169,11 +204,19 @@ async function bufferHoursFor(
 
 export async function getFlightBoard(
   actor: Actor,
-  opts: { showId?: string; asOf?: Date; replayed?: boolean } = {},
+  opts: { showId?: string; asOf?: Date; replayed?: boolean; includePast?: boolean } = {},
   db: Db = getDb(),
 ): Promise<Board> {
   const asOf = opts.asOf ?? new Date();
-  const items = await loadFlights(actor, db, opts.showId);
+  // The horizon is a property of the *workspace* board and not of the model. A
+  // board is an operations screen — it answers "what needs me today", and a leg
+  // that landed last October answers nothing while making the two that matter
+  // harder to find. One show's own Travel tab is the opposite: it is the record
+  // of that show, most of them are in the past by the time anybody reads one,
+  // and a tab that went blank after the show would be hiding its own subject.
+  // So asking about one show gets everything unless a caller says otherwise.
+  const includePast = opts.includePast ?? opts.showId !== undefined;
+  const items = await loadFlights(actor, db, opts.showId, includePast, asOf);
   const buffers = await bufferHoursFor(actor.orgId, items, db);
 
   const rows = items.map((i) => {

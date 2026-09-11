@@ -4,7 +4,7 @@ import { useActionState } from 'react';
 import { decide } from '../actions';
 import { Button } from '../../_components/ui';
 import type { FormState } from '../../_components/form';
-import { Message } from '../../_components/form-ui';
+import { Form, Message } from '../../_components/form-ui';
 
 /**
  * Commit or decline a prospect.
@@ -17,7 +17,7 @@ export function DecideForm({ showId }: { showId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(decide, {});
 
   return (
-    <form action={action} className="space-y-3">
+    <Form action={action} state={state} className="space-y-3">
       <input type="hidden" name="showId" value={showId} />
       <label className="block">
         <span className="text-sm font-medium">Why?</span>
@@ -45,6 +45,6 @@ export function DecideForm({ showId }: { showId: string }) {
       </div>
 
       <Message state={state} density="comfortable" />
-    </form>
+    </Form>
   );
 }

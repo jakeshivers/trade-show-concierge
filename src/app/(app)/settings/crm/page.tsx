@@ -71,9 +71,9 @@ export default async function CrmSettingsPage() {
               <Link href="/roi" className="underline">
                 ROI
               </Link>{' '}
-              says so in those words rather than showing a pipeline of $0. There is no fallback:
-              a screen quietly serving replayed opportunities would be indistinguishable there
-              from a connected CRM, and this is the number a budget gets set from.
+              says exactly that rather than showing a pipeline of $0. Nothing stands in for a
+              real CRM in the meantime — a screen quietly showing made-up opportunities would look
+              identical to a connected one, and this is the number budgets get set from.
             </p>
           </>
         ) : (
@@ -87,11 +87,10 @@ export default async function CrmSettingsPage() {
             {choice.choice.replayed && (
               <p className="mt-2 text-sm text-text-muted">
                 <code>CRM_PROVIDER=recorded</code> is set, so opportunities come from a recorded
-                conversion shape rather than from a CRM. It describes how booth conversations
-                convert in general and asserts nothing about this company — so every ratio derived
-                from it is withheld on the ROI screens, not merely labelled. It also writes
-                nothing back: reporting a successful write would send somebody looking in
-                Salesforce for a field nothing ever set.
+                pattern rather than from a CRM. It describes how booth conversations convert in
+                general and says nothing about this company — so on the ROI screens every ratio
+                built on it is left blank rather than shown with a warning. It also writes nothing
+                back, rather than reporting a write it never made.
               </p>
             )}
             <SyncForm canWrite={!choice.choice.replayed} />
@@ -106,11 +105,11 @@ export default async function CrmSettingsPage() {
               {MODEL_LABEL[DEFAULT_SETTINGS.model]}, {DEFAULT_SETTINGS.windowDays}-day window
             </dt>
             <dd className="text-text-muted">
-              SCOPE §11.7, resolved 2026-09-01. <strong>Sourced</strong> means the show created
-              the lead — first touch — which is conservative and is the number a CFO will not
-              discount. <strong>Influenced</strong> means the show touched an opportunity at any
-              point; it is generous, useful for shows that accelerate rather than originate, and
-              reported beside the default rather than instead of it.
+              <strong>Sourced</strong> means the show is where we first met the buyer. It is the
+              conservative reading and the one a finance team will not argue with.
+              <strong> Influenced</strong> means the show touched the deal at some point; it is
+              the generous reading, and it is the fairer one for a show that moves deals along
+              rather than starting them. Both are shown, and this setting picks which one leads.
             </dd>
           </div>
           <div>
@@ -125,14 +124,14 @@ export default async function CrmSettingsPage() {
             </dd>
           </div>
           <div>
-            <dt className="font-medium">A lead with no lawful basis is never sent</dt>
+            <dt className="font-medium">A lead with no consent record is never sent</dt>
             <dd className="text-text-muted">
-              Matching by email transmits a stranger’s address to a third party, so it is gated on
-              the consent recorded at the booth; matching on an id the CRM already gave us is not,
-              because it sends nothing about the person. A badge-scanner export has no consent
-              column, so those leads are held, counted, and permanently outside every pipeline
-              figure. That is this app refusing, not the CRM failing, and the two are never added
-              together.
+              Matching by email sends a stranger’s address to a third party, so it only happens
+              where somebody recorded what that person was told at the booth. Matching on an id the
+              CRM already gave us is not restricted, because it sends nothing about the person.
+              Badge-scanner exports carry no consent column, so those leads are kept and counted
+              here and never appear in a pipeline figure — which is this app holding them back
+              rather than the CRM not knowing them. The two are counted separately.
             </dd>
           </div>
         </dl>
@@ -140,7 +139,7 @@ export default async function CrmSettingsPage() {
 
       <Card
         title="Sync history"
-        subtitle="Every run, including what it refused. Matched + not found + withheld always equals the leads considered."
+        subtitle="Every run, including what it refused. Matched, not found and not sent always add up to the leads considered."
       >
         {runs.length === 0 ? (
           <p className="text-sm text-text-muted">
@@ -155,7 +154,7 @@ export default async function CrmSettingsPage() {
                 <Th numeric>Considered</Th>
                 <Th numeric>Matched</Th>
                 <Th numeric>Not found</Th>
-                <Th numeric>Withheld</Th>
+                <Th numeric>Not sent</Th>
                 <Th numeric>Opps</Th>
                 <Th numeric>Written</Th>
                 <Th>By</Th>

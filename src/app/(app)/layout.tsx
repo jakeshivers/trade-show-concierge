@@ -3,13 +3,13 @@ import { redirect } from 'next/navigation';
 import { Sidebar } from './_components/sidebar';
 import {
   authMode,
-  getActorOrNull,
   canApprove,
   isAdmin,
   LoginMethodNotPermittedError,
   NotProvisionedError,
   type Actor,
 } from '@/lib/auth/actor';
+import { currentActorOrNull, currentFeed } from './_request';
 
 /**
  * The app shell.
@@ -37,7 +37,7 @@ export const dynamic = 'force-dynamic';
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let actor: Actor | null;
   try {
-    actor = await getActorOrNull();
+    actor = await currentActorOrNull();
   } catch (err) {
     if (err instanceof NotProvisionedError || err instanceof LoginMethodNotPermittedError) {
       return <NoAccess title={titleFor(err)} detail={err.message} />;
@@ -56,9 +56,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // into the closures below.
   const me = actor;
 
+  // The count the sidebar badges. It is the same `getAlertFeed` the overview
+  // reads, memoized per request in `_request.ts`, so rendering `/` is one query
+  // rather than two and the two surfaces cannot report different numbers.
+  const feed = await currentFeed();
+
   return (
     <div className="flex min-h-screen">
-      <Sidebar isAdmin={isAdmin(me)} isApprover={canApprove(me)} />
+      <Sidebar
+        isAdmin={isAdmin(me)}
+        isApprover={canApprove(me)}
+        outstandingAlerts={feed.summary.outstanding}
+      />
       <div className="flex min-w-0 flex-1 flex-col">
         {authMode() === 'dev' && (
           <div className="bg-warn-soft px-6 py-1.5 text-center text-xs text-text">

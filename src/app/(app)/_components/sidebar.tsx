@@ -2,28 +2,9 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import {
-  Boxes,
-  CalendarDays,
-  ClipboardCheck,
-  Inbox,
-  LayoutDashboard,
-  Luggage,
-  MessagesSquare,
-  BellRing,
-  PanelLeftClose,
-  PanelLeftOpen,
-  PackageSearch,
-  Plane,
-  Receipt,
-  Radar,
-  TrendingUp,
-  ShieldCheck,
-  KeyRound,
-  Share2,
-  UserPlus,
-} from 'lucide-react';
+import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { cn } from './cn';
+import { GROUPS, visibleItems } from './nav';
 import { setPref, usePref } from './pref';
 import { ThemeToggle } from './theme-toggle';
 
@@ -37,80 +18,30 @@ import { ThemeToggle } from './theme-toggle';
  * be laid out against the final set of screens is answered by picking a shape
  * that absorbs them.
  *
- * The groups are not decoration either. Show detail already nests six tabs under
+ * The groups are not decoration either. Show detail already nests ten tabs under
  * one entry, so orientation is the thing to get right, and the active state is
  * therefore a real contrast change — a tinted fill, brand text and a left bar —
  * rather than the subtle shift dense products reach for and users miss.
+ *
+ * The entries themselves live in `nav.ts`, because the overview reads the same
+ * list. See that file for why one of them cannot be added without a sentence.
  */
 
-type Item = {
-  href: string;
-  label: string;
-  Icon: typeof LayoutDashboard;
-  adminOnly?: boolean;
+export function Sidebar({
+  isAdmin,
+  isApprover,
+  outstandingAlerts,
+}: {
+  isAdmin: boolean;
+  isApprover: boolean;
   /**
-   * Travel Manager and Admin. Not the same gate as `adminOnly`, and the
-   * difference is §3's line rather than a convenience: a true-cost figure is
-   * every colleague's fare added up, which is the thing `travelerScope` narrows
-   * a Member's own queries to avoid showing them.
+   * `feed.summary.outstanding` — the same number the overview prints, passed
+   * down rather than counted again. What counts as outstanding is
+   * `standingOf`'s decision in `alerts/feed.ts`, and a SQL predicate here
+   * agreeing with it today is the `SOURCE_LABEL` trap waiting to happen.
    */
-  approverOnly?: boolean;
-};
-type Group = { label: string; items: Item[] };
-
-/**
- * Still one entry per screen that exists. A nav advertising unbuilt pages reads
- * as a broken product rather than an unfinished one.
- */
-const GROUPS: Group[] = [
-  {
-    label: 'Plan',
-    items: [
-      { href: '/', label: 'Overview', Icon: LayoutDashboard },
-      // First in Plan rather than last in Travel: §1's corollary is that a
-      // Member should barely have to learn this app, and for them this screen
-      // is most of it.
-      { href: '/assistant', label: 'Assistant', Icon: MessagesSquare },
-      { href: '/shows', label: 'Shows', Icon: CalendarDays },
-      // Above Readiness because it is the screen a person opens first: five
-      // engines write to it and, until step 17, nothing read any of them.
-      { href: '/alerts', label: 'Alerts', Icon: BellRing },
-      { href: '/readiness', label: 'Readiness', Icon: ClipboardCheck },
-      // Beside True cost rather than under Travel: they are the two halves of
-      // §8's question, and both are a number that has to say what it is missing.
-      { href: '/leads', label: 'Leads', Icon: UserPlus },
-      { href: '/cost', label: 'True cost', Icon: Receipt, approverOnly: true },
-      // Last in Plan, and after both of its inputs, because that is what it is:
-      // cost divided by leads. An ROI figure contains a cost figure, so it
-      // inherits the cost gate rather than choosing a new one.
-      { href: '/roi', label: 'ROI', Icon: TrendingUp, approverOnly: true },
-    ],
-  },
-  {
-    label: 'Travel',
-    items: [
-      { href: '/itinerary', label: 'My itinerary', Icon: Luggage },
-      { href: '/travel', label: 'Travel', Icon: Plane },
-      { href: '/flights', label: 'Flight board', Icon: Radar },
-      { href: '/shipping', label: 'Shipping', Icon: PackageSearch },
-      { href: '/assets', label: 'Assets', Icon: Boxes },
-      // Everyone has an approvals page; for a Member it is their own requests
-      // waiting on somebody else, which is worth an entry — "where has my
-      // request got to" is the question the queue exists to answer.
-      { href: '/travel/approvals', label: 'Approvals', Icon: Inbox },
-    ],
-  },
-  {
-    label: 'Settings',
-    items: [
-      { href: '/settings/security', label: 'Security', Icon: ShieldCheck, adminOnly: true },
-      { href: '/settings/intake', label: 'Lead intake', Icon: KeyRound, adminOnly: true },
-      { href: '/settings/crm', label: 'CRM', Icon: Share2, approverOnly: true },
-    ],
-  },
-];
-
-export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover: boolean }) {
+  outstandingAlerts: number;
+}) {
   const pathname = usePathname();
   const collapsed = usePref('nav-collapsed', '0') === '1';
 
@@ -145,9 +76,7 @@ export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover:
 
       <nav className="flex-1 overflow-y-auto px-2 pb-4">
         {GROUPS.map((group) => {
-          const items = group.items.filter(
-            (i) => (!i.adminOnly || isAdmin) && (!i.approverOnly || isApprover),
-          );
+          const items = visibleItems(group.items, { isAdmin, isApprover });
           if (items.length === 0) return null;
           return (
             <div key={group.label} className="mb-4">
@@ -164,7 +93,7 @@ export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover:
                       title={collapsed ? label : undefined}
                       aria-current={isActive(pathname, href) ? 'page' : undefined}
                       className={cn(
-                        'flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-text-muted transition-colors',
+                        'relative flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-sm text-text-muted transition-colors',
                         'hover:bg-muted hover:text-text',
                         collapsed && 'justify-center px-0',
                         isActive(pathname, href) &&
@@ -173,6 +102,9 @@ export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover:
                     >
                       <Icon size={16} className="shrink-0" aria-hidden />
                       {!collapsed && <span className="truncate">{label}</span>}
+                      {href === '/alerts' && outstandingAlerts > 0 && (
+                        <AlertCount n={outstandingAlerts} collapsed={collapsed} />
+                      )}
                     </Link>
                   </li>
                 ))}
@@ -186,6 +118,40 @@ export function Sidebar({ isAdmin, isApprover }: { isAdmin: boolean; isApprover:
         <ThemeToggle collapsed={collapsed} />
       </div>
     </aside>
+  );
+}
+
+/**
+ * How many alerts are waiting, on the one nav entry that can act on it.
+ *
+ * The count is the product's reason to be opened tomorrow, and until now it was
+ * legible only on the overview — so anybody who landed anywhere else had no way
+ * to know anything was waiting. Zero renders nothing rather than a `0`: a badge
+ * that is always on is the badge nobody reads, which is `outbox.ts`'s rule about
+ * a permanently-lit indicator.
+ *
+ * Collapsed, it is a dot on the rail with the count in the accessible name,
+ * because a two-digit pill inside a 64px icon rail is illegible and a truncated
+ * one would be a wrong number.
+ */
+function AlertCount({ n, collapsed }: { n: number; collapsed: boolean }) {
+  const label = `${n} outstanding ${n === 1 ? 'alert' : 'alerts'}`;
+  if (collapsed) {
+    return (
+      <span
+        aria-label={label}
+        title={label}
+        className="absolute right-3 top-1.5 h-2 w-2 rounded-full bg-bad ring-2 ring-panel"
+      />
+    );
+  }
+  return (
+    <span
+      aria-label={label}
+      className="tabular ml-auto rounded-full bg-bad-soft px-1.5 py-0.5 text-[11px] font-semibold text-bad"
+    >
+      {n > 99 ? '99+' : n}
+    </span>
   );
 }
 

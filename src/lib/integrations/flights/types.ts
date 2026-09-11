@@ -8,9 +8,20 @@ import type { Offer, TravelConstraints, Cabin } from '@/lib/policy/types';
  * a fare. SCOPE.md non-negotiable #2.
  */
 
+/**
+ * A frequent-flyer number as a carrier is told about it.
+ *
+ * Named rather than inlined because it now rides on **both** requests, and the
+ * two do different work: at search a member account can surface a fare nobody
+ * else is offered, and at order create it is what actually credits the miles.
+ * Sending it on only one of them is a half-feature that looks whole — the
+ * traveler sees their number saved and earns nothing.
+ */
+export type LoyaltyAccount = { airlineCode: string; accountNumber: string };
+
 export type SearchRequest = {
   constraints: TravelConstraints;
-  passengers: { givenName: string; familyName: string; loyaltyAccounts?: { airlineCode: string; accountNumber: string }[] }[];
+  passengers: { givenName: string; familyName: string; loyaltyAccounts?: LoyaltyAccount[] }[];
   cabinClass?: Cabin;
   maxConnections?: number;
   /** Negotiated fare codes to request, when the org has them. */
@@ -25,7 +36,17 @@ export type SearchResult = {
 
 export type HoldRequest = {
   offerId: string;
-  passengers: { id: string; givenName: string; familyName: string; email: string; phone: string; bornOn: string; gender?: string; title?: string }[];
+  passengers: {
+    id: string;
+    givenName: string;
+    familyName: string;
+    email: string;
+    phone: string;
+    bornOn: string;
+    gender?: string;
+    title?: string;
+    loyaltyAccounts?: LoyaltyAccount[];
+  }[];
   /** One purchase per travel request, ever — retries must not double-book. */
   idempotencyKey: string;
 };
@@ -79,7 +100,7 @@ export type PurchaseResult = {
 export class ProviderNotConfiguredError extends Error {
   constructor(readonly provider: string, readonly missingEnv: string[]) {
     super(
-      `${provider} is not configured. Set ${missingEnv.join(', ')} to enable it. ` +
+      `${provider} is not configured. Set ${missingEnv.join(', ')}. ` +
         `Until then, flights can be recorded manually but not searched or booked.`,
     );
     this.name = 'ProviderNotConfiguredError';

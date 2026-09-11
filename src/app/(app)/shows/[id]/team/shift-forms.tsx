@@ -11,13 +11,7 @@ import {
 } from './actions';
 import { Button } from '../../../_components/ui';
 import type { FormState } from '../../../_components/form';
-import {
-  Message,
-  QuietSubmit,
-  Submit,
-  ZonedDateTime,
-  controlClass,
-} from '../../../_components/form-ui';
+import { Form, Message, QuietSubmit, Submit, ZonedDateTime, controlClass } from '../../../_components/form-ui';
 import type { ShiftEntry } from '@/lib/team/store';
 /**
  * Booth shifts: the window, how many people it needs, who is assigned, and — once
@@ -61,7 +55,7 @@ export function ShiftControls({
 function AssignForm({ showId, entry }: { showId: string; entry: ShiftEntry }) {
   const [state, action, pending] = useActionState<FormState, FormData>(assignShift, {});
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={entry.shiftId} />
       <select name="userId" required className={inputClass}>
@@ -76,7 +70,7 @@ function AssignForm({ showId, entry }: { showId: string; entry: ShiftEntry }) {
         Add
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -91,7 +85,7 @@ export function UnassignButton({
 }) {
   const [state, action, pending] = useActionState<FormState, FormData>(unassignShift, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={shiftId} />
       <input type="hidden" name="userId" value={userId} />
@@ -104,21 +98,21 @@ export function UnassignButton({
         ×
       </button>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
 function DeleteShift({ showId, shiftId }: { showId: string; shiftId: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(removeShift, {});
   return (
-    <form action={action} className="inline">
+    <Form action={action} state={state} className="inline">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={shiftId} />
       <QuietSubmit pending={pending}>
         Delete shift
       </QuietSubmit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -139,7 +133,7 @@ function PresenceForm({
   if (options.length === 0) return null;
 
   return (
-    <form action={action} className="flex items-center gap-2">
+    <Form action={action} state={state} className="flex items-center gap-2">
       <input type="hidden" name="showId" value={showId} />
       <input type="hidden" name="shiftId" value={entry.shiftId} />
       <input type="hidden" name="present" value="true" />
@@ -155,7 +149,7 @@ function PresenceForm({
         Check in
       </Submit>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }
 
@@ -164,7 +158,7 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
   return (
     <details className="rounded-md border border-border p-3">
       <summary className="cursor-pointer text-sm font-medium">Add a booth shift</summary>
-      <form action={action} className="mt-3 flex flex-wrap items-end gap-2">
+      <Form action={action} state={state} className="mt-3 flex flex-wrap items-end gap-2">
         <input type="hidden" name="showId" value={showId} />
         <ZonedDateTime label="from" dateName="startsOn" timeName="startsAt" timeZone={timezone} required />
         <ZonedDateTime label="to" dateName="endsOn" timeName="endsAt" timeZone={timezone} required />
@@ -184,7 +178,7 @@ export function AddShiftForm({ showId, timezone }: { showId: string; timezone: s
           Add shift
         </Button>
         <Message state={state} />
-      </form>
+      </Form>
       <p className="mt-2 text-xs text-text-muted">Times are {timezone} — the show&rsquo;s zone.</p>
     </details>
   );
@@ -203,7 +197,7 @@ export function EditShiftForm({
   return (
     <details className="text-xs">
       <summary className="cursor-pointer text-text-muted">Edit this shift</summary>
-      <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
+      <Form action={action} state={state} className="mt-2 flex flex-wrap items-center gap-2">
         <input type="hidden" name="showId" value={showId} />
         <input type="hidden" name="shiftId" value={entry.shiftId} />
         <ZonedDateTime
@@ -233,7 +227,7 @@ export function EditShiftForm({
           Save
         </Submit>
         <Message state={state} />
-      </form>
+      </Form>
     </details>
   );
 }

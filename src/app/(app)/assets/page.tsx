@@ -8,7 +8,18 @@ import { canManageAssets } from '@/lib/assets/access';
 import { planClashAlert } from '@/lib/assets/alerts';
 import { TURNAROUND_HOURS } from '@/lib/assets/custody';
 import type { AssetRow } from '@/lib/assets/board';
-import { Badge, Card, Empty, PageHeader, Stat, Table, Td, Th, money } from '../_components/ui';
+import {
+  Badge,
+  Card,
+  Empty,
+  LinkButton,
+  PageHeader,
+  Stat,
+  Table,
+  Td,
+  Th,
+  money,
+} from '../_components/ui';
 import { ConditionBadge, CustodyBadge, SEVERITY_TONE, StockCell, local } from './_present';
 import {
   DeleteAssetForm,
@@ -26,10 +37,22 @@ import {
  * The asset register — everything the company owns that goes to a show, and
  * where it actually is.
  *
- * Ordered by what is wrong rather than by what is due, the same as the shipping
- * and flight boards, and for a sharper reason: a reservation is a promise about
- * the future, so a register sorted by date is a list of promises with the
- * broken ones buried in the middle. `board.ts` holds the ordering.
+ * Ordered by the next date each row demands something, the same as the shipping
+ * and flight boards. An asset row has two candidate clocks and the key is
+ * whichever is still ahead of it: a booth that has not left is due *out*, one
+ * already at a show is due *back*. An asset with nothing booked has no date and
+ * sorts last, so the idle warehouse stays visible without displacing this week's
+ * work. Returned reservations older than a month come off the workspace view
+ * entirely — the asset keeps its row, and one show's own tab still shows every
+ * reservation, which is where the custody log is read.
+ *
+ * It used to be ranked by what is wrong rather than by what is due, on the
+ * argument that a reservation is a promise about the future, so a register
+ * sorted by date is a list of promises with the broken ones buried in the
+ * middle. That was true of a register carrying every trip an asset ever made;
+ * with completed ones gone, the clock is the order the work happens in, and what
+ * the ranking protected is in the figures above, the tone on each row and the
+ * alerts, none of which have to be scanned for. `board.ts` holds the ordering.
  *
  * Three things this screen refuses to do. It never shows a reservation as a
  * filled slot without saying whether the thing can actually go — an asset
@@ -70,11 +93,22 @@ export default async function AssetRegisterPage() {
         title="Assets & collateral"
         blurb={
           <>
-            Capital that leaves the building, and the print and swag that goes with it. A
-            reservation is a claim on a thing, not a label on a row — so this page counts what can
-            actually go, what is out, and what nobody can find. Capital assets get lost between
-            shows, and they get lost quietly.
+            Capital that leaves the building, and the print and swag that goes with it. Booking
+            an asset to a show does not mean it can go, so this page counts what is actually
+            available, what is out, and what nobody can find — the expensive things go missing
+            between shows, and quietly. Ordered by the next date each one is due out or back;
+            anything with nothing booked sits at the end.
           </>
+        }
+        action={
+          // Gated on the same permission that renders the forms further down: a
+          // call to action that scrolls to nothing is worse than none at all.
+          mayManage ? (
+            <div className="flex gap-2">
+              <LinkButton href="#new-asset">Add an asset</LinkButton>
+              <LinkButton href="#new-collateral">Add collateral</LinkButton>
+            </div>
+          ) : undefined
         }
       />
 
@@ -91,7 +125,7 @@ export default async function AssetRegisterPage() {
             value={money(summary.missingCents)}
             note={
               summary.missing > 0
-                ? `${summary.missing} past the point of chasing — insurance, not a reminder`
+                ? `${summary.missing} missing long enough to be an insurance claim rather than a reminder`
                 : 'nothing lost'
             }
             tone={summary.missing > 0 ? 'bad' : 'good'}
@@ -99,13 +133,13 @@ export default async function AssetRegisterPage() {
           <Stat
             label="Promised but not fit to go"
             value={summary.unserviceable}
-            note="a future claim, a past fact, and nothing else joining them"
+            note="Booked to an upcoming show, and last returned damaged or in for repair."
             tone={summary.unserviceable > 0 ? 'warn' : 'neutral'}
           />
           <Stat
             label="Reserved and never taken"
             value={summary.neverCollected}
-            note="the show went without it, or somebody took it and did not say"
+            note="Booked, and never signed out. The show went without it, or somebody took it and did not say."
             tone={summary.neverCollected > 0 ? 'warn' : 'neutral'}
           />
         </div>
@@ -138,7 +172,11 @@ export default async function AssetRegisterPage() {
         subtitle="One row per live reservation, plus a row for anything reserved to nothing. An asset promised to two shows appears twice, which is how the double-booking is visible here and not only in the list above."
       >
         {register.rows.length === 0 ? (
-          <Empty>Nothing in the register yet.</Empty>
+          <Empty>
+            No reservations. An asset is promised to a show from that show&rsquo;s Logistics tab,
+            and appears here for the window it is unavailable — which starts before move-in and
+            ends after the crate is home.
+          </Empty>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -168,7 +206,9 @@ export default async function AssetRegisterPage() {
         )}
         {mayManage && (
           <div className="mt-5 border-t border-border pt-4">
-            <NewAssetForm costCenters={costCenters} />
+            <div id="new-asset" className="scroll-mt-6">
+              <NewAssetForm costCenters={costCenters} />
+            </div>
           </div>
         )}
       </Card>
@@ -178,7 +218,10 @@ export default async function AssetRegisterPage() {
         subtitle="On hand is not available. Stock promised to a show that has not packed yet is off the table, and a low-stock figure judged on the shelf reads fine right up to the morning somebody opens the cupboard."
       >
         {collateral.length === 0 ? (
-          <Empty>No collateral items.</Empty>
+          <Empty>
+            Nothing on the shelf yet. Add a print run or giveaway above and the count here becomes
+            what is free — on hand minus whatever is already promised to a show.
+          </Empty>
         ) : (
           <ul className="space-y-3">
             {collateral.map((c) => (
@@ -206,14 +249,16 @@ export default async function AssetRegisterPage() {
         )}
         {mayManage && (
           <div className="mt-5 border-t border-border pt-4">
-            <NewCollateralForm costCenters={costCenters} />
+            <div id="new-collateral" className="scroll-mt-6">
+              <NewCollateralForm costCenters={costCenters} />
+            </div>
           </div>
         )}
       </Card>
 
       <Card
         title="What the engine would say tonight"
-        subtitle="Written to the alerts table by `pnpm assets --sweep`. Two of these have no transition behind them — a window closing and a fact staying true — which is why the sweep looks at every row rather than the ones that changed."
+        subtitle="These reach the alerts feed the next time it is re-checked. Two of them have nothing happening behind them — a window closing, and a fact staying true — which is why every asset is looked at rather than only the ones that changed."
       >
         {alerts.length === 0 ? (
           <Empty>Nothing. Which is the usual answer and the right one.</Empty>

@@ -1,11 +1,15 @@
 import Link from 'next/link';
-import { getActor, authMode, isAdmin, canApprove } from '@/lib/auth/actor';
+import { authMode, isAdmin, canApprove } from '@/lib/auth/actor';
 import { readLoginPolicy } from '@/lib/auth/login-policy-store';
 import { formatStrategies } from '@/lib/auth/login-methods';
 import { purchasingStatus } from '@/lib/travel/kill-switch';
 import { getItinerary, listShows } from '@/lib/shows/store';
-import { getAlertFeed } from '@/lib/alerts/store';
+import { ENGINE_COUNT } from '@/lib/alerts/feed';
+import { getSetupSteps } from '@/lib/setup/store';
 import { getDb } from '@/db';
+import { currentActor, currentFeed } from './_request';
+import { GROUPS, hiddenItems, visibleItems } from './_components/nav';
+import { SetupCard } from './setup-card';
 import {
   Badge,
   Card,
@@ -17,26 +21,41 @@ import {
   readinessLabel,
   readinessTone,
 } from './_components/ui';
+import { andList, plural } from './_components/text';
 
 /**
  * The overview.
  *
- * As of step 8 there is real work to point at, so it leads with it: what needs
- * deciding, what is coming up, and where you personally are going. It still ends
- * with the state of the seam and the spine, because the spine remains headless
- * until step 9 and a person needs to be told that rather than left to infer it
- * from an absence.
+ * It leads with real work: what this workspace still needs before it functions,
+ * then what is owed to you, what needs deciding, what is coming up, and where
+ * you personally are going.
+ *
+ * Two things it used to do and no longer does, both the same defect:
+ *
+ * 1. It ended with a card headed "The booking spine runs headless", saying the
+ *    travel request form and approvals queue would "land at step 9" and listing
+ *    three `pnpm` commands as the way to use the product. Step 9 shipped sixteen
+ *    steps before anybody read that sentence again. It is deleted rather than
+ *    reworded — what replaced it is `SetupCard`, which says what is *actually*
+ *    unfinished about this particular workspace.
+ * 2. "What you can do here" was a hand-written array of seven capabilities,
+ *    frozen at step 8, beside a nav that had grown to twenty-three entries. It
+ *    is derived from `_components/nav.ts` now, filtered through the same role
+ *    gate the sidebar uses, so the two cannot disagree and a new screen cannot
+ *    be added without a sentence describing it.
  */
 
 export default async function OverviewPage() {
-  const actor = await getActor();
+  const actor = await currentActor();
   const db = getDb();
-  const [policy, purchasing, shows, trips, feed] = await Promise.all([
+  const [policy, purchasing, shows, trips, feed, setup] = await Promise.all([
     readLoginPolicy(actor.orgId, db),
     purchasingStatus(actor.orgId, db),
     listShows(actor),
     getItinerary(actor),
-    getAlertFeed(actor),
+    // Memoized per request — the sidebar badges the same number from the layout.
+    currentFeed(),
+    getSetupSteps(actor, db),
   ]);
 
   const prospects = shows.filter((s) => s.status === 'prospect');
@@ -46,36 +65,39 @@ export default async function OverviewPage() {
     .slice(0, 4);
   const myNext = trips.filter((t) => daysUntil(t.show.endsOn) >= 0).slice(0, 3);
 
-  const capabilities = [
-    'See your shows, flights, lodging, and itinerary',
-    'Submit a travel request',
-    ...(canApprove(actor)
-      ? ["See everyone's travel and shipments", 'Approve a request that exceeds policy', 'View the agent decision log']
-      : []),
-    ...(isAdmin(actor)
-      ? ['Set travel policy and spend thresholds', 'Manage shows, budgets, and members', 'Restrict permitted login methods']
-      : []),
-  ];
+  // The same list the sidebar renders, through the same filter. `/` is dropped:
+  // "See what is owed to you and what is coming up" is a description of the page
+  // the reader is already on.
+  const gates = { isAdmin: isAdmin(actor), isApprover: canApprove(actor) };
+  const capabilities = GROUPS.map((g) => ({
+    label: g.label,
+    items: visibleItems(g.items, gates).filter((i) => i.href !== '/'),
+  })).filter((g) => g.items.length > 0);
+
+  // The complement, from the same predicate. Until this line existed, a Member
+  // lost seven nav entries with no trace and "why can I not see cost?" had no
+  // answer in the product — the /cost page explains itself well, and nothing led
+  // anybody to it.
+  const hidden = GROUPS.flatMap((g) => hiddenItems(g.items, gates));
+  const hidesMoney = hidden.some((i) => i.approverOnly);
 
   return (
     <div className="space-y-10">
       <PageHeader
         title={`Welcome, ${actor.fullName.split(' ')[0]}`}
         blurb={
-          <>
-            Signed in through{' '}
-            {authMode() === 'clerk' ? 'a Clerk session' : (
-              <>
-                the dev seam (<code>DEV_ACTOR_EMAIL</code>)
-              </>
-            )}
-            . Your role and cost center come from this workspace&rsquo;s records, never from
-            the identity provider.
-          </>
+          authMode() === 'clerk'
+            ? 'What needs deciding, what is coming up, and where you are going.'
+            : 'What needs deciding, what is coming up, and where you are going. This session is a development sign-in.'
         }
       />
 
-      {/* Above everything, including what needs deciding: a missed receiving
+      {/* Above the alerts, and it is the only thing that outranks them: an alert
+          is work inside a workspace that functions, and these are the reasons it
+          does not yet. It renders nothing once they are all done. */}
+      {setup.length > 0 && <SetupCard steps={setup} />}
+
+      {/* Above everything else, including what needs deciding: a missed receiving
           window is this week and a prospect is next quarter. It is a count and a
           link rather than the alerts themselves — the feed orders and groups
           them, and a second, shorter opinion here would be the one people read. */}
@@ -83,14 +105,13 @@ export default async function OverviewPage() {
         <Card title="Owed to you">
           <p>
             <Link href="/alerts" className="font-medium underline hover:no-underline">
-              {feed.summary.outstanding} outstanding alert
-              {feed.summary.outstanding === 1 ? '' : 's'}
+              {plural(feed.summary.outstanding, 'outstanding alert', 'outstanding alerts')}
             </Link>{' '}
             <span className="text-text-muted">
               {feed.summary.critical > 0 && `${feed.summary.critical} critical · `}
               {feed.summary.unchecked > 0 &&
                 `${feed.summary.unchecked} not re-checked recently · `}
-              from the deadline, flight, freight, asset and credit engines.
+              from the {ENGINE_COUNT} engines that watch this workspace.
             </span>
           </p>
         </Card>
@@ -120,7 +141,13 @@ export default async function OverviewPage() {
 
       <Card title="Next up">
         {upcoming.length === 0 ? (
-          <p className="text-text-muted">Nothing on the calendar. </p>
+          <p className="text-text-muted">
+            Nothing upcoming.{' '}
+            <Link className="underline" href="/shows/new">
+              Propose a show
+            </Link>
+            , or look at the ones that have already run.
+          </p>
         ) : (
           <ul className="space-y-1.5">
             {upcoming.map((s) => (
@@ -134,7 +161,9 @@ export default async function OverviewPage() {
                 <Badge tone={readinessTone(s.readiness.score)}>
                   {readinessLabel(s.readiness.score)}
                 </Badge>
-                <span className="ml-auto text-xs text-text-muted">in {daysUntil(s.startsOn)} days</span>
+                <span className="ml-auto text-xs text-text-muted">
+                  in {plural(daysUntil(s.startsOn), 'day', 'days')}
+                </span>
               </li>
             ))}
           </ul>
@@ -163,7 +192,7 @@ export default async function OverviewPage() {
                 </Link>
                 <span className="text-text-muted">
                   {t.flights.length
-                    ? `${t.flights.length} flights booked`
+                    ? `${plural(t.flights.length, 'flight', 'flights')} booked`
                     : 'no flights booked yet'}
                   {t.lodging.length ? ` · ${t.lodging[0].hotelName}` : ' · no room yet'}
                 </span>
@@ -178,12 +207,43 @@ export default async function OverviewPage() {
         )}
       </Card>
 
-      <Card title="What you can do here">
-        <ul className="list-disc space-y-1 pl-5">
-          {capabilities.map((c) => (
-            <li key={c}>{c}</li>
+      <Card
+        title="What you can do here"
+        subtitle="Everything your role reaches, and what each screen is for."
+      >
+        <div className="space-y-4">
+          {capabilities.map((group) => (
+            <div key={group.label}>
+              <p className="pb-1 text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                {group.label}
+              </p>
+              <ul className="space-y-1">
+                {group.items.map((i) => (
+                  <li key={i.href} className="flex flex-wrap items-baseline gap-x-2">
+                    <Link href={i.href} className="font-medium hover:underline">
+                      {i.label}
+                    </Link>
+                    <span className="text-text-muted">{i.does}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           ))}
-        </ul>
+        </div>
+
+        {hidden.length > 0 && (
+          <p className="mt-4 border-t border-border pt-3 text-xs text-text-muted">
+            Not shown for your role: {andList(hidden.map((i) => i.label))}.{' '}
+            {hidesMoney
+              ? 'A show’s cost — and the ROI figure built on it — is every colleague’s fare, room and freight bill in one number, so it sits with travel managers and admins. The rest are workspace-wide settings an admin owns.'
+              : 'These are workspace-wide settings an admin owns.'}{' '}
+            Your role is set by an admin, and it is shown on{' '}
+            <Link href="/settings/profile" className="underline hover:no-underline">
+              your details
+            </Link>
+            .
+          </p>
+        )}
       </Card>
 
       <Card title="Organization">
@@ -221,19 +281,6 @@ export default async function OverviewPage() {
         </Row>
       </Card>
 
-      <Card title="The booking spine runs headless">
-        <p>
-          Steps 1&ndash;6 built the part that spends money, and it still has no screens: the
-          travel request form and the approvals queue land at step 9. Until then the whole
-          loop is legible from the command line, and the Travel tab on a show shows what it
-          has recorded.
-        </p>
-        <ul className="mt-3 space-y-1 font-mono text-xs">
-          <li>pnpm booking:dry-run</li>
-          <li>pnpm booking:audit &lt;id&gt;</li>
-          <li>pnpm credits</li>
-        </ul>
-      </Card>
     </div>
   );
 }

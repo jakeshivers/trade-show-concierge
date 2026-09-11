@@ -87,6 +87,43 @@ export function validatePolicy(policy: TravelPolicy): PolicyIssue[] {
     });
   }
 
+  /**
+   * An allowance with no list to spend it on, and a list with no allowance.
+   *
+   * Both are warnings rather than errors because both are legitimate mid-edit
+   * states and neither can hurt anybody — the first is money authorized that
+   * nothing can claim, the second is a carrier list that only ever produces an
+   * advisory. What they have in common is that the screen looks configured and
+   * the agent behaves as though nothing were set, which is the failure mode this
+   * validator exists to name out loud.
+   */
+  if (
+    policy.preferredCarrierAllowanceCents !== null &&
+    policy.preferredCarrierAllowanceCents > 0 &&
+    policy.preferredAirlines.length === 0
+  ) {
+    issues.push({
+      field: 'preferredCarrierAllowanceCents',
+      severity: 'warning',
+      message:
+        'A preferred carrier allowance is set but no airlines are preferred, so nothing can ' +
+        'ever earn it.',
+    });
+  }
+  if (policy.preferredAirlines.length > 0 && !policy.preferredCarrierAllowanceCents) {
+    issues.push({
+      // The *allowance* is the field that is absent, and naming it that way also
+      // keeps this warning from shadowing the blocked-and-preferred **error**
+      // below for any caller that looks an issue up by field. Nothing in `src/`
+      // does today; a test did, and found this within a minute.
+      field: 'preferredCarrierAllowanceCents',
+      severity: 'warning',
+      message:
+        'Preferred airlines are listed but not priced, so the list is recorded on the audit ' +
+        'and never changes which fare wins.',
+    });
+  }
+
   const blockedAndPreferred = policy.preferredAirlines.filter((a) =>
     policy.blockedAirlines.includes(a),
   );

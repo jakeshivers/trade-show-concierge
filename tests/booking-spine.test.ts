@@ -74,6 +74,15 @@ beforeAll(async () => {
 
 beforeEach(async () => {
   // Every test starts from an empty spine; the seeded planning data stays.
+  //
+  // This used to leave something behind, and it was invisible from inside the
+  // suite. Deleting a travel request cascades to its bookings, and
+  // `flights.booking_id` was `set null` — so every ticketed leg this file
+  // materialized survived as an orphan, and because Postgres treats NULLs as
+  // distinct in a unique index, its `(booking_id, segment_index)` rail stopped
+  // applying to it. Thirty rows per run, forever, in whatever database the
+  // developer was pointed at, all rendering on `/flights` as real legs. The
+  // schema is `cascade` now, which is what makes this delete complete.
   await db.delete(s.travelRequests);
 });
 
@@ -660,5 +669,105 @@ describe('nothing bookable', () => {
     const outcome = await runAgent(request.id, deps, priya);
     expect(outcome.status).toBe('no_options');
     expect(outcome.ranked).toHaveLength(0);
+  });
+});
+
+/**
+ * The traveler's frequent-flyer numbers reach the provider.
+ *
+ * Asserted against the real agent rather than against `passengerForUser`,
+ * because the gap this closes was never in the passenger builder: the socket for
+ * `loyaltyAccounts` has been on `SearchRequest` since step 5 and the Duffel
+ * adapter has mapped it since step 5, and `agent.ts` simply never filled it —
+ * so every ticket this product bought was issued with no mileage credit and
+ * nothing anywhere said so. A unit test on the builder would have passed
+ * throughout.
+ */
+describe('loyalty accounts reach the carrier', () => {
+  class SpyingProvider implements FlightProvider {
+    name = 'spy';
+    seen: SearchRequest['passengers'] = [];
+    constructor(private inner: FlightProvider) {}
+    isConfigured() {
+      return true;
+    }
+    async search(request: SearchRequest): Promise<SearchResult> {
+      this.seen = request.passengers;
+      return this.inner.search(request);
+    }
+    hold(...args: Parameters<FlightProvider['hold']>) {
+      return this.inner.hold(...args);
+    }
+    purchase(...args: Parameters<FlightProvider['purchase']>) {
+      return this.inner.purchase(...args);
+    }
+    cancel(...args: Parameters<FlightProvider['cancel']>) {
+      return this.inner.cancel(...args);
+    }
+  }
+
+  it('sends the traveler’s numbers, not the requester’s', async () => {
+    const clock = new Clock(new Date('2026-03-01T12:00:00Z'));
+    const spy = new SpyingProvider(new RecordedFlightProvider({ now: clock.now }));
+    const deps = depsFor(clock, spy);
+
+    // Marcus files for Priya. Marcus holds DL and AA; Priya holds UA. A search
+    // carrying Marcus's accounts would be the *requester's* preference applied
+    // to somebody else's ticket — wrong in a way the offers would not reveal.
+    const request = await submitTravelRequest(
+      {
+        travelerId: priya.userId,
+        showId: automate.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(automate.moveInAt!.getTime() - DAY),
+        latestArrival: automate.moveInAt!,
+        idempotencyKey: 'loyalty-reaches-carrier',
+      },
+      marcus,
+      deps,
+    );
+    await runAgent(request.id, deps, marcus);
+
+    expect(spy.seen[0].loyaltyAccounts).toEqual([
+      { airlineCode: 'UA', accountNumber: 'UA3319887' },
+    ]);
+    // And the same name split the purchase path uses, which `agent.ts` did not
+    // do for eleven steps — it re-implemented `split(' ')` for the search only.
+    expect(spy.seen[0].familyName).toBe('Raghunathan');
+  });
+
+  /**
+   * The same rule for the carrier *preference*, and the same trap.
+   *
+   * The behaviour lives in `policy/rank.ts` and is covered there against the
+   * pure engine. What this asserts is the **wiring** — that the list reaching
+   * ranking is the traveler's and not the requester's. Priya prefers UA; Marcus
+   * prefers DL and AA. A `deps.actor`-shaped mistake reads correctly, compiles,
+   * and books somebody else's favourite airline on their colleague's ticket.
+   */
+  it('ranks against the traveler’s carrier preference, not the requester’s', async () => {
+    const clock = new Clock(new Date('2026-03-01T12:00:00Z'));
+    const deps = depsFor(clock);
+    const request = await submitTravelRequest(
+      {
+        travelerId: priya.userId,
+        showId: automate.id,
+        originAirport: 'SFO',
+        destinationAirport: 'DTW',
+        earliestDeparture: new Date(automate.moveInAt!.getTime() - DAY),
+        latestArrival: automate.moveInAt!,
+        idempotencyKey: 'preference-is-the-travelers',
+      },
+      marcus,
+      deps,
+    );
+    await runAgent(request.id, deps, marcus);
+
+    const run = await db.query.agentRuns.findFirst({
+      where: and(eq(s.agentRuns.travelRequestId, request.id), eq(s.agentRuns.step, 'search')),
+    });
+    const detail = run!.detail as { travelerPreferredAirlines: string[] };
+    expect(detail.travelerPreferredAirlines).toEqual(['UA']);
   });
 });

@@ -1,5 +1,9 @@
 import { getActor } from '@/lib/auth/actor';
 import { getLeadBoard } from '@/lib/leads/store';
+import { getTargetBoard } from '@/lib/dayof/store';
+import { canManageTargets } from '@/lib/dayof/access';
+import { canEditLead } from '@/lib/leads/access';
+import { summarizeTargets } from '@/lib/dayof/targets';
 import { mayQuotePerLead } from '@/lib/leads/coverage';
 import { Badge, Card, Empty, Table, Td, Th, showDate, showDateTime } from '../../../_components/ui';
 import {
@@ -9,14 +13,18 @@ import {
   OutboundBadge,
   RetentionBadge,
 } from '../../../leads/_present';
+import { plural } from '../../../_components/text';
 import { loadShow } from '../detail';
 import {
   CaptureForm,
   DuplicateForm,
+  EditLeadForm,
   EraseForm,
   ImportForm,
   MeetingForm,
+  RemoveTargetForm,
   RetentionButton,
+  TargetForm,
   UndoDuplicateForm,
 } from './forms';
 
@@ -42,7 +50,12 @@ import {
 export default async function LeadsTab({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [{ detail }, actor] = await Promise.all([loadShow(id), getActor()]);
-  const board = await getLeadBoard(actor, id);
+  const [board, targetBoard] = await Promise.all([
+    getLeadBoard(actor, id),
+    getTargetBoard(actor, id),
+  ]);
+  const targetSummary = summarizeTargets(targetBoard.standings);
+  const mayEditTargets = canManageTargets(actor);
   const { show } = detail;
   const { coverage, leads, meetings, imports, people, possiblePairs, may } = board;
   const perLead = mayQuotePerLead(coverage);
@@ -50,25 +63,114 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="space-y-6">
-      <Card title="Capture">
+
+      {/* Adding a lead, first and on its own.
+
+          This was the bottom of a card titled "Capture" whose first 130 words
+          were the count, its coverage notes and the cost-per-lead refusal — so
+          the only control on the tab for the act the tab is named after sat
+          under six lines of reporting, and a reader looking for "add a lead"
+          found a report. Reported by a user who could add a *target account* and
+          concluded there was no way to add a lead.
+
+          One card was doing two jobs and the reporting half was winning. The
+          count is a report and keeps its own card, next to the list it counts.
+          `UI-REWORK.md` §14's rule about page copy has a layout half: a card is
+          named for what somebody does in it. */}
+      {may.capture && (
+        <Card id="add-lead" title="Add a lead">
+          <CaptureForm showId={id} />
+        </Card>
+      )}
+
+      {/* Who we came for. Above the lead list rather than below it, because the
+          list answers "who did we meet" and this answers "who did we not" — and
+          the second is the one nobody goes looking for. Reading it is
+          everybody's; editing it is an approver's, because adding a must-meet
+          moves the denominator of every figure it will ever produce. */}
+      <Card title="Target accounts" subtitle={targetSummary.sentence}>
+        {targetBoard.standings.length === 0 ? (
+          <Empty>
+            Add the companies this show is for, and the booth team will be told when one of them
+            walks up — including on the Day of screen, which works with no signal.
+          </Empty>
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <Th>Company</Th>
+                <Th>Priority</Th>
+                <Th>Owner</Th>
+                <Th>Met</Th>
+                {mayEditTargets && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {targetBoard.standings.map((t) => (
+                <tr key={t.target.id}>
+                  <Td>
+                    <span className="font-medium">{t.target.companyName}</span>
+                    {t.target.reason && (
+                      <span className="block text-xs text-text-muted">{t.target.reason}</span>
+                    )}
+                    {t.target.aliases.length > 0 && (
+                      <span className="block text-xs text-text-muted">
+                        also {t.target.aliases.join(', ')}
+                      </span>
+                    )}
+                  </Td>
+                  <Td>
+                    <Badge tone={t.target.priority === 'must_meet' ? 'bad' : 'neutral'}>
+                      {t.target.priority.replace('_', ' ')}
+                    </Badge>
+                  </Td>
+                  <Td>
+                    {t.target.ownerName ?? (
+                      <span className={t.unowned ? 'text-warn' : 'text-text-muted'}>unowned</span>
+                    )}
+                  </Td>
+                  <Td>
+                    {t.met ? (
+                      <>
+                        <Badge tone="good">met</Badge>
+                        <span className="ml-2 text-xs text-text-muted">
+                          {t.leads[0].fullName}
+                          {t.leads.length > 1 && ` +${t.leads.length - 1}`}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-text-muted">not yet</span>
+                    )}
+                  </Td>
+                  {mayEditTargets && (
+                    <Td>
+                      <RemoveTargetForm showId={id} targetId={t.target.id} />
+                    </Td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+        {mayEditTargets && <TargetForm showId={id} people={targetBoard.people} />}
+      </Card>
+      <Card title="Lead count">
         <CoverageHeadline coverage={coverage} />
         <CoverageNotes coverage={coverage} />
         {!perLead.ok && coverage.standing !== 'not_yet' && (
           <p className="mt-2 text-sm text-text-muted">
-            <span className="font-medium">Cost per lead is withheld.</span> {perLead.reason}
+            <span className="font-medium">Cost per lead is not shown yet.</span> {perLead.reason}
           </p>
         )}
-        {may.capture && <CaptureForm showId={id} />}
       </Card>
 
       {may.manage && possiblePairs.length > 0 && (
         <Card title="Might be the same person">
           <p className="text-sm text-text-muted">
-            Same name, same company, both kept. Nothing merges these automatically, because two
-            people really can share a name at a show this size and silently dropping a real second
-            lead is the same mistake as counting a fake one — pointing the other way. Marking a
-            pair deletes nothing: the later row keeps its own consent record and its own retention
-            date, and stops being counted.
+            These have the same name and company, so they may be one person captured twice — or
+            two people who happen to share a name. Nothing is merged automatically; somebody who
+            was there has to say. Marking a pair deletes nothing: the second lead is kept and its
+            follow-up still works, it just stops being counted twice.
           </p>
           <ul className="mt-3 space-y-3">
             {possiblePairs.map((pair) => (
@@ -107,8 +209,8 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                 <Th>Name</Th>
                 <Th>Company</Th>
                 <Th>Captured by</Th>
-                <Th>Basis</Th>
-                <Th>Retention</Th>
+                <Th>Consent</Th>
+                <Th>Erase by</Th>
                 <Th>{may.redact ? '' : ''}</Th>
               </tr>
             </thead>
@@ -160,6 +262,19 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
                         {may.manage && <UndoDuplicateForm showId={id} leadId={lead.id} />}
                       </div>
                     )}
+                    {/* Editing needs the same reach as reading, which `restricted`
+                        already carries — but it is asked directly rather than
+                        inferred from it, because two definitions that happen to
+                        agree today are one refactor away from a control that
+                        edits a row it cannot show. */}
+                    {canEditLead(actor, lead.capturedById) && !lead.redactedAt && (
+                      <details className="mb-1">
+                        <summary className="cursor-pointer text-xs text-text-muted hover:text-text">
+                          Edit
+                        </summary>
+                        <EditLeadForm showId={id} lead={{ ...lead, basis: lead.basis }} />
+                      </details>
+                    )}
                     {may.redact && !lead.redactedAt && <EraseForm showId={id} leadId={lead.id} />}
                   </Td>
                 </tr>
@@ -171,10 +286,10 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
           <div className="mt-4 space-y-2 rounded-md bg-muted p-3">
             <p className="text-sm">
               {coverage.retentionOverdue > 0
-                ? `${coverage.retentionOverdue} lead(s) here are past the date we said we would erase them.`
-                : `${coverage.retentionDueSoon} lead(s) here are due for erasure soon.`}{' '}
-              Erasure nulls the name, email, phone and notes and keeps the row, so every count and
-              every ROI figure this show has produced stays exactly where it was.
+                ? `${plural(coverage.retentionOverdue, 'lead is', 'leads are')} past the date we said we would erase their details.`
+                : `${plural(coverage.retentionDueSoon, 'lead is', 'leads are')} due to be erased soon.`}{' '}
+              Erasing removes the name, email, phone and notes, and keeps the lead itself — so
+              this show’s lead count and every figure built on it stay exactly where they are.
             </p>
             <RetentionButton showId={id} />
           </div>
@@ -184,8 +299,8 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       <Card title="Meetings">
         {meetings.length === 0 ? (
           <Empty>
-            No meetings recorded. A meeting is booked, held, or a no-show — the third is counted
-            separately, because a meeting nobody came to is not a meeting held.
+            No meetings recorded. A meeting is booked, held, or a no-show, and the three are
+            counted separately.
           </Empty>
         ) : (
           <ul className="space-y-2">
@@ -212,10 +327,9 @@ export default async function LeadsTab({ params }: { params: Promise<{ id: strin
       {may.manage && (
         <Card title="Import a scanner CSV">
           <p className="text-sm text-text-muted">
-            Every row read lands in exactly one of accepted, rejected or already-here, and the three
-            add up to the row count — an import that quietly skipped a malformed row would report a
-            smaller number with the same confidence as a correct one. The column mapping is proposed
-            and confirmed, never applied silently.
+            Upload a scanner export and you will be shown which column becomes which field, and
+            what will happen to every row, before anything is imported. Each row is either imported,
+            rejected with a reason, or already here — nothing is skipped quietly.
           </p>
           <ImportForm showId={id} />
 

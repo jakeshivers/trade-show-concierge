@@ -48,7 +48,7 @@ to be trained to use this, it has failed job 1.
 | Hosting | Deferred until the core works | Nothing is wired to a cloud provider yet. |
 | External APIs | Behind provider interfaces, off by default | Every integration has a `NotConfigured` state. The app runs with zero keys. |
 | Agent decisions | **Deterministic policy engine, LLM only at the edges** | See §6. This is the most important call in the document. |
-| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. §10 step 20. |
+| Day-of experience | **Offline-first PWA, v1.5** | Show-floor wifi is genuinely unusable. Offline is an architecture decision, not a screen. Built at step 20, and the decision was load-bearing: the day-of page is the only one in this product that is not a Server Component, its server half deliberately fetches *nothing*, and two pure modules are shipped to the browser because a target alert and a queue reconciliation cannot wait for a network. §5l. |
 | Financial dimensions | **Cost centers from day one** | Retrofitting a cost dimension permanently orphans historical spend. §4. |
 
 ---
@@ -389,6 +389,131 @@ show's exposure without anybody doing the work, so it needs a written reason and
 authority to change the plan. That is exactly the rule `skipped` needed in §5d, arrived at
 from an unrelated direction, which is the reason to trust it.
 
+**Two risks settled before step 22 was written (2026-09-01).** Both were named in
+`CLAUDE.md` as things to decide *before* building rather than after, because both are the
+closed loop step 12.5 named, arriving in a feature whose entire output is a claim about a
+document.
+
+**The PDF dependency is `unpdf`.** Measured rather than assumed: `unpdf` 1.8.1 is MIT with
+**zero runtime dependencies** and ~2.6 MB installed; `pdf-parse` 2.4.5 pulls
+`@napi-rs/canvas`, a native binding, which is disqualified by §9's ground rule rather than
+by taste — a platform-specific build step breaks `pnpm db:reset && pnpm test` on a clean
+clone. It was verified against a hand-built two-page PDF in plain Node before being added.
+What matters about it is not that it reads a PDF but that
+`extractText(doc, { mergePages: false })` returns text **per page**, which is what makes an
+anchor checkable.
+
+**The extractor is sent text we extracted, never the PDF itself, and that is a
+correctness decision rather than a cost one.** A human confirming an extracted date is the
+only thing standing between a guess and a quoted penalty (correction 1 above), and a person
+can only confirm against something. If the document went to the model and we took its word
+for the page and the quote, the confirmation screen would display a citation nobody can
+check — and a hallucinated quote reads exactly like a real one. Confirming against it would
+*launder* the guess, which is precisely what "moving a confirmed date withdraws the
+confirmation" exists to prevent. Because we hold the page text, every candidate must carry a
+verbatim snippet and a page number, and a snippet that does not occur on that page is
+**rejected before anybody sees it**. The cost is real and is named rather than hidden: table
+layout is flattened, and a scanned or image-only page carries no text, which becomes an
+explicit *this page could not be read* rather than a guess about what was on it.
+
+**What plays `pnpm duffel:capture`'s part is a coverage probe, and the analogy had to be
+corrected to get there.** Duffel's unverified thing is a *field name* — a fact about a
+vendor, knowable only from the vendor, so a live key is the only possible arbiter. This
+adapter's unverified thing is **recall against a layout we have not seen**, which splits
+into two failures with opposite properties:
+
+- **Fabrication** — a deadline with no basis in the document. This one is killed *without*
+  a real corpus, by the anchor check above. It is the failure that would otherwise be
+  invisible, and it is structurally gone.
+- **A miss** — a deadline in the manual that never becomes a row. Silent, and the exact
+  outcome §5a exists to prevent. **No synthetic corpus can catch this**, because the corpus
+  and the prompt are written by the same person, so the prompt is tuned to the layout it was
+  given.
+
+So the capture-equivalent targets misses, and the arbiter has to be something not written to
+agree with our own model: a deliberately **stupid, high-recall date-pattern sweep** over
+every page, reporting every date-like string that no extracted deadline claimed.
+`pnpm manual:probe <file.pdf>` runs the real extractor against a real manual the operator
+points it at and prints that gap. The regex knows nothing about the prompt and cannot be
+tuned into agreement, which is the role a live key plays elsewhere. Nothing is committed:
+a real exhibitor manual is somebody's copyrighted document, so captures go to a gitignored
+directory on the same footing as `fixtures/live-salesforce/` and for a stronger reason.
+
+The synthetic corpus is still built, for the unit suite — it proves the page reader, the
+anchor verifier, the candidate planner and the confirmation gate — and its header says in
+`duffel/fixtures.ts`'s own words that it proves internal consistency and structurally cannot
+catch a layout the real manuals use and ours does not.
+
+**Corrections from building it (step 22).** The two risks above were settled before any
+code was written and both held. Six more turned up in the writing, and the first is the one
+that changes the shape of the feature.
+
+1. **An anchored deadline does not anchor its penalty, and the penalty is the half that
+   becomes a bill.** The anchor check proves the *date* was read off the page. It proves
+   nothing about a dollar figure quoted beside it — a model can reproduce a real sentence
+   perfectly and attach an amount that is nowhere in the document, and the snippet still
+   verifies. §5a's whole thesis is that "$2,800 surcharge if missed" gets acted on where a
+   date does not, so that is exactly the field that must not be inventable. The amount now
+   has to appear **inside the verified snippet**, compared on digits so "$3,125.00" and
+   "3125.00" are one claim. When it does not, the figure is dropped and `penaltyNote`
+   survives: "25–40% surcharge" is a true thing the manual said, and a dollar amount nobody
+   printed is a fabricated bill with a citation attached, which is worse than one without.
+2. **A time of day is never invented, and correction 1 of step 11 inverts here.** That
+   correction made a local time mandatory on every row, because a warehouse closing at
+   4:00pm rounded to 5pm is a drayage penalty. It was a rule about not *rounding a printed
+   hour*, and applied naively to extraction it does the opposite: most manuals print no hour
+   at all, so a helpful default would file an assumption in precisely the column the rule
+   exists to protect. An extracted row with no printed time is created at end of day and
+   **flagged**, alerts normally as a date, and **cannot be confirmed** until somebody sets
+   the hour — reading the hour off the manual is part of reading the deadline off the
+   manual. Editing the row is what clears the flag, because typing a time is a person
+   deciding what the hour is whether or not they changed it.
+3. **The seed cannot demonstrate this feature, and must not — the first step where that is
+   true.** Every step since 8 has built its screens' contents by running the real stores, and
+   §9 requires `pnpm db:reset && pnpm test` to work with zero keys. Those two cannot both
+   hold here: extraction needs a key, and the alternative — inserting extracted-looking rows
+   with hand-written snippets — would file deadlines claiming to have been read off a
+   document nothing has read, on the screen where somebody confirms them into quoted
+   penalties. That is the same argument that leaves this the one integration with **no
+   `recorded` provider**. So a fresh workspace's register is empty of extracted rows and
+   `pnpm manual <show id> <file.pdf>` is how it is shown working.
+4. **A deduplicated reading still counts as read, and only the probe found that.** The
+   coverage sweep asks "did the extractor account for this date", and the first version
+   scored only rows that survived deduplication. A manual prints its cutoffs in a summary
+   table and again in the section they belong to, `candidates.ts` correctly collapses the
+   second, and every repeated deadline therefore appeared on the unclaimed list as a
+   possible miss. An arbiter that cries wolf on a well-organised document is one nobody
+   reads, which is the single failure an arbiter cannot have. No test caught it because the
+   tests were written to the rule; running `pnpm manual:probe` and reading the output caught
+   it in one line, which is what step 17 found with `onConflictDoNothing` and step 19 with
+   `SOURCE_LABEL`.
+5. **A wrong kind is corrected rather than rejected.** The taxonomy is ours, so a misfiled
+   row is a labelling mistake and discarding a real February cutoff over it would be trading
+   a date for a category. It lands as `other` with the model's word recorded beside it. The
+   opposite call is right for a date that will not parse, because there is nothing to
+   recover.
+6. **A test that asserts a property of the seed by reading every row stops being true the
+   moment somebody uses the product.** `tests/foundation.test.ts` required every
+   `advance_order` deadline to carry a dollar figure — correct about `scripts/seed.ts`, and
+   it queried the whole table. The first extracted deadline broke it, legitimately: a manual
+   that says "surcharged 30%" printed a percentage, and correction 1 is why no amount was
+   computed from it. The assertion is scoped to hand-entered rows now, which is what it
+   always meant.
+
+**One repair, and it is this document's own ground rule.** `scripts/deadlines.ts` rendered
+due dates with `toISOString().slice(0, 10)` — the exact call the datetime rule names — and
+had done since step 11. It was invisible for eleven steps because every seeded deadline
+carries a daytime hour, so UTC and the show's calendar agreed. An extracted deadline filed
+at 23:59 local is tomorrow in UTC, so the register printed **every one of them a day late**:
+a register that moves a date by a day is the failure this engine exists to prevent, arriving
+through the tool built to inspect it. The UI rework found four copies of this in `src/app`;
+this was a fifth, in `scripts/`, where nothing was watching. The remaining
+`toISOString().slice(0, 10)` calls in `scripts/` are on **date-only columns** — a credit's
+`expiresOn`, a lead's capture day — where UTC midnight is the stored value and the call is
+correct; `scripts/leads.ts` is the one arguable case left, and it is left alone deliberately
+because fixing it requires choosing *whose* zone a lead was captured in, which belongs to
+whoever owns §5j rather than to this step.
+
 ### 5b. Unused ticket credit recovery
 
 **5–11% of corporate air spend is forfeited every year in expired flight credits**, and
@@ -673,6 +798,84 @@ IANA zones are now carried through `Segment` and stored, because Duffel had been
 — leaving no way to say what time a departure is at the airport the traveler is standing
 in.
 
+**And the horizon changed the ordering, which was the twelve-step-old decision it was
+protecting.** §5f's board sorted worst-first on the argument that a flight board sorted by
+departure puts the leg that needs somebody underneath the leg that is merely next. That was
+right about a board carrying every leg ever flown, and the horizon answered it rather than
+refuting it: once landed legs stop appearing, **everything on the board is a flight somebody
+still has to catch**, and among those the clock is the order the work happens in. A table
+where next Tuesday sits above tomorrow is one a reader re-sorts in their head every time, and
+then stops reading — which costs more than the ranking ever bought. What the ranking was
+actually protecting is kept and put where it does not have to be scanned for: the summary
+above the table, the tone on each row, and the alerts card the engine writes. Severity still
+breaks ties, so two legs leaving in the same minute put the cancelled one first. The general
+shape is worth keeping: **a ranking that fights the clock is usually a symptom of a list
+carrying rows that should not be on it**, and removing those is the better fix.
+
+**The board is what is still ahead, and one FK made it what had ever been (2026-09-02).**
+Two things, found together because the first made the second visible. A flight board is an
+operations screen — it answers *what needs me today* — and a leg that landed last October
+answers nothing while making the two that matter harder to find, so `getFlightBoard` cuts at
+twelve hours past **scheduled** arrival. Scheduled rather than estimated, for §5f's own
+reason: an estimate moves every time anybody asks, so a board keyed on it would drop and
+restore rows as a carrier revises, and a cancelled flight — whose estimate is nothing at all
+— is precisely the row that must not disappear. A leg with no arrival time recorded is kept,
+because silence is not a reason to hide a flight somebody is on. The horizon is the
+*workspace board's* and not the model's: asking about **one show** gets that show's whole
+record, because most shows are in the past by the time anybody reads their Travel tab and a
+tab that emptied out after the show would be hiding its own subject.
+
+The defect it exposed was worse. `flights.booking_id` was `ON DELETE SET NULL`, and the
+idempotency rail is `unique(booking_id, segment_index)` — but **Postgres treats NULLs as
+distinct in a unique index**, so the instant a booking was deleted its materialized legs
+became rows the constraint no longer applied to, that no future materialization could ever
+reconcile, and that nothing in the product could see or remove. They accumulated forever and
+the board rendered every one as a real leg somebody was on. It surfaced as **fifty-two
+identical DL 1422 rows**, put there thirty at a time by `pnpm test`, whose `beforeEach`
+deletes travel requests and had no idea it was leaving itineraries behind — in whatever
+database the developer happened to be pointed at. The FK is `cascade` now, which is what it
+should always have been: a materialized leg is a **projection** of the booking, the way a
+credit balance is a projection of its entries, and a hand-entered flight has a null
+`booking_id` because nothing derived it from anything. Two general lessons: a nullable column
+in a unique index is an idempotency rail with an off switch, and *"the seeded planning data
+stays"* is a claim a test cleanup cannot make about rows it created through a cascade it did
+not think about.
+
+**The ordering rule, arrived at across every board on 2026-09-02.** Each of these screens was
+ranked worst-first, and each was re-sorted by the reader every time they opened it. What the
+day produced is a rule rather than seven decisions: **a board's order is its clock, and the
+only questions are which clock and which direction.**
+
+| Screen | Direction | Clock |
+| --- | --- | --- |
+| `/flights` | prospective | scheduled departure |
+| `/shipping` | prospective | receiving deadline |
+| `/assets` | prospective | whichever of *due out* / *due back* is still ahead |
+| `/readiness` | prospective | days until the show opens |
+| `/leads` | retrospective | most recently opened show |
+| `/roi` | retrospective | most recently opened show |
+| `/cost` | neither | proximity to now, in either direction |
+| `/safety` | neither | proximity to now, in either direction |
+| `/alerts` | **none** | severity — see below |
+
+Three things generalise. **Severity is the tie-break, never the key** — what it was protecting
+is in the summary, the row's tone and the alert beside it, none of which have to be scanned
+for. **Direction follows the tense of the page**: obligations run soonest-first, reports run
+backwards, and the two screens that are genuinely both — cost accrues before a show and is
+invoiced after it; an incident is about who is on the ground *now* — use proximity in either
+direction. And **a ranking that fights the clock is usually a list carrying rows that should
+not be on it**, which is why every one of these grew a horizon at the same time and why the
+horizons differ: a landed flight is over, a crate leaves when a person confirms it, an asset
+only when somebody finds it, and a lead count never, because old capture is what this year's
+is judged against.
+
+`/alerts` is the boundary and stayed put. A board lists dated obligations; a feed's rows are
+*sentences*, and the only clock on one is `created_at` — the night an engine first said it,
+which is a fact about our sweep schedule rather than about the thing. Ordering on it puts
+tonight's `info` above last week's `critical`, which is the failure the severity model exists
+to prevent, and the dates that would make a clock meaningful are on the rows the alerts are
+*about* — now sorted by exactly those. It took the horizon half instead.
+
 ### 5g. Shipping — what "on time" has to mean when a crate can also be too early (step 14)
 
 The feature reads as "track our shipments", and built that way it is a delivery-date
@@ -693,6 +896,89 @@ wrong in the expensive direction. Also: an advance-warehouse cutoff is **not** m
 must never be defaulted to it — warehouses close one to three weeks earlier, so a
 helpfully-prefilled date would be wrong by a fortnight and would look right.
 `src/lib/shipping/status.ts`.
+
+**A fourth consignment, added 2026-09-02 because the model could not hold a parcel.** Three
+values described three dock rules, and most of the tracking numbers a show actually
+generates belong to none of them: the two boxes somebody UPS'd to their hotel, the
+replacement monitor FedEx'd overnight, the badge printer that went USPS. Filed as
+`show_site` a parcel inherits a dock window it has no dock for; filed as `advance_warehouse`
+it inherits a cutoff nobody published for it. So `direct` — *straight to a hotel, an office
+or a person* — is what the table needed, and it is legal in both directions, because a box
+sent to a hotel on the way in and a box mailed home from the booth are the same kind of
+thing and neither is freight going to or coming off a floor.
+
+**The distinction it draws is the dock, never the size of the box**, and that is the part
+worth defending. The tempting reading is "parcel vs. freight", keyed on weight, and it is
+wrong in the direction §5n cares about: general contractors bill small packages delivered to
+show-site receiving, usually at a flat rate per piece, so a weight-based exemption would
+silently delete a real line from the drayage estimate. A FedEx carton addressed to the show
+floor stays `show_site`, keeps the two-edged window, and is drayed like anything else the
+contractor lifts. What `direct` means is that **no contractor ever touches it**, which is
+why `drayage/store.ts` filters those rows out before the estimator sees one rather than
+letting `estimateDrayage` branch. That ordering is load-bearing: a `direct` row reaching the
+estimator has no rate for its consignment, so it lands in the `no_rate` gap and reports
+*"1 crate consigned somewhere this card does not price"* — turning a complete, correct
+drayage figure into a **floor**, over a box no forklift will ever go near. Refusal 3's
+failure mode with the sign flipped. `EstimableShipment.consignment` stays narrow so the
+compiler enforces it; adding the value found the third caller (`cost/store.ts`) on its own.
+The carrier's own charge still counts on every row, parcel included — a $180 overnight is
+freight spend on that show and `/cost` adds it up. Only the *drayage estimate* excludes it.
+
+**The carrier is read off the number, and reading it is not recording it (2026-09-02).**
+Carriers encode their identity in the format — UPS owns the `1Z` prefix outright, a USPS
+Intelligent Mail barcode begins 92–95, FedEx Express is a bare twelve digits — so asking
+somebody to choose a carrier *and* paste a number that already says which one is asking for
+the same fact twice, in a form where the two copies can then disagree.
+`src/lib/shipping/carrier.ts` is pure and reads it. Three rules bound it, and each is a way
+this kind of convenience turns into a wrong fact on a screen:
+
+- **It fills a control; it never decides the column.** `shipments.carrier` selects which
+  carrier account EasyPost is asked about, and `easypost/client.ts` already says a guessed
+  carrier is worse than none — the wrong one answers `NoRecord`, which on the board is
+  indistinguishable from freight that has gone missing. So nothing on the write path calls
+  it, and once a person has picked a carrier by hand the inference stops touching the value:
+  a control that re-decides on every keystroke takes the choice away by outlasting it. Where
+  it then disagrees it says so and changes nothing, because somebody who picked USPS and
+  pasted a `1Z` number has probably pasted into the wrong row — and the only thing here that
+  knows what the label says is them.
+- **It never rejects a number.** An unmatched pattern means *our* table is short, which is far
+  likelier than the number being wrong: carriers add services and regional partners issue
+  their own formats. Refusing to save would be our incomplete list overruling somebody holding
+  the label. Unrecognised is `null` with a reason and the control stays put.
+- **It says what it still cannot tell you.** A 22-digit IMpb is a genuine USPS number *and* is
+  what FedEx Ground Economy and UPS Mail Innovations issue when they hand the last mile to
+  USPS. USPS is the right answer for the tracking column — they are who can be asked — and the
+  wrong answer to *who did we ship with*, so the guess carries both. Confidence is `certain`
+  only for a prefix its owner owns; anything keyed on length alone is `likely`, because a bare
+  run of digits is a format rather than a signature.
+
+One check digit is implemented — UPS's, verified against their published `1Z999AA10123456784`
+— and it is a **typo hint, never a verdict**: the carrier is still reported and the number
+still saves, because a check digit we got subtly wrong would accuse people of typos they did
+not make and train them to ignore the one time it is right. FedEx's and USPS's are absent for
+that reason. One algorithm that has been checked beats four that have not.
+
+**The board is what is still owed, soonest deadline first (2026-09-02).** §5f's change,
+reached the same way and landing somewhere better. Worst-first was defended on the grounds
+that a shipping screen sorted by date puts the crate arriving tomorrow above the crate that
+has not moved in five days — and the horizon answered it: once settled freight stops
+appearing, every row is a crate somebody still has to get to a dock. It fits *better* here
+than on the flight board, because an overdue crate has the **earliest** deadline on the page,
+so ascending order puts the emergency at the top with no ranking at all. A crate with no
+deadline sorts **last** rather than first: no date recorded means a plan rather than freight,
+and treating a missing date as the earliest is `Number(null)` in a comparator.
+
+The horizon itself is deliberately **not** the flight board's clock, and the difference is the
+whole point. A landed flight is over whatever anybody records. Freight has no such moment: a
+crate whose cutoff was last Tuesday and which nobody has confirmed is the most urgent row
+here, so **silence and non-arrival do not expire**. A crate leaves when it is *settled* —
+`received_at`, a person's word, or `cancelled`, somebody closing the row — plus one borrowed
+rule. §5h's tense argument applies at the far end: past the point where a crate can still make
+a show, *"get it there"* is the wrong sentence, so freight for a show that ended more than
+thirty days ago comes off. Left on, it sorts to the very top forever on the earliest deadline
+in the workspace, pushing this week's work down. It is not hidden — `showsMissingReturnLeg`
+reads the table directly, knows nothing about the horizon, and still says *"nothing recorded
+coming back from Automate 2025"*.
 
 **Delivered is not received, and only a person can close that gap.** The carrier's claim is
 that a dock signed for it. Between that dock and the booth sits **drayage** — a separate
@@ -755,6 +1041,32 @@ The schema comment on `asset_reservation` has said "a log, not a flag" since ste
 for fifteen steps it was a flag with extra columns: a row with a window, and nothing ever
 written into `checked_out_at` or `returned_at`. Six things had to be got right, and four of
 them are rules this document already settled elsewhere, arriving from a new direction.
+
+**The register is ordered by the next date each row demands something (2026-09-02), and it
+is the one board with two clocks.** A booth that has not left is due *out* on `reservedFrom`;
+one already at a show is due *back* on `reservedTo`. Sorting everything on the return date
+buries the crate that has to be on a truck on Thursday under crates coming home in November,
+so the key is whichever date is still ahead of the row — which is not a compromise between
+two columns but the thing itself: the date somebody has to act by. An asset with nothing
+booked has no date and sorts **last**, keeping the idle warehouse visible without letting it
+displace this week's work.
+
+The clock finds the emergency without being told to. A booth signed out to last spring's
+Detroit show has the earliest outstanding date on the board — 45 days past — so it sorts
+first on its own. What moves *down* is the unserviceable asset promised to a show three weeks
+out, and that is the honest trade: it is a real finding and it is not this week's work, so it
+is carried by its alert and the row's tone rather than by displacing Thursday.
+
+**And the horizon here is deliberately narrower than shipping's, which is §5h.** That board
+also drops freight for a show closed out a month ago; this one must not. A crate is
+consumable and belongs to one show, so past a point *"get it there"* stops meaning anything.
+An asset is **capital we own until somebody finds it** — only a `returnedAt` closes its
+question. So a completed reservation older than thirty days comes off the workspace register
+and a never-returned one never does, which is where the *capital unaccounted for* figure at
+the top of the page comes from. The asset itself never disappears either way: filtering its
+last reservation drops it through to the nothing-booked branch, so the register stays a
+register rather than becoming a list of active jobs, and one show's own tab still shows every
+reservation, which is where the custody log is read.
 
 **Reserved is not available, and available is not serviceable.** §5e found that an assigned
 booth shift is not a covered one, because the person may not be able to stand there. An
@@ -901,6 +1213,20 @@ home, which §5f addresses to the traveler alone.
 behaviour: a booth staffer at hour six of day two does not open a CRM. That is right about
 the cause and it turned out to be about a third of the problem. Building capture found two
 more mechanisms, and one obligation that changes what "delete" is allowed to mean.
+
+**Capture is ordered most recent show first (2026-09-02), and the direction is the finding.**
+Flights, freight and assets all went from worst-first to clock-first the same day, and this
+one inverts rather than copies them. Those three are **prospective**: they list obligations,
+and the soonest is the most urgent. A lead count is **retrospective** — a fact about a show
+that already happened — so the nearest thing to now is the show that just ended, and the clock
+runs backwards from there. Ascending would open the page on 2024. The one piece of the old
+ranking that survives is `not_yet`, and it survives as a **segment rather than a severity**: a
+show that has not opened recorded nothing for want of anything to record, which is not a
+finding, so it sorts after every show being judged — and within that tail the order flips back
+to soonest-first, because those rows are prospective again. There is deliberately **no
+horizon**, unlike the other three: a crate that arrived is finished and a landed flight is
+over, but an old show's capture is exactly what this year's is judged against, which is what
+the page is for.
 
 **A count that does not say who did not capture is a fabricated bill.** §8a's rule at the
 scale of a show's return side. "34 leads" is a number with the authority of a computed one,
@@ -1071,6 +1397,336 @@ that returned `[]` would manufacture that finding out of its own absence. Not-bu
 nothing-found have to stay different answers.
 
 ---
+
+### 5l. Day-of — what a screen may claim when it is on its own (step 20)
+
+§2 has said since the first table in this document that the day-of experience is an
+**offline-first PWA, and that offline is an architecture decision rather than a screen.**
+Building it turned out to be less about caching than about tense: everything else in this
+product decides on a server and renders the answer, and this screen has to hold an answer
+and then keep being read for hours after the thing it describes has moved.
+
+**A cached screen is §5f's unchecked flight with every row at once, and it is worse.**
+There, a leg nobody had refreshed rendered `scheduled` — the calm one — so a board that had
+not asked anything in eight hours showed a full slate of on-time flights. A cached page has
+the same defect with no visible cause: it is drawn, the numbers are there, and nothing about
+a phone with no bars says the crate reading is from Tuesday. So a snapshot carries one
+instant, every reader passes a clock, and the age is a line at the top rather than a
+footnote.
+
+**A fact and a verdict age differently, and withholding both is not the safe option.**
+"Booth 2209, shift 09:00-13:00" was true when it was written and is still true. "Crate on
+time" is a present-tense claim computed from an estimate that moves hourly. So the standing
+comes off a crate line past forty-five minutes and the facts stay - and the line that
+survives is the one that matters most on a move-in morning: *on a dock, nobody has confirmed
+it at the booth* is a signature, not a guess about a truck. A screen that blanked everything
+when it went stale would remove the most actionable sentence on it in the name of caution.
+
+**A queued capture is not a captured lead, and the counts never merge.** §5j's whole
+mitigation is that a thin number is visibly thin; a count that quietly included rows sitting
+in a phone in somebody's pocket would be that failure with a new cause. The device says how
+many are on it, in the word *device* rather than *pending* — the thing a person needs to
+understand is a location, not a process.
+
+**Every queued item is accounted for, and a rejected one is kept.** §5j made an import's
+accepted + rejected + duplicate equal the row count because a silently dropped row reports a
+smaller number with the same confidence. A dropped queue item is worse: there is no file to
+re-read and no row number to point at, and the person who had the conversation is the only
+record left. So `reconcile` throws rather than losing anything, and a lead refused for a
+missing name stays on the device, marked, with the sentence explaining it — deleting it would
+destroy the only copy of a real conversation because a field was blank, and retrying it
+forever would leave a badge that is always on, which is a badge that is off.
+
+**A re-send is a success, and it is the same rail as a badge scanner's retry.** §5j's
+`external_ref` unique per show was built for a scanner retrying over seconds on
+convention-centre wifi. An outbox retries over a lunch break, after a browser has been
+killed, from a different network — the same problem with a longer clock — so the client mints
+its ref at the moment of typing and it never changes. What is new is that **our own re-send
+and somebody else's duplicate must stay different answers**: only one of them is news, and
+collapsing them would tell a person their colleague met the buyer when in fact their own
+phone did.
+
+**A target-company alert is the one piece of logic in this product that cannot run on a
+server.** It is worth something for the ninety seconds somebody is standing in front of the
+person and nothing at all afterwards, and a hall has no network — so `matchTarget` is pure,
+shipped to the client, and called on every keystroke. Two things follow. The server calls the
+same function, because two implementations would disagree about "Lakeside Mfg" within a week
+and the disagreement would surface as somebody on the floor being told nothing while the
+report says they met the account. And the match is **exact after normalising legal
+suffixes, never fuzzy**: the failure of a loose match here is not a wrong row on a screen, it
+is a person at a booth telling a stranger their company is one we came for, with no way to
+check it.
+
+**Whether a target was met is derived, never stored.** There is no `met_at` column. A target
+is met because a lead exists on this show whose company matches, so an erasure takes the
+evidence and the claim together and "6 of 9 met" cannot disagree with the list under it — the
+credit ledger's rule and §5k's attribution rule, from a third direction. And a must-meet with
+no owner escalates rather than going quiet, which is §5a's unowned deadline exactly.
+
+**A cache outlives the session that was allowed to read it.** Every row in a snapshot was
+fetched under one person's scope, and a phone in a booth gets handed to whoever is free — so
+the snapshot carries the actor it was built for, the client refuses to render one that does
+not match, and the mismatch wipes IndexedDB and the service worker's caches rather than
+filtering what is drawn. For the same reason the worker caches **only** the day-of pages:
+caching /cost or /travel would leave a copy of a colleague's fares on a device long after the
+session ended, which is the lateral read the whole access posture exists to close.
+
+**And the honest limitation, said on the page rather than hidden.** A browser cannot cache a
+page it has never seen, so the offline screen works only if it was opened while there was a
+connection. That is not a defect to engineer around; it is a sentence to put in front of
+somebody in the week before the show.
+
+### 5m. Notification transport and the scheduler — what a written alert is still missing (step 21)
+
+Step 17 built the feed and named the gap it could not close: an alert is exactly as fresh
+as the last time somebody pressed *Re-check everything*, and nothing carries one anywhere.
+Three more steps wrote to that table. §5j then added the sharpest version — `retention_overdue`
+reports our own non-compliance **nightly**, in a product where nothing runs nightly. Step 21
+is the transport and the job.
+
+**A row is not a message, and the obvious implementation is wrong five ways.** Taking every
+unresolved row and sending it is available for the first time here, and this product has
+spent four steps arguing that an alert people learn to scroll past takes the next one with
+it. So `notify/plan.ts` is pure and is a set of refusals: conditions are carried at
+`warning` and above while an `info` condition stays on the screen it was always going to be
+read on; **notices go at any severity**, because a notice is an event that happened once and
+§6c rail 6's "your flight is ticketed" is exactly the message a traveler wants pushed;
+switching a transport on **does not replay history**, because the first run against a
+workspace with a year of alerts would deliver all of them at once and the person it happened
+to would turn it off inside the minute and be right to; **only somebody who was told is told
+it ended**, because "resolved: a thing you never heard about" is noise with the grammar of an
+update; and a **personal alert never goes to a shared room**, which is the only one of the
+five that is about entitlement rather than noise.
+
+That last one is `alerts/access.ts` reached from the outside. There is no org-wide alert
+read, deliberately, so that a Travel Manager never sees the delay alert on a Member's
+personal flight home — and a channel destination is an org-wide read wearing a different
+hat, invisible from the screen anybody would check. `notification_channels.kind` exists so
+the planner can refuse, in a pure function with a test, rather than in a column comment.
+The same argument makes **setting a destination the subject's own act and not an admin's**:
+an alert that can be pointed somewhere on your behalf is an alert somebody else can read.
+It is consequently one of the very few settings a Member controls, which is §1's corollary
+working rather than an exception to it — the way to be almost invisible to a Member is to
+reach them where they already are.
+
+**Eleven rows are one sentence, and the feed already knows.** §5i found this on real data:
+eleven identical "the airline moved DL 1422" rows addressed to one admin. The planner reuses
+`groupFeed` rather than grouping again — `review.ts`'s rule, where the screen and the agent
+share one predicate so they cannot disagree — and sends **at most one message per person per
+pass**, while the delivery log still records a row per alert. The phone buzzes once; "was
+Priya told about this crate" stays answerable at the granularity the engines write at.
+
+**Idempotency is inherited, not invented.** The rail is
+`(alert, channel, phase, alert_created_at)`, and the last segment is the design: a condition
+that holds for nine nights is one row whose `occurrences` climb and whose `created_at` never
+moves, so it is carried once; a condition that resolved and came back is a recurrence, which
+§5i's writer marks by **restarting `created_at`**, so it is carried again because it is news
+again. A second dedupe rule beside the alert store's is the `SOURCE_LABEL` trap in another
+costume, so there is not one.
+
+**The zero-key transport could not be a `recorded` one, and that is the finding.** The other
+five replays obey one rule — describe a *shape*, assert nothing about this workspace — and
+they work because what is replayed is a supplier's *answer*. A transport has no answer. What
+it produces is an event in the world: somebody's phone buzzed. There is no shape of that
+which is not simply a claim, so a replay returning `sent` would fill the log with the one lie
+this feature exists to make impossible. The `console` transport composes the real message
+from the real alerts and delivers it **to nobody**, recording `rendered`; `reachesPeople` is
+false on it; and `/settings/notifications` leads with "nothing has ever left this workspace",
+which is true of almost every install of this product and is a working state rather than a
+broken one.
+
+**The scheduler makes a promise enforceable, and takes on the only irreversible act in the
+product.** `runNightly` sweeps every engine, erases every lead past its retention date, then
+carries what is owed — in that order, so an alert raised in stage 1 and satisfied in stage 2
+is closed by tomorrow's stage 1 rather than personal data being erased before the engine that
+reports on it has looked. It **stops** rather than delivering last night's answers as though
+they were tonight's. `POST /api/cron/nightly` authenticates with `CRON_SECRET` into a
+`SchedulerPrincipal` that is deliberately not an `Actor` — §5j's argument unchanged, on a
+caller that erases rather than appends — takes **no org parameter** so there is nothing to
+enumerate and nothing to misconfigure into sweeping nobody, and **refuses when no secret is
+set**, because an endpoint that destroys personal data because a variable is unset is step 7's
+`authMode()` bug on the write side.
+
+**And a job that did not run is not a quiet night.** `scheduled_runs` is append-only and
+`getRunStanding` reports `never`, `manual_only`, `current`, `overdue` or `failing` —
+`manual_only` being its own answer because "somebody ran it yesterday" and "it runs" are
+different assurances and only one will still be true next week. It is §5f's unchecked flight
+applied to the thing that reports the flights, applied in turn to the thing that runs the
+engines. Until now a workspace whose scheduler had been broken for a week and a workspace
+with nothing wrong looked identical on `/alerts`: no alerts, both.
+
+---
+
+### 5n. Drayage — what an estimate of somebody else's invoice may claim (step 23)
+
+**Drayage is the largest silent line in §8a**, and closing it is the first thing this
+product does that predicts a bill rather than recording one.
+
+The carrier's freight charge gets a crate to a dock. Drayage — *material handling* — is
+everything after that: the general contractor takes it off the truck, moves it to the booth,
+removes and stores the empty, returns it at tear-down, and carries it out. It is billed by
+the contractor rather than the carrier, off a rate card published in that show's own
+exhibitor service manual, and on a medium booth it routinely costs **more than the freight
+did**. A show can carry six crates, every one with a carrier cost recorded on the row, and
+still be missing the biggest number in its shipping figure — and §8a's rule is that a silent
+line is not a zero.
+
+The charge is weight in **hundredweight**, per shipment:
+
+    billable pounds = max(actual, the card's minimum), rounded UP to the next 100
+    charge          = (billable ÷ 100) × the rate for that consignment
+
+with a surcharge for freight that is not crated, another for receiving outside straight
+time, different rates for the advance warehouse and for direct-to-show-site, and — on most
+cards — a **round trip** charged on the way in.
+
+**Six refusals, and the second is the one a reasonable implementation gets wrong silently
+and forever.**
+
+1. **No rate card, no number.** The rate is per show, per contractor, and lives in a PDF.
+   Without it the answer is a sentence rather than zero — a $0 drayage line on a show with
+   six crates reads as *drayage was free*, which is §5a's fabricated bill with the sign
+   flipped.
+2. **Rounding is per shipment and never in aggregate.** Two 150 lb crates are two shipments:
+   each takes the 200 lb minimum, so 400 lb is billable. Summing first gives 300 lb and bills
+   three hundredweight — **25% light**, on a figure nobody has an invoice to check it against
+   yet, and light is the direction §5j already named as the one nobody audits. There is
+   nothing about the wrong version that looks wrong.
+3. **A crate with no weight is not a weightless crate.** `weight_lb` is nullable and real
+   freight records are full of nulls. Reading one as zero deletes it from the estimate while
+   the estimate still reads complete. It is counted, named, and it makes the figure a floor.
+   `numeric` arrives from the driver as a string, so this survives or dies on one line —
+   `Number(null)` is 0.
+4. **A round-trip card is one charge, not two.** The outbound crate and the return crate are
+   both real rows. Estimating over both against a round-trip card doubles the largest line on
+   the show. Which way a card works is therefore **typed from the manual and never
+   defaulted**, because either guess is a 100% error — `drayage_rate_cards.basis` has no
+   database default and the form has no pre-selected option.
+5. **Uncrated is a surcharge, and `unknown` is not `crated`.** Loose, pad-wrapped or
+   shrink-wrapped freight is surcharged 25–35%, and nothing in this app had ever recorded
+   which a crate is. `shipments.handling` therefore has a real `unknown` value, the surcharge
+   is never applied to it, and the unknowns are named as a reason the figure is a floor. This
+   is the *honest* half of §5j's rule rather than a violation of it: that rule forbids
+   defaulting to a **substantive** value, and defaulting to "nobody has said" is what it asks
+   for. Separately, a card that states no special-handling rate has not told us the surcharge
+   is nil — an uncrated crate under a silent card is a gap, not a crate billed at par.
+6. **An estimate is not an invoice, and it never joins the total.** It sits beside it the way
+   `creditFundedCents` and `consumedCents` do, for a sharper version of their reason: those
+   are real money in the wrong period, this is money **nobody has been billed**. Once the
+   real bill is filed as an expense the estimate stays next to it, which is where the feature
+   earns its place — *"estimated $2,400, billed $3,900"* is a question worth asking, and the
+   answer is usually refusal 5.
+
+**Two further corrections from building it.**
+
+**A condition with no clock is not an alert, and this feature gets no engine.** The obvious
+eighth engine says *this show has freight and no rate card*, which is true, actionable and
+exactly the kind of thing the alerts feed exists for. It is still wrong. Every one of the
+seven engines fires on something that **changes with time** — a date approaching, a scan
+going quiet, a credit expiring, a lead passing its retention. "No rate card" is true the
+moment freight is recorded, stays true until somebody types one, and never escalates. An
+alert that is permanently true and never sharpens is a nag, and §5a's whole argument is that
+one of those teaches a team to close the next alert unread. The cost screen already says it,
+in the place where somebody is reading a shipping figure, and a second voice on a different
+schedule is §5e's room-block cutoff in another costume.
+
+**A crate count derived from what was priced reports a show with six crates as having none.**
+Found by reading `pnpm drayage` rather than by a test. With no rate card the estimator prices
+nothing, so a count taken from the priced rows was zero — and *a show with no freight* and *a
+show whose freight nobody can price* rendered identically, which is the exact misreading the
+whole feature exists to prevent. `considered` is carried on the estimate, and the accounting
+holds: `perShipment + coveredByRoundTrip + unweighed + unpriceable === considered`, always.
+§5j's import rule, one table over.
+
+**Where it is.** `lib/drayage/estimate.ts` is the whole model and is pure;
+`drayage_rate_cards` is one row per show and an upsert rather than a history, because a rate
+card is a transcription of a document rather than a decision somebody made — what is worth
+keeping is whether it was *checked*, which `confirmed_at` holds and which any edit withdraws,
+exactly as re-dating a deadline does. Setting the rates belongs to whoever runs the show;
+**saying how a crate is packed belongs to anybody**, because that is knowable only by
+somebody standing next to it in the warehouse at 6am — `canConfirmReceipt`'s rule, and a gate
+there would leave every row at `unknown` forever until the sentence stopped meaning anything.
+Reading the estimate inherits `canSeeCost` rather than choosing a new rule.
+
+### 5o. Duty of care — what a roll call may claim about a person (step 24)
+
+`RESEARCH.md` ranks this ninth and justifies it in one sentence: *"we know where everyone
+is."* **We do not**, and the whole module is the consequence of taking that seriously.
+
+What this app holds is a set of operational records kept for other reasons — a badge scan at
+8:04, a carrier's word about a flight, a hotel stay, a travel window somebody typed in June.
+Every one is evidence of *expected* presence at some instant in the past. None is a location.
+That distinction is not pedantry: the screen is read when something has happened at a venue,
+by somebody deciding who to phone first, and a list that says "at the venue" with equal
+confidence for a man who badged in twelve minutes ago and a man whose June window happens to
+contain today is worse than no list. The first is a fact about this morning; the second is a
+plan.
+
+**This is not a location tracker and must never become one.** Every standing is derived from
+a row the app already had. Nothing reads a device, asks for a position, or wants a consent
+dialog — and the moment something does, this stops being a feature about knowing who to call
+and becomes a feature about watching staff.
+
+**The distinction the feature exists to protect: presence and safety are different questions,
+and one must never answer the other.** The obvious design — the one every first draft reaches
+for — treats them as one list, with a badge-in standing in for an answer. That is exactly
+backwards. Somebody who badged into a booth shift at 8:04 is *the person you most need to
+hear from* about a 10am incident at that venue; their presence makes them more urgent, not
+less. So presence never marks anybody accounted for. It decides **who to call first**, and
+only an answer closes a name.
+
+**Five refusals.**
+
+1. **Unknown is not absent, and §5e inverts.** Booth coverage deliberately does not flag an
+   unrecorded travel window, because plenty of people drive and flagging everybody flags
+   nobody. A roll call is the opposite: the person nothing can locate is the entire output,
+   so they sort **first**. The same gap, read the other way, because the cost of the two
+   mistakes has swapped places.
+2. **A response is a response to a request.** Responses carry the roll call they answer and
+   one recorded before it started does not count — otherwise "checked in safe" from a show
+   last March marks somebody accounted for during this morning's evacuation, silently, on the
+   headcount that gets read aloud.
+3. **A relayed answer counts, and §5e inverts a second time.** Booth coverage refuses a
+   `confirmed` typed by somebody else — hearsay inside a staffing number, landing as
+   `secondhand` and uncounted. A colleague saying "I have her on the phone, she is fine" is
+   the same data shape and the opposite decision: in an emergency it is precisely the
+   information needed, and discarding it would have people ringing round a name already
+   reached. It counts, and it is **labelled**, because "she told us" and "he told us about
+   her" are still different sentences.
+4. **Contactable is not contacted.** `users.phone` is nullable. "12 of 14 reached" over a
+   roster where three have no phone number is a lie about reach — the three were never
+   reachable and their silence means nothing. They are counted separately and named, and the
+   moment that fact is useful is **before** an incident, which is why it is on the screen
+   when nothing is happening.
+5. **Nobody is marked safe by the system.** There is no timeout after which silence becomes
+   assent, no inference from a badge scan, and **no bulk "mark everyone safe"** — each of
+   which is a way to produce a complete headcount without having spoken to anybody, which is
+   the only outcome here worse than an incomplete one.
+
+**Two corrections, both found by running `pnpm rollcall` rather than by a test.**
+
+**A travel window that has not started yet is not "nothing recorded".** Every person at the
+live show read `unknown` and sorted to the top — a list telling somebody to go and find four
+colleagues who were at home, hours from a flight they had not taken. *Nothing recorded* and
+*has not left yet* are opposite facts and only one of them is a person to worry about.
+
+**An interval that contains now does not age; an observation does.** Staleness was keyed by
+*kind*, so a travel window covering this moment rendered `(stale)` because it had *started*
+eighteen hours ago. That says "we have not heard in 18 hours" when the truth is "we never had
+a signal, only a plan", and those call for different actions. Staleness is keyed by **basis**
+now: a badge scan and a landing perish, a window and a hotel stay do not. Their weakness is
+that they were never precise, and that is already carried by their producing `in_town` rather
+than `at_venue`.
+
+**Access is the loosest in the product, deliberately.** Starting a roll call belongs to
+whoever runs the show — it interrupts everybody at a venue, and a mistaken one gets answered
+by fewer people next time. Answering for yourself is always yours. **Relaying somebody else's
+answer belongs to anybody**, the loosest gate in the codebase, because the colleague holding
+the phone is whoever had the number and a permission check between that call and the record
+is one that gets worked around by shouting across a room. And **reading it belongs to
+everybody at the show**: cost and ROI are narrowed because a total is every colleague's fare,
+but a roll call is a list of names and whether they have answered, and the people best placed
+to find a missing colleague at a convention centre are the ones standing in it.
 
 ## 6. The booking agent
 
@@ -1531,9 +2187,10 @@ like a toy and is actually a fix for the real failure mode.
 empty** — someone will cut a show over a bad number. Mitigations, in order of cost:
 
 1. Show lead-capture *coverage* on the dashboard — "34 leads from 3 of 6 staff" — so a
-   thin number is visibly thin rather than silently wrong.
-2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20).
-3. Only then consider gamification.
+   thin number is visibly thin rather than silently wrong. **Done at step 18.**
+2. Make manual entry take under ten seconds in the day-of PWA (§10 step 20). **Done at
+   step 20.**
+3. Only then consider gamification. Still not built, and still third.
 
 **What step 18 established, building it.** Mitigation 1 is done and is the whole shape of
 the feature: the count is never rendered bare, the word in front of it is "at least"
@@ -1544,6 +2201,27 @@ make a show look cheaper per lead than it was, and silent import loss, which def
 with equal confidence. Second, cost per lead is **withheld** over a thin count rather than
 published with a caveat, because the error runs in the direction that reads as a bad show
 and drives exactly the decision this section warns about. §5j is the long version.
+
+**What step 20 established, building mitigation 2.** The ten seconds is a real constraint
+and it decides the form: one required field, the company second because it is what fires the
+target alert, and everything else behind "More fields". But the diagnosis above is missing
+the half that actually costs leads, which is not the *typing* — it is that on a show floor
+the form does not load at all. So the mitigation is an architecture rather than a layout:
+the screen holds its own data, a capture is written to the device before it is written
+anywhere else, and the queue re-sends itself on the same idempotency rail a badge scanner
+uses. §5l is the long version.
+
+The one thing this does **not** do is count a queued capture. §8c's failure is a number that
+is silently thin; a number that quietly included rows sitting in a phone would be the same
+failure with a friendlier cause, and it would resolve itself — wrongly — the moment somebody
+walked past a wifi point. The device says how many are on it, beside the recorded count and
+never inside it.
+
+**And there is now a fourth mitigation, cheaper than gamification and pointing the other
+way.** Coverage tells you a count is thin *after* the show; a target-account list tells
+somebody at the booth, during the conversation, that the person in front of them is one of
+the nine accounts the booth was bought for. It does not improve the count — it improves what
+is in it, which is the thing cost-per-lead cannot see at all.
 
 ### 8d. Metrics
 
@@ -1949,12 +2627,231 @@ invert phases A and C.
 
 ### Phase D — v1.5 and beyond
 
-- [ ] **20.** Offline day-of PWA — my shift, booth, crate status, fast lead/meeting entry,
-      target-company alerts
-- [ ] **21.** Slack adapter · hosting · SSO rollout
-- [ ] **22.** Backlog: duty of care · sponsorship campaigns · drayage estimator · public
-      API + Zapier · impersonation (§3 rules) · multi-workspace · custom fields · external
-      share links · room-block optimizer · gamification · LLM deadline extraction
+- [x] **20.** **Offline day-of PWA** — my shift, booth, crate status, fast lead/meeting
+      entry, target-company alerts. The first step that is a change to how the client
+      *works* rather than another model behind another screen. `src/lib/dayof/` is split
+      the way everything since step 8 is, with two files that are new in kind: `targets.ts`
+      and `outbox.ts` are pure **and shipped to the browser**, because a target-company
+      alert has to fire while the name is being typed and a queue has to be reconciled with
+      no server to ask. `snapshot.ts` holds the freshness model and `degradeVerdicts` —
+      the standing comes off a crate line past forty-five minutes and the recorded facts
+      stay. `store.ts` builds one object stamped with one instant and drains a device's
+      queue **through the real `captureLead`**, as the person who typed it. Schema: a new
+      `show_targets` (with no `met_at` column, deliberately — met is derived from the
+      leads) and `meetings.external_ref`, unique per show, which is `leads.external_ref`'s
+      idempotency rail extended to the other thing a booth records. `GET
+      /api/day-of/snapshot` is the only screen in this product whose data leaves the server
+      as data; `POST /api/day-of/sync` answers **every** item it is sent and is deliberately
+      not the intake endpoint, because an intake key writes leads attributed to nobody and
+      that attribution is the entire input to §8c's coverage figure. `public/sw.js` is
+      hand-written and caches only the day-of pages; `src/app/manifest.ts` starts at
+      `/day-of`. Targets are edited on the show's Leads tab — an approver's, because adding
+      a must-meet moves a denominator — and read by everybody, because a target nobody at
+      the booth can see is a target nobody meets. `pnpm day-of` / `pnpm day-of <show id>
+      --stale 90` is the model without a screen, and `--stale` exists because the hard part
+      of an offline screen is not what it says when it is fresh. Eight corrections folded
+      into §5l above, plus §8c's mitigation 2 and the §2 row it has been owed since the
+      first table. 882 tests.
+- [~] **21.** Slack adapter · hosting · SSO rollout — **the transport and the scheduler
+      shipped; hosting and the SSO rollout did not, and cannot here.** The half that was
+      owed by things already built: `src/lib/integrations/notify/` is the sixth integration
+      behind the usual interface — the first that carries something *out* rather than asking
+      a supplier a question, which inverts the risk every other adapter manages. `types.ts`
+      takes a resolved address and a rendered message and does nothing else; `slack/` is the
+      Web API written to the published reference and **never run against a live workspace**,
+      where the one gotcha a docs-written fixture *can* catch is that **Slack answers
+      failures with HTTP 200 and `{"ok": false}`** — a client checking `res.ok`, which is
+      correct for every other provider here, records every refusal as a delivery, and that
+      failure has no symptom. `console/` is deliberately **not** a `recorded` provider: a
+      replayed answer is honest and a replayed *delivery* is a claim that somebody's phone
+      buzzed, so it composes the real message and reports `rendered`, never `sent`.
+      `notify/plan.ts` is pure and holds §5m's five refusals; `notify/store.ts` is the only
+      caller of a transport; `notify/access.ts` puts a destination in the subject's own hands
+      and nobody else's. `schedule/nightly.ts` is the three-stage job, `scheduled_runs` makes
+      "did it run" a query, and `POST /api/cron/nightly` is the seam a hosted scheduler calls
+      with `CRON_SECRET` — the second principal here that is not an `Actor`, and the first
+      that erases. New tables: `notification_channels`, `notification_deliveries`,
+      `scheduled_runs`. `/settings/notifications` is the only entry under Settings that is
+      not admin-only. `pnpm nightly` / `--dry` / `--deliver` / `--standing` is the job
+      without a screen, and `--dry` prints the messages verbatim, which is the only way to
+      read what a colleague would receive before installing anything. 932 tests.
+      **One repair found on the way:** `pnpm alerts --sweep`, `pnpm flights` and
+      `pnpm shipping` did not load `.env.local` while the app did, so the CLI reported two
+      engines "could not run" on a workspace where they were configured — the sentence the
+      whole design leans on, produced by the script's own env loading rather than by the
+      workspace. **Still owed, and deliberately so as of 2026-09-01:** hosting (a cloud
+      account, which §9's ground rule forbids wiring unasked, and where §11.10's residency
+      decision stops being deferrable and the day-of service worker meets a real origin) and
+      the SSO rollout, which is **downstream of hosting rather than parallel to it** (see
+      §11.2 — an IdP cannot post an assertion to `localhost`, so there is no connection to
+      make until there is an origin; and the domain-to-org mapping it needs is a change to a
+      ground rule rather than a feature). **The Slack adapter
+      stays unverified on purpose**: there is no workspace to run it against, so it keeps
+      the header AeroAPI, EasyPost and Salesforce carry, and the app keeps reaching nobody
+      by default. Nothing constructs a Slack client without `SLACK_BOT_TOKEN` and every
+      method on it throws before touching the network without one. §11.5 is the open
+      decision nearest both remaining halves.
+      **One repair after the fact, unrelated to the transport:** the seed cleared with
+      `delete from organizations` under a comment claiming orgs cascade to everything. Every
+      table really is reachable from one, so the intent was right and the mechanism was not —
+      three FKs are `restrict` deliberately (§4's rule that a financial row's cost center
+      must not vanish underneath it, plus an approval's approver), `RESTRICT` is checked
+      immediately per row, and the order Postgres processes sibling cascades in is
+      unspecified. It is `TRUNCATE … CASCADE` now, which is order-free and does not rot when
+      the next `restrict` FK is added. It had been broken since step 1 and was invisible
+      because `pnpm db:reset` deletes `.pglite` first, so the statement only ever ran against
+      an empty database in the path the docs recommend.
+- [x] **22.** **LLM deadline extraction** (§5a's post-v1 half). Read an exhibitor service
+      manual PDF and propose register rows a human confirms. The two risks were settled
+      before any code was written and are recorded at the end of §5a: `unpdf` is the parser
+      (MIT, zero deps, per-page text), the model is sent **text we extracted rather than the
+      document**, so every candidate's snippet is checkable against a page we hold, and
+      `pnpm manual:probe` plays `pnpm duffel:capture`'s part by reporting what a
+      deliberately stupid date sweep found that the extractor did not claim.
+      **Shipped**, and it is the first integration with **no `recorded` provider and no
+      seeded demonstration** — both refused for the same reason, that a replayed extraction
+      is an assertion about a document nothing read. Six further corrections and one repair
+      are at the end of §5a; the sharpest is that an anchored deadline does not anchor its
+      *penalty*, so an amount that is not printed inside the verified snippet is dropped
+      while the manual's own words about it survive.
+- [x] **23.** **Drayage estimator** (§5n). The largest silent line in §8a, closed — and the
+      first thing this product predicts rather than records. Six refusals in a pure model,
+      of which the load-bearing one is that hundredweight rounds **per shipment**: summing
+      two 150 lb crates before rounding bills 25% light, in the flattering direction, with
+      nothing about the wrong answer that looks wrong. The estimate never joins the total.
+      No eighth alert engine, deliberately — a condition with no clock is a nag.
+- [x] **24.** **Duty of care** (§5o). `RESEARCH.md` sells it as "we know where everyone is";
+      the feature is what taking that seriously produces. Presence and safety are kept as
+      different questions — a badge scan makes somebody *more* urgent to reach, never less —
+      nothing here reads a device, and there is deliberately no bulk "mark everyone safe".
+      **HubSpot (§11.6) was the written pick and was dropped**: the whole argument for it was
+      that a free developer tier makes a capture script buildable, and with no account it
+      would have become a fourth written-to-the-docs-and-hoped adapter replacing an honest
+      seam that throws. It stays throwing.
+- [x] **24a.** **The UX pass** (2026-09-03), prompted by a user asking how you confirm a crate
+      at the booth. Two findings. A board that reports a condition must carry the control where
+      the row already knows its target — `go-to-show.tsx` is right for a write with no single
+      target and became the answer for writes that have one. And, the larger half, **four
+      tables were read by screens and written only by the seed**, so a seeded workspace worked
+      and a real one silently could not: `/settings/profile` (no traveler could be ticketed —
+      `passengers.ts` requires a date of birth and a phone number that nothing could write),
+      the Cost tab's invoice form (`expenses`), `/settings/cost-centers` (§4 requires one on
+      every financial row, so a real org could file no money at all), and
+      `/settings/travel-policy` (with no policy the agent raises `NoPolicyError` and refuses to
+      search — the constraint in this document's first sentence, undefinable). Three bugs fell
+      out; the sharpest is that `resolvePolicy` checked key *presence* under a non-nullable
+      type, so a blank airline list resolved to `null` and `rules.ts` threw — unreachable for
+      twenty-four steps because the seed fills it and because `validatePolicy`, carrying a
+      comment since step 3 saying it was for the admin policy editor, was called by nothing.
+- [x] **24b.** **Traveler preferences** (2026-09-05), prompted by a user asking whether the
+      profile carried defaults for airline, hotel and car rental. It carried a seat preference
+      and a Known Traveler Number and nothing else. Two things shipped and two were refused,
+      and the refusals matter as much. Shipped: **`users.home_airport`**, which prefills "From"
+      on a new travel request — **the traveler's, never the requester's**, since a travel
+      manager filing for a colleague is asking where *they* leave from — and which
+      `assistant/draft.ts` falls back to when the person did not say, marked
+      `originFromHomeAirport` in the result so whoever confirms the parse can see which it was.
+      And **`user_loyalty_accounts`**, one number per carrier, sent at search (where a member
+      fare can appear) and again at order create (where the miles credit). Refused: a *personal*
+      airline preference, because §7's `preferredAirlines` is an org policy input and a
+      per-person one quietly becomes a constraint the agent then cannot find fares under —
+      a real design question, not a missing field; and hotel and car rental preferences, which
+      have nothing to act on them (§5 keeps hotel booking out of v1 and car rental is out of
+      scope above), so the profile says that on the page rather than collecting a preference
+      nothing reads. **The finding is the same shape as 24a's four tables, one layer in**:
+      `SearchRequest.passengers.loyaltyAccounts` and the Duffel mapping for it have both existed
+      since step 5, and `agent.ts` never filled the field — so every ticket this product has ever
+      bought was issued with no mileage credit, and no test could have caught it because the
+      builder was correct and nothing called it with anything. **The check 24a introduced was
+      "does anything outside the seed write this table"; this one is "does anything fill this
+      field the adapter already maps".** And the honest ceiling: nothing in a search or an order
+      response says whether the carrier *accepted* a number, so the screen says we passed it on
+      rather than implying miles are accruing, and `duffel-capture.ts` asks it as Q4.
+- [x] **24c.** **The personal airline preference** (2026-09-05) — the half 24b deliberately
+      declined, decided rather than dropped. The answer is **rank, never rule**, and `rank.ts`'s
+      own docblock is where it came from: *policy says what is allowed, ranking says what is best
+      among the allowed, and conflating them is how a booking agent ends up justifying an
+      expensive choice.* So `users.preferred_airlines` is read by **no rule** — it is on
+      `EvaluationContext`, not on `TravelPolicy`, so `evaluate()` cannot reach it — and it moves
+      an offer only among the ones already permitted. Four properties hold it: it is priced by an
+      admin in `travel_policies.personal_carrier_allowance_cents` (**absolute cents, never a
+      percentage**, because a percentage scales up exactly on the expensive international fares
+      nobody audits, and capped at $500 at the point of typing because this is the one policy
+      field that lets the agent spend *more* rather than less); null is a **tie-break only**,
+      which is the app declining to spend money nobody authorized rather than a guessed default;
+      the credit is **all-or-nothing across the carriers actually flown**, since a half-preferred
+      itinerary puts the traveler on somebody else's aircraft for the other leg; and it
+      **structurally cannot cross a decision tier** — `scoreOffer` clamps the discounted score to
+      the tier's own floor, so no allowance anybody can type, including one with an extra zero,
+      promotes a `needs_approval` fare past an `auto_approve` one or rescues a blocked carrier.
+      The audit records `preferenceCreditCents` per offer and the search line **names the fare
+      that lost**, because "we bought the $452 United over the $430 Delta" reads as a bug
+      otherwise. `/settings/profile` says which of your carriers the org blocks and whether the
+      allowance is priced at all — both are silent failures otherwise. `booking:dry-run` scenario
+      8 runs the same two fares twice, with the allowance and without.
+- [x] **24d.** **The org's preferred airlines now rank too** (2026-09-08). The list had existed
+      since step 3 and moved nothing: `airlineRules` produced an `advisory`, `types.ts` said
+      advisory was *"recorded and ignored"*, and `scoreOffer` never read a rule result — so an
+      org could name its negotiated carriers and the agent bought whatever was cheapest. It is
+      priced now, in `travel_policies.preferred_carrier_allowance_cents`, and **the advisory half
+      is unchanged**: it still cannot deny a fare or send one for approval. Three decisions.
+      **The two lists stack** — an offer on a carrier the company has a deal with *and* the
+      traveler has status on has two independent reasons behind it, both priced by an admin who
+      typed two separate numbers; taking the larger would make the smaller inert whenever the
+      other is bigger, which is a worse surprise than the sum. What the sum costs is visibility,
+      so `PreferenceCredit` keeps the halves apart into the audit and the search line names which
+      one paid — *"the company has a deal with United"* and *"Priya asked for United"* are
+      different answers with different people to argue with. **The caps differ** ($1,000 org,
+      $500 personal) because a negotiated carrier is a contract term while a person's status is a
+      convenience; the worst case is the sum, and the policy screen says so. And `validatePolicy`
+      now warns on **a list with no price** — the exact state this workspace shipped in for
+      twenty-four steps — and on a price with no list, because both look configured while the
+      agent behaves as though nothing were set. `booking:dry-run` scenario 8 runs three fares
+      against three configurations; the third fare is on **neither** list and is cheapest, which
+      is what makes the other two runs mean anything.
+- [x] **24e.** **The preference breakdown on the travel request page** (2026-09-08). The
+      numbers existed only in `agent_runs.detail`, which is a narrative log rather than a
+      schema, so `offer_snapshots` gained `preference_org_cents` / `preference_traveler_cents`
+      — beside `score`, because a score is the number that decided the purchase and one whose
+      largest term is invisible is a figure nobody can argue with. They are a **record of what
+      was applied, never re-derived on read**: allowances change, and re-deriving would restate
+      last quarter's purchase in this quarter's numbers, which is the rule `policy_evaluations`
+      already follows for the resolved policy. `review.ts` gained the pure `preferencePremium`
+      with two refusals — the comparison is against **the cheapest fare the policy allowed**,
+      never the cheapest seen (a denied fare was never an option, and measuring against one
+      invents money that was never available), and **an allowance is a ceiling, not a spend**,
+      so the page reports the $15.55 actually paid rather than the $150.00 authorized. The
+      column and the sentence appear only when a preference actually cost something. Two things
+      fell out: `money()` drops cents by design, which turns a $15.55 premium into "$16 more",
+      so `moneyExact` is a **second function rather than a flag** — the choice has to be made;
+      and `pnpm smoke` could silently skip `/travel/[id]` and still report "all 200" over the
+      app's most complex page, with a route count as the only signal. It says so now. **The
+      first version of this note had the cause backwards** and is corrected in §10.24f.
+- [x] **24f.** **A correction to 24e** (2026-09-08), and the finding is about how it was
+      measured rather than about the app. 24e claimed `pnpm smoke` skips `/travel/[id]` on a
+      clean seed and that `pnpm booking:dry-run` is what covers it. **Both halves are the wrong
+      way round.** The seed deliberately leaves `seed:ingrid:lhr` in `pending_approval` — the
+      comment on it has said since step 4 that it is *"the row the approvals queue exists
+      for"* — so a clean seed gives 39 routes with that page covered. What empties the queue is
+      the **dry run**, which deletes the seeded requests and leaves nine of its own in terminal
+      states, because approving the escalated one and sweeping the expiring one is precisely
+      what those scenarios demonstrate. The wrong conclusion came from a `pkill` that aborted a
+      compound shell command before its `pnpm db:reset` ran, so the "clean seed" being measured
+      was a post-dry-run database — and then from re-measuring against a `next dev` that was
+      holding a `.pglite` a second process had written to, which is the hazard this file has
+      documented since step 20 and which produced a *confirming* answer both times. **When a
+      measurement contradicts a comment the code has carried for twenty-four steps, re-derive
+      the state before believing the measurement.** Nothing was seeded; the skip message is
+      corrected to name the dry run and to say `db:reset` is the fix.
+- [ ] **25.** Backlog: sponsorship campaigns · public API + Zapier · impersonation (§3 rules)
+      · multi-workspace · custom fields · external share links · room-block optimizer ·
+      gamification · HubSpot (needs an account) · **manual `show_outcomes`** — `source`
+      anticipates a number somebody typed and nothing can type one, which unlike the four above
+      is a decision rather than a gap: §5k withholds every ratio built on a replayed pipeline,
+      and whether a figure a company types about *itself* earns more trust is a real argument.
+      · **overrides in the policy editor** — a blank on an override means "this layer says
+      nothing" rather than "no limit", and the form has to make that visible before it can be
+      typed into one.
 
 ### A correction to §2 and §3
 
@@ -1973,16 +2870,58 @@ the benefit of the model without the setup cost blocking the spine.
 2. ~~**Auth provider**~~ — **resolved: Clerk.** Per-org login-method control decided it.
    Partly settled at step 7: the *policy* half is built and provider-agnostic, and
    enabling a SAML/OIDC connection is Clerk configuration rather than our code, so
-   SSO needs no further build here. What still waits for step 21 is the rollout —
-   a real IdP connection, and the domain-to-org mapping that goes with it.
+   SSO needs no further build here. What waited for step 21 was the rollout — a real
+   IdP connection, and the domain-to-org mapping that goes with it.
+
+   **Update 2026-09-01: SSO is a TODO, and it is gated on hosting rather than on
+   itself.** This project runs on localhost, and that is not an incidental detail —
+   **enterprise SSO is downstream of a public origin, not parallel to it.** A SAML IdP
+   posts its assertion back to an ACS URL it has to be able to reach, and enterprise
+   OIDC connections want a redirect URI on a real domain with a real certificate; an
+   IdP cannot reach `localhost:3000`, so there is nothing to connect a connection *to*
+   until step 21's hosting half exists. Treat the two as one gate. Nothing about the
+   ordering is a surprise to the code — §7 already built the policy half
+   provider-agnostically, and enabling a connection is Clerk configuration rather than
+   ours.
+
+   **What is genuinely ours, and is the reason not to do this in passing when hosting
+   lands: domain-to-org provisioning is a change to a ground rule, not a feature.**
+   Today a verified session that matches no `users` row gets no access *and no row
+   created for it*. Mapping `@customer.com` to an org is precisely a mechanism for
+   creating one. Writing it against an imagined IdP would mean inventing both the rule
+   and the evidence for it, so it waits for a real connection to be checked against.
+   The login-method gate keeps failing closed meanwhile, which is the behaviour that
+   matters if any of this is switched on before anybody re-reads this paragraph.
 3. **Approval routing:** single Travel Manager queue for the org, or per-department
    approvers? Recommending a single queue for v1; per-department is a schema addition
    that's cheap now and expensive later if wrong.
 4. **Hotels:** tracking-only in v1 as scoped, or does the agent book those too? Hotel
    booking is a separate provider integration and roughly doubles §6.
-5. **Scale:** how many travelers and shows per year? Under ~50 travelers, some of the
-   policy machinery can be simpler. Above a few hundred, background job durability
-   needs real attention at step 4, not step 21.
+5. ~~**Scale**~~ — **resolved 2026-09-01: roughly five shows a year for the anchor
+   customer, and that number may not be designed against.** (Read as shows per year; if
+   it meant travelers, the conclusion below is unchanged, which is part of why it is
+   safe to record.) The answer came with its own caveat and the caveat is the decision:
+   *a guideline, not a hard limit — this is going to be enterprise, so who knows what
+   other companies would use it for.*
+
+   **So the resolution is a refusal, not a number.** This entry used to offer a reward
+   for a small answer — "under ~50 travelers, some of the policy machinery can be
+   simpler" — and that offer is now **withdrawn**. Nothing may be simplified on the
+   strength of the anchor customer's size. A simplification bought against five shows is
+   invisible while the seed has eight and fails at the first customer with forty, which
+   is the class of failure this product keeps naming: correct on the data in front of
+   you, wrong in a direction nobody re-checks. The policy engine's layered resolution,
+   the org-scoped stores, and the append-only ledgers all stay as built.
+
+   **What the number does buy is permission to defer, not to simplify** — and the
+   difference is that a deferral is visible. One concrete instance already exists:
+   `POST /api/cron/nightly` is a `for` loop over every org inside one HTTP request with
+   `maxDuration = 300`. That is right at this size and is the first thing that stops
+   being right, because it degrades the wrong way — a slow org silently starves the orgs
+   after it in the loop, and the response still says 200 for the ones that ran. Whoever
+   does step 21's hosting half should read that route before choosing a scheduler, since
+   a platform with a job queue makes the fix a fan-out and a platform without one makes
+   it our problem. `SCOPE.md` §10.21.
 6. ~~**Which CRM?**~~ — **resolved 2026-09-01: Salesforce first, HubSpot stubbed.**
    Some customers use each, so the answer is not one CRM forever; it is one CRM *built*
    at a time, which is what "one well rather than both adequately" was protecting.

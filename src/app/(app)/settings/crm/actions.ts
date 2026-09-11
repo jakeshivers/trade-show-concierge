@@ -8,6 +8,7 @@ import { NotFoundError } from '@/lib/shows/store';
 import { selectCrmProviderOrNull } from '@/lib/roi/provider';
 import { sweepRoiAlerts, syncCrm } from '@/lib/roi/store';
 import { type FormState, formErrorFrom } from '../../_components/form';
+import { plural } from '../../_components/text';
 
 const asFormError = formErrorFrom([ForbiddenError, NotFoundError]);
 
@@ -63,18 +64,19 @@ export async function runSync(_prev: FormState, form: FormData): Promise<FormSta
       return {
         error:
           `The run failed partway through: ${result.failedReason} ` +
-          `Everything it read before that is kept — ${result.matched} lead(s) matched and ` +
-          `${result.opportunitiesRead} opportunit(ies) cached — because discarding a half-run ` +
-          'would make every transient outage cost a full re-sync.',
+          `Everything it read before that is kept: ${plural(result.matched, 'lead', 'leads')} ` +
+          `matched and ${plural(result.opportunitiesRead, 'opportunity', 'opportunities')} ` +
+          'cached. Run it again when the CRM is reachable.',
       };
     }
     return {
       ok:
-        `${result.matched} matched, ${result.unmatched} not found in the CRM, ${result.withheld} withheld by us. ` +
-        `${result.opportunitiesRead} opportunit${result.opportunitiesRead === 1 ? 'y' : 'ies'} read, ` +
-        `${result.attributionsWritten} attribution${result.attributionsWritten === 1 ? '' : 's'} written back.`,
+        `${result.matched} matched, ${result.unmatched} not found in the CRM, ` +
+        `${result.withheld} not sent by us. ` +
+        `${plural(result.opportunitiesRead, 'opportunity', 'opportunities')} read, ` +
+        `${plural(result.attributionsWritten, 'attribution', 'attributions')} written back.`,
     };
   } catch (err) {
-    return asFormError(err);
+    return asFormError(err, form);
   }
 }

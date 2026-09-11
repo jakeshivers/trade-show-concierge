@@ -2,6 +2,15 @@ import { asc, eq } from 'drizzle-orm';
 import { getDb } from '@/db';
 import * as s from '@/db/schema';
 import { getShipmentBoard, getShipmentTimeline } from '@/lib/shipping/store';
+import { getShowDrayage } from '@/lib/drayage/store';
+import { canEditRateCard } from '@/lib/drayage/access';
+import type { HandlingKind } from '@/lib/drayage/estimate';
+import {
+  DrayageEstimateCard,
+  HandlingControl,
+  RateCardForm,
+  RateCardStanding,
+} from './drayage-forms';
 import { canManageShipments } from '@/lib/shipping/access';
 import { selectTrackingProviderOrNull } from '@/lib/shipping/provider';
 import type { ShipmentRow } from '@/lib/shipping/board';
@@ -70,6 +79,12 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
   const asOf = new Date();
 
   const board = await getShipmentBoard(actor, { showId: id, asOf });
+  // After the board and on the same page as the crates, because the estimate is
+  // a function of them: a rate card on a screen away from the freight it prices
+  // is a number nobody can check.
+  const drayage = await getShowDrayage(actor, id);
+  const mayEditRates = canEditRateCard(actor);
+  const handlingOf = new Map(drayage.freight.map((f) => [f.id, f.handling] as const));
   const mayManage = canManageShipments(actor);
   const provider = selectTrackingProviderOrNull();
   const replayed =
@@ -154,6 +169,7 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
                 timezone={show.timezone}
                 row={row}
                 events={timelines.get(row.shipment.id) ?? []}
+                handling={handlingOf.get(row.shipment.id) ?? 'unknown'}
                 asOf={asOf}
                 mayManage={mayManage}
                 people={people}
@@ -164,7 +180,7 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
         )}
 
         {mayManage && (
-          <div className="mt-5 border-t border-border pt-4">
+          <div id="new-freight" className="mt-5 scroll-mt-6 border-t border-border pt-4">
             <NewShipmentForm
               showId={id}
               timezone={show.timezone}
@@ -176,11 +192,43 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
       </Card>
 
       <Card
+        title="Drayage"
+        subtitle={
+          'What the general contractor charges to move freight between the dock and the booth. ' +
+          'It is billed by weight, per crate, off a rate card published in this show’s own ' +
+          'manual — and on most shows it costs more than the freight did.'
+        }
+      >
+        {drayage.card && mayEditRates && (
+          <RateCardStanding showId={id} card={drayage.card} />
+        )}
+        <DrayageEstimateCard estimate={drayage.estimate} />
+        {mayEditRates ? (
+          <div className="mt-4 border-t border-border pt-4">
+            <h3 className="mb-3 text-sm font-medium">
+              {drayage.card ? 'The rate card' : 'Enter this show’s rate card'}
+            </h3>
+            <RateCardForm showId={id} card={drayage.card} />
+          </div>
+        ) : (
+          <p className="mt-3 border-t border-border pt-3 text-xs text-text-muted">
+            Anybody can say how a crate is packed, on the shipment above. The rates themselves
+            belong to whoever runs the show — they are the multiplier on every crate here.
+          </p>
+        )}
+      </Card>
+
+      <Card
         title="Reserved assets"
         subtitle="Chain of custody: who took it, when it came back, and in what condition. The window is when the asset is unavailable — which is longer than the show at both ends, because the crate leaves before move-in and comes home after move-out."
       >
         {assets.rows.length === 0 ? (
-          <Empty>Nothing reserved for this show.</Empty>
+          <Empty>
+            Nothing reserved for this show.{' '}
+            {mayReserve
+              ? 'Reserve a booth or a demo unit below. The window is typed rather than taken from the show dates, because the crate leaves before move-in and comes home after move-out.'
+              : 'A travel manager or an admin promises an asset to a show. Signing one out and checking it back in is open to anybody.'}
+          </Empty>
         ) : (
           <ul className="space-y-3">
             {assets.rows.map((row) => (
@@ -289,7 +337,14 @@ export default async function LogisticsTab({ params }: { params: Promise<{ id: s
         subtitle="Promised, packed, counted back. An allocation is a claim on stock; the movement happens when somebody picks it off the shelf. A blank return count is not a zero — it means nobody looked."
       >
         {allocations.length === 0 ? (
-          <Empty>Nothing allocated to this show.</Empty>
+          <Empty>
+            Nothing allocated to this show.{' '}
+            {!mayReserve
+              ? 'A travel manager or an admin promises stock to a show. Counting a shelf is open to anybody.'
+              : collateral.length === 0
+                ? 'There is nothing on the shelf to promise yet — print runs and giveaways are added on the Assets page.'
+                : 'Promise stock to it below. Promising is a claim; the shelf only moves when somebody picks it and records the count.'}
+          </Empty>
         ) : (
           <ul className="space-y-2">
             {allocations.map((a) => (
@@ -347,6 +402,7 @@ function Shipment({
   timezone,
   row,
   events,
+  handling,
   asOf,
   mayManage,
   people,
@@ -356,6 +412,7 @@ function Shipment({
   timezone: string;
   row: ShipmentRow;
   events: (typeof s.shipmentEvents.$inferSelect)[];
+  handling: HandlingKind;
   asOf: Date;
   mayManage: boolean;
   people: { id: string; fullName: string }[];
@@ -423,6 +480,24 @@ function Shipment({
           <div className="mt-0.5">
             {row.ownerName ?? (
               <span className="text-warn">nobody — alerts go to whoever runs the show</span>
+            )}
+          </div>
+        </div>
+        {/*
+          Anybody may set this, and it sits on the crate rather than on the rate
+          card for the reason `drayage/access.ts` gives: crated or pad-wrapped is
+          knowable only by somebody standing next to it in the warehouse at 6am,
+          and a gate here would leave every row at "nobody has said" forever.
+        */}
+        <div>
+          <div className="uppercase tracking-wider text-text-muted">Packing</div>
+          <div className="mt-0.5">
+            <HandlingControl showId={showId} shipmentId={c.id} handling={handling} />
+            {handling === 'unknown' && (
+              <p className="mt-1 text-text-muted">
+                Not crated is surcharged 25–35%. Until somebody says, the drayage estimate
+                assumes none of this freight is.
+              </p>
             )}
           </div>
         </div>

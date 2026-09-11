@@ -3,12 +3,12 @@
 import { useActionState } from 'react';
 import { runSync } from './actions';
 import type { FormState } from '../../_components/form';
-import { Message, Submit } from '../../_components/form-ui';
+import { Form, Message, Submit } from '../../_components/form-ui';
 
 export function SyncForm({ canWrite }: { canWrite: boolean }) {
   const [state, action, pending] = useActionState<FormState, FormData>(runSync, {});
   return (
-    <form action={action} className="mt-3 space-y-2">
+    <Form action={action} state={state} className="mt-3 space-y-2">
       <div className="flex flex-wrap items-center gap-4">
         <Submit pending={pending} busy="Syncing…">
           Run a sync
@@ -19,6 +19,6 @@ export function SyncForm({ canWrite }: { canWrite: boolean }) {
         </label>
       </div>
       <Message state={state} />
-    </form>
+    </Form>
   );
 }

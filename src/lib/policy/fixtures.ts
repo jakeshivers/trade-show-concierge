@@ -88,6 +88,11 @@ export function policy(over: Partial<TravelPolicy> = {}): TravelPolicy {
     maxAcceptableRefundPenaltyCents: null,
     preferredAirlines: [],
     blockedAirlines: [],
+    // Both null, like a real org that has never priced either: a carrier
+    // preference — the org's or a person's — is a tie-break until somebody says
+    // what it is worth.
+    preferredCarrierAllowanceCents: null,
+    personalCarrierAllowanceCents: null,
     maxHotelNightlyRateCents: 30_000,
     perShowTravelBudgetCents: null,
     requireCreditFirst: false,
